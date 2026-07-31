@@ -1,3 +1,2 @@
 antiword
-libreoffice-writer
-fonts-liberation
+libreoffice
