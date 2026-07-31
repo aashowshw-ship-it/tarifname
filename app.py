@@ -7,11 +7,11 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from modules.ai import ask_json
-from modules.docgen import build_docx
-from modules.parsers import extract_text
-from modules.prompts import drafting_prompt, extraction_prompt, literature_prompt
-from modules.validators import validate_draft
+from ai import ask_json
+from docgen import build_docx
+from parsers import extract_text
+from prompts import drafting_prompt, extraction_prompt, literature_prompt
+from validators import validate_draft
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_TEMPLATE = BASE_DIR / "assets" / "Tarifname_181176_template.docx"
