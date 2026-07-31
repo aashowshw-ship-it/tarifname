@@ -2,7 +2,7 @@ services:
   - type: web
     name: tarifname-atolyesi
     runtime: docker
-    plan: starter
+    plan: free
     envVars:
       - key: OPENAI_API_KEY
         sync: false
