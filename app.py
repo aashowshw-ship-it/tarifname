@@ -14,7 +14,7 @@ from prompts import drafting_prompt, extraction_prompt, literature_prompt
 from validators import validate_draft
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_TEMPLATE = BASE_DIR / "assets" / "Tarifname_181176_template.docx"
+DEFAULT_TEMPLATE = BASE_DIR / "Tarifname_181176_template.docx"
 
 st.set_page_config(page_title="Tarifname Atölyesi", page_icon="📄", layout="wide")
 
