@@ -8,6 +8,7 @@ import re
 import subprocess
 import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
@@ -24,73 +25,29 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 from openai import OpenAI
 from PIL import Image
+
+try:
+    import fitz  # PyMuPDF: PDF içindeki şekilleri çıkarmak için
+except ImportError:  # pragma: no cover - bağımlılık Render üzerinde requirements ile kurulur
+    fitz = None
 from pypdf import PdfReader
+
+from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, GORUS_RULES, TARIFNAME_RULES
 
 BASE_DIR = Path(__file__).resolve().parent
 TARIFNAME_TEMPLATE = BASE_DIR / "Tarifname_181176_template.docx"
 GORUS_TEMPLATE = BASE_DIR / "Gorus_metni_696809_template.docx"
 ARASTIRMA_TEMPLATE = BASE_DIR / "On_Arastirma_Raporu_181612_template.docx"
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.6")
-MAX_TEXT_PER_FILE = int(os.getenv("MAX_TEXT_PER_FILE", "70000"))
-MAX_TOTAL_TEXT = int(os.getenv("MAX_TOTAL_TEXT", "260000"))
+MAX_TEXT_PER_FILE = int(os.getenv("MAX_TEXT_PER_FILE", "180000"))
+MAX_TOTAL_TEXT = int(os.getenv("MAX_TOTAL_TEXT", "700000"))
 
 
 # -----------------------------------------------------------------------------
 # GENEL KURALLAR
 # -----------------------------------------------------------------------------
-TARIFNAME_RULES = r"""
-TÜRK PATENT TARİFNAME KURALLARI
-1. Yalnızca yüklenen BBF'deki bilgi ve ifadeleri kullan. BBF'de bulunmayan teknik unsur, algoritma, değer, bağlantı, özellik veya kullanım biçimi ekleme.
-2. İngilizce teknik terimi ilk geçtiği yerde Türkçesini önce, İngilizcesini parantez içinde ver. Örnek: frekans aralığı 2 (frequency range 2, FR2). Sonraki kullanımlarda yalnızca Türkçe karşılığını kullan. AI yerine yapay zekâ yaz.
-3. Unsur adlarını normal cümle düzeninde yaz. Her unsur ve yöntem adımının ilk harfi büyük olsun.
-4. BBF'deki unsur numaralandırmasını aynen koru. 1,2,3 ise aynı; 10,20,30 ise aynı. BBF'de unsur olarak verilmeyen sisteme/yönteme ek numara verme.
-5. REFERANS NUMARALARI bölümünden önce unsur veya işlem adımı referansı kullanma.
-6. Referans listesinde önce sistem unsurları, bir boş paragraf sonra yöntem işlem adımları yer alır.
-7. Yöntem işlem adımları REFERANS NUMARALARI bölümünde '1001. Entegre ... toplanması' biçiminde yer alır ve burada 10,20,30 gibi modül referansları kullanılmaz.
-8. Yöntem isteminde kullanılan 1001,1002... işlem metinleri ile REFERANS NUMARALARI bölümündeki aynı numaralı işlem metinleri birebir aynı olmalıdır. Yöntem isteminde adım sonunda '(1001)' biçiminde gösterilir.
-9. Detaylı açıklamada yöntem işlem adımı referansı yalnızca işlem ifadesinin sonunda '(1001)' biçiminde kullanılabilir.
-10. Sistem istemindeki unsurları BBF sırasıyla tanımla. Bir unsur tanımlanırken yalnızca daha önce tanımlanmış unsurlarla teknik ilişki kur. Henüz tanımlanmamış unsuru önceki unsurun içinde kullanma.
-11. Ana sistem istemindeki unsurlar veri, kontrol, sinyal veya işlem ilişkisi içinde kurulmalıdır.
-12. Alt istemler kısa olmalı, ana istemi tekrar etmemeli ve BBF'deki ek teknik özelliklere dayanmalıdır. Gereksiz alt istem yazma. Sistem alt istemlerini 'bir modül olmasıdır' veya 'içermesidir' şeklinde bitir; 'yapmasıdır/etmesidir/belirlemesidir' kullanma.
-13. Açık ve sıralı bilgisayar tarafından gerçekleştirilen işlem akışı varsa yöntem istemi oluştur; yoksa yalnızca sistem istemi oluştur.
-14. Şablondaki kırmızı/mavi açıklama metinlerini ve biçimlerini koru.
-15. İnsan veya operatör eylemlerini teknik araç üzerinden yaz: 'elektronik cihaz üzerinden kullanıcıya sunan', 'elektronik cihaz üzerinden operatöre ileten' gibi.
-16. Detaylı açıklamadaki modül açıklamalarını gereksiz biçimde ayrı paragraflara bölme; teknik akış elverdiği ölçüde peş peşe tek paragrafta açıkla.
-17. 'Yöntemin gerçekleştirdiği işlevler aşağıdaki gibidir:' ifadesinden sonra yöntem adımlarını küçük yuvarlak veya tire ile alt alta yaz.
-18. Buluşun çalışma prensibini gereksiz biçimde farklı paragraflara bölme.
-19. İSTEMLER ve ÖZET başlıklarını ortala.
-20. Sistem ve yöntem istemlerini oluşturduktan sonra ikinci bir istem kalite kontrolü yap: kapsam, teknik taşıyıcı, unsur sırası, tekrar, dayanak ve dil bakımından hataları düzelt.
-"""
-
-GORUS_RULES = r"""
-TÜRK PATENT GÖRÜŞ ÇALIŞMASI KURALLARI
-1. Yalnızca raporda X veya Y olarak gösterilen dokümanlara karşı savunma yap. A kategorisi veya itiraz dayanağı yapılmayan dokümanlara karşı görüş yazma.
-2. Araştırma raporuna karşı görüşte rapor, tarifname, D1/D2 ve varsa müşteri bilgilerini birlikte analiz et.
-3. İnceleme raporuna karşı görüşte bunlara ek olarak önceki görüşü analiz et; uzmanın ikna olmadığı savunmaları aynen tekrarlamak yerine farklı teknik ayrım ve dayanaklar geliştir.
-4. Müşteri bilgisini yalnızca tarifname/istemlerde açık dayanağı varsa doğrudan kullan. Dayanağı yoksa teknik gerçek gibi yazma; uygunsa çıkarım olduğunu belirterek yumuşat veya kullanma.
-5. Teknik farklara, teknik etkiye ve unsurlar arasındaki işlevsel ilişkiye odaklan.
-6. Tarifname dayanağı verilecek yerde şu kalıbı kullan: 'Tarifnamede bu durum şu şekilde belirtilmektedir:' Ardından tarifnamedeki ilgili cümle/pasajı tırnak içinde ve kalın ver.
-7. Tarifname alıntısını kesme, değiştirme, sadeleştirme veya kelime ekleyip çıkarma. Alıntı tarifname metninde birebir bulunmalıdır.
-8. Yenilik itirazında ilgili istemin tüm özelliklerinin tek dokümanda doğrudan ve açık biçimde açıklanmadığını göster.
-9. Buluş basamağı itirazında D1 ve D2'yi tek başına ve birlikte değerlendir; teknik fark, teknik etki, objektif teknik problem, birleştirme motivasyonu ve geriye dönük değerlendirme riskini ele al.
-10. Başvuru numarası ve başvuru sahibi rapordan çekilsin. Referans kullanıcıdan alınsın.
-11. Görüş formatı yüklenen Görüş metni_696809 örneğine sadık kalsın.
-12. Çıktı oluşturulduktan sonra ikinci bir kalite kontrolü yap: yanlış doküman, dayanağı olmayan müşteri bilgisi, eksik alıntı, tekrar eden savunma ve sonuç tutarlılığı bakımından düzelt.
-"""
-
-ARASTIRMA_RULES = r"""
-TİP 3 ÖN ARAŞTIRMA RAPORU KURALLARI
-1. BBF'deki teknik problem, unsurlar, işlevler, işlem adımları ve teknik etkiler üzerinden global patent araştırması yap.
-2. En benzer 10 patent dokümanını yayın/başvuru numarası, başlık, tarih, ülke/otorite ve doğrulanabilir kaynak bağlantısıyla belirle. Doküman uydurma.
-3. Tek bir doküman araştırma konusu buluşun bütün esas teknik özelliklerini ve aralarındaki ilişkiyi doğrudan ve açık biçimde açıklıyorsa bu dokümanı D1 seç ve yenilik kriterinin sağlanmadığı sonucuna göre rapor hazırla. Bu durumda D2 zorunlu değildir.
-4. Yeniliği tek başına bozan doküman yoksa en yakın D1 ve tamamlayıcı D2'yi seç; yenilik değerlendirmesini ayrı ayrı, buluş basamağını D1 ve D2 birlikte düşünülerek yap.
-5. Kullanıcının yüklediği benzer dokümanları da incele; ilk seçilen D1/D2'nin yerini alabilecek daha yakın veya daha güçlü doküman varsa nihai seçimi değiştir.
-6. Yardımcı dokümanlar buluş basamağı değerlendirmesinde yalnızca destekleyici olabilir; nihai D1/D2 açıkça belirtilmelidir.
-7. Rapor, Ön Araştırma Raporu_181612 formatına sadık kalsın: kapak, kriterler, anahtar kelimeler, IPC/CPC, değerlendirme, D1/D2 tanıtımı, özet/şekil alanı, karşılaştırma tabloları, yenilik, buluş basamağı, sonuç ve gerekiyorsa uyarılar.
-8. Sonuç açık olsun: yenilik sağlanır/sağlanmaz; buluş basamağı sağlanır/sağlanmaz.
-9. Teknik değerlendirmeyi BBF'ye sadık yap; tanıtım veya salt iş kuralı niteliğindeki yönleri teknik katkı gibi abartma.
-10. Rapor metnini oluşturduktan sonra ikinci kalite kontrolü yap: D1/D2 seçimi, özellik eşleştirmesi, yenilik mantığı, birleştirme motivasyonu ve sonuç tutarlılığı bakımından düzelt.
-"""
+# Kurallar tek bir kaynaktan (rules.py) yüklenir. Böylece arayüz ve üretim akışları
+# arasında kural farkı oluşmaz.
 
 
 @dataclass
@@ -149,6 +106,33 @@ def ask_json(prompt: str, *, web_search: bool = False, images: Iterable[Uploaded
 
 
 def docx_text(data: bytes) -> str:
+    """DOCX metnini, Word denklem düğümleri (m:t) dahil olacak şekilde çıkarır."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            xml = zf.read("word/document.xml")
+        root = ET.fromstring(xml)
+        paragraphs: list[str] = []
+        for node in root.iter():
+            if node.tag.rsplit("}", 1)[-1] != "p":
+                continue
+            pieces: list[str] = []
+            for child in node.iter():
+                local = child.tag.rsplit("}", 1)[-1]
+                if local == "t" and child.text:
+                    pieces.append(child.text)
+                elif local in {"tab"}:
+                    pieces.append("\t")
+                elif local in {"br", "cr"}:
+                    pieces.append("\n")
+            text = "".join(pieces).strip()
+            if text:
+                paragraphs.append(text)
+        if paragraphs:
+            return "\n".join(paragraphs)
+    except Exception:
+        pass
+
+    # Bozuk/alışılmadık DOCX için güvenli geri dönüş.
     doc = Document(io.BytesIO(data))
     parts: list[str] = []
     for p in doc.paragraphs:
@@ -257,6 +241,90 @@ def combine_asset_text(label: str, assets: list[UploadedAsset]) -> tuple[str, li
     return "".join(blocks), images
 
 
+def _valid_figure_image(data: bytes, *, min_width: int = 260, min_height: int = 160) -> bool:
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            width, height = im.size
+            return width >= min_width and height >= min_height
+    except Exception:
+        return False
+
+
+def extract_embedded_images(asset: UploadedAsset) -> list[UploadedAsset]:
+    """DOCX/PDF içindeki büyük görselleri özgün baytlarıyla çıkarır."""
+    suffix = Path(asset.name).suffix.lower()
+    images: list[UploadedAsset] = []
+
+    if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
+        return [asset] if _valid_figure_image(asset.data, min_width=1, min_height=1) else []
+
+    if suffix == ".docx":
+        try:
+            with zipfile.ZipFile(io.BytesIO(asset.data)) as zf:
+                media = sorted(
+                    name for name in zf.namelist()
+                    if name.startswith("word/media/") and not name.endswith("/")
+                )
+                for index, name in enumerate(media, 1):
+                    data = zf.read(name)
+                    if not _valid_figure_image(data):
+                        continue
+                    ext = Path(name).suffix.lower() or ".png"
+                    mime = "image/jpeg" if ext in {".jpg", ".jpeg"} else f"image/{ext.lstrip('.')}"
+                    images.append(UploadedAsset(f"{Path(asset.name).stem}_sekil_{index}{ext}", data, mime))
+        except Exception:
+            return []
+        return images
+
+    if suffix == ".pdf" and fitz is not None:
+        try:
+            pdf = fitz.open(stream=asset.data, filetype="pdf")
+            seen: set[int] = set()
+            counter = 0
+            for page in pdf:
+                for info in page.get_images(full=True):
+                    xref = int(info[0])
+                    if xref in seen:
+                        continue
+                    seen.add(xref)
+                    extracted = pdf.extract_image(xref)
+                    data = extracted.get("image", b"")
+                    if not data or not _valid_figure_image(data):
+                        continue
+                    counter += 1
+                    ext = "." + str(extracted.get("ext", "png")).lower()
+                    mime = "image/jpeg" if ext in {".jpg", ".jpeg"} else f"image/{ext.lstrip('.')}"
+                    images.append(UploadedAsset(f"{Path(asset.name).stem}_sekil_{counter}{ext}", data, mime))
+            pdf.close()
+        except Exception:
+            return []
+    return images
+
+
+def build_figures_docx(images: list[UploadedAsset]) -> bytes:
+    if not images:
+        raise ValueError("Şekiller Word dosyası için BBF içinde veya ayrıca yüklenen dosyalarda kullanılabilir görsel bulunamadı.")
+    doc = Document()
+    for section in doc.sections:
+        section.top_margin = Cm(2.0)
+        section.bottom_margin = Cm(2.0)
+        section.left_margin = Cm(2.0)
+        section.right_margin = Cm(2.0)
+    for index, asset in enumerate(images, 1):
+        add_text(doc, f"ŞEKİL {index}", bold=True, center=True)
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        try:
+            p.add_run().add_picture(io.BytesIO(asset.data), width=Cm(16.0))
+        except Exception as exc:
+            raise ValueError(f"{asset.name} şekiller dosyasına eklenemedi.") from exc
+        if index < len(images):
+            doc.add_page_break()
+    out = io.BytesIO()
+    doc.save(out)
+    return out.getvalue()
+
+
 # -----------------------------------------------------------------------------
 # DOCX YARDIMCILARI
 # -----------------------------------------------------------------------------
@@ -349,52 +417,303 @@ def safe_output_name(name: str, default: str) -> str:
 # -----------------------------------------------------------------------------
 # TARİFNAME MODÜLÜ
 # -----------------------------------------------------------------------------
-def tarifname_extraction_prompt(source_text: str) -> str:
+TARIFNAME_DRAFT_SCHEMA = r"""
+{
+  "title":"",
+  "technical_field":"",
+  "prior_art_general_paragraphs":[""],
+  "literature_paragraphs":[""],
+  "short_description_intro":"",
+  "objectives":[""],
+  "unumbered_invention_definition":"",
+  "unumbered_invention_features":[""],
+  "figure_descriptions":[""],
+  "elements":[{"number":"10","name":"","description":""}],
+  "method_steps":[{"number":"1001","text":""}],
+  "detailed_paragraphs":[""],
+  "formulas":[{"label":"","expression":"","explanation":""}],
+  "tables":[{"caption":"","headers":[""],"rows":[[""]]}],
+  "experimental_results":[""],
+  "alternatives":[""],
+  "working_principle":"",
+  "system_claim":null,
+  "dependent_system_claims":[""],
+  "method_claim":null,
+  "dependent_method_claims":[""],
+  "abstract":"",
+  "coverage_audit":{
+    "prior_art_complete":true,
+    "reference_table_complete":true,
+    "formulas_complete":true,
+    "tables_complete":true,
+    "experimental_results_complete":true,
+    "alternatives_complete":true,
+    "claims_consistent":true,
+    "notes":[""]
+  }
+}
+"""
+
+
+def tarifname_extraction_prompt(
+    source_text: str,
+    current_draft_text: str = "",
+    technical_supplement_text: str = "",
+    example_structure_text: str = "",
+) -> str:
     return f"""{TARIFNAME_RULES}
-Aşağıdaki BBF'yi yapılandırılmış veri olarak çıkar. Bilgileri düzeltme veya genişletme. JSON dışında yazma.
+Aşağıdaki kaynakları yalnızca yapı ve kapsam envanteri çıkarmak için incele. Teknik metni yeniden icat etme,
+kısaltma nedeniyle önemli bilgi kaybettirme ve örnek tarifnamelerin teknik içeriğini kullanma.
+
+KAYNAK HİYERARŞİSİ:
+1. BBF: temel teknik kaynak.
+2. Mevcut revize tarifname: kullanıcının aktardığı/düzelttiği teknik metin korunacak kaynak.
+3. Ek teknik müşteri belgeleri: yalnızca açık teknik dayanak olarak kullanılabilir.
+4. Örnek tarifnameler: yalnızca unsur, yöntem adımı ve istem kurgusunu görmek içindir; teknik içerikleri kullanılamaz.
+
+JSON dışında hiçbir şey yazma.
 ŞEMA:
 {{
- "title":"", "technical_field":"", "prior_art":[""], "problems":[""], "advantages":[""],
- "elements":[{{"number":"10","name":"","function":""}}],
- "method_steps":[{{"number":"1001","text":""}}], "working_principle":[""], "keywords":[""],
- "figures":[""], "has_method_basis":true, "method_basis_reason":""
+ "title":"",
+ "technical_field":"",
+ "prior_art_inventory":["BBF'deki her ayrı önceki teknik konu ve kısıt"],
+ "technical_problems":[""],
+ "technical_solution":[""],
+ "technical_effects":[""],
+ "elements":[{{"number":"10","name":"","function":"","source":"BBF/mevcut tarifname"}}],
+ "method_steps":[{{"number":"1001","text":"","stage":"","essential":true}}],
+ "formulas":[{{"label":"","expression":"","variables":[""],"role":"zorunlu/tercihli"}}],
+ "tables":[{{"caption":"","headers":[""],"rows":[[""]]}}],
+ "experimental_results":[""],
+ "alternatives":[""],
+ "use_cases":[""],
+ "figures":[""],
+ "claim_core":[""],
+ "parallel_step_groups":[{{"summary":"","step_numbers":["1007","1008"],"recommended_claim_location":"ana istem/tek bağımlı istem"}}],
+ "stage_distinctions":[{{"step_numbers":["1001","1006"],"difference":""}}],
+ "has_system_basis":true,
+ "has_method_basis":true,
+ "recommended_claim_mode":"Yalnızca yöntem/Sistem ve yöntem/Yalnızca sistem",
+ "recommended_claim_mode_reason":"",
+ "coverage_checklist":["Kaynakta bulunan ve taslakta mutlaka korunması gereken her içerik grubu"]
 }}
-BBF:\n---\n{source_text}\n---"""
+
+BBF:
+---
+{source_text}
+---
+
+MEVCUT REVİZE TARİFNAME:
+---
+{current_draft_text}
+---
+
+EK TEKNİK BELGELER/NOTLAR:
+---
+{technical_supplement_text}
+---
+
+ÖRNEK TARİFNAMELER - YALNIZCA KURGU:
+---
+{example_structure_text}
+---
+"""
 
 
 def tarifname_literature_prompt(extracted: dict[str, Any], count: int, jurisdiction: str) -> str:
     return f"""Aşağıdaki buluş için tam olarak {count} teknik olarak yakın patent dokümanı araştır. Web araması kullan.
-Doküman uydurma; yayın/başvuru numarasını, başlığı ve kaynak bağlantısını doğrula. Tercih: {jurisdiction or 'global'}.
-Her dokümanın yakın yönünü ve buluşta bulunup dokümanda bulunmayan temel teknik farkı yaz.
-JSON dışında yazma.
-ŞEMA: {{"documents":[{{"application_number":"","title":"","jurisdiction":"","summary":"","difference":"","source_url":""}}]}}
-BULUŞ: {json.dumps(extracted, ensure_ascii=False)}"""
-
-
-def tarifname_drafting_prompt(extracted: dict[str, Any], claim_mode: str, literature: list[dict[str, Any]]) -> str:
-    return f"""{TARIFNAME_RULES}
-Aşağıdaki BBF verilerinden Türk patent tarifnamesi oluştur. İstem yapısı: {claim_mode}.
-Literatür dokümanlarını yalnızca ÖNCEKİ TEKNİK bölümünde kullan. BBF dışında yeni teknik özellik ekleme.
+Doküman uydurma; yayın/başvuru numarasını, İngilizce başlığını, yayın tarihini ve kaynak bağlantısını doğrula.
+Tercih edilen ülke/veri tabanı: {jurisdiction or 'global'}.
+Her doküman için teknik konusu ile buluşta bulunmayan temel teknik farkı açıkla. Bu aşamada tarifname metni yazma.
 JSON dışında yazma.
 ŞEMA:
-{{
- "title":"", "technical_field":"", "prior_art_general_paragraphs":[""], "literature_paragraphs":[""],
- "short_description_intro":"", "objectives":[""], "unumbered_system_definition":"", "unumbered_system_elements":[""],
- "figure_descriptions":[""], "elements":[{{"number":"10","name":"","description":""}}],
- "method_steps":[{{"number":"1001","text":""}}], "detailed_paragraphs":[""],
- "method_functions":[""], "working_principle":"",
- "system_claim":{{"preamble":"","elements":[""],"closing":"içermesidir."}},
- "dependent_system_claims":[""],
- "method_claim":{{"preamble":"","steps":[""],"closing":"işlem adımlarını içermesidir."}},
- "dependent_method_claims":[""], "abstract":""
-}}
-ÖZEL:
-- method_steps.text alanında 10,20 gibi sistem referans numarası kullanma.
-- method_claim.steps içindeki her adım method_steps.text ile birebir aynı olsun ve sonuna ilgili (1001) eklensin.
-- Alt istemleri yalnızca ana istemden farklı ve BBF'de dayanaklı ek özellikler için yaz.
-- İstemleri ikinci kez kontrol edip düzelt.
-BBF: {json.dumps(extracted, ensure_ascii=False, indent=2)}
-LİTERATÜR: {json.dumps(literature, ensure_ascii=False, indent=2)}"""
+{{"documents":[{{"application_number":"","title_en":"","title_tr":"","publication_date":"","jurisdiction":"","summary":"","difference":"","source_url":""}}]}}
+BULUŞ ENVANTERİ:
+{json.dumps(extracted, ensure_ascii=False, indent=2)}"""
+
+
+def tarifname_drafting_prompt(
+    extracted: dict[str, Any],
+    claim_mode: str,
+    literature: list[dict[str, Any]],
+    source_text: str,
+    current_draft_text: str,
+    technical_supplement_text: str,
+    example_structure_text: str,
+    user_notes: str,
+) -> str:
+    return f"""{TARIFNAME_RULES}
+Aşağıdaki kaynaklara dayanarak Türk patent tarifnamesinin TAM metnini oluştur.
+İstem yapısı: {claim_mode}
+Kullanıcı notu: {user_notes or 'Yok'}
+
+KRİTİK TALİMATLAR:
+- BBF'nin ve mevcut revize tarifnamenin bütün teknik bilgilerini kullan. Uzun önceki teknik, formüller, tablolar,
+  deneysel sonuçlar, alternatifler ve referans tablosu atlanamaz.
+- Yapılandırılmış envanter yalnızca yardımcıdır. Çelişki halinde ham BBF ve mevcut revize tarifname esas alınır.
+- Mevcut tarifnamedeki kullanıcı düzenlemelerini koru; teknik içerikte gereksiz kısaltma yapma.
+- Örnek tarifnamelerden yalnızca kurguyu öğren; teknik bilgi aktarma.
+- Ana istemde zorunlu teknik çekirdeği kapsayıcı biçimde ver. Aynı işlemin birinci/ikinci/k'ıncı tekrarlarını
+  ana istemde gereksiz yere ayrı satırlara bölme. Bu ayrıntıları, aynı alt akışa aitse tek bağımlı istemde topla.
+- Eğitim/genel aşama ile test aşamasındaki paralel akışları aynı mantıkla fakat ayrı teknik aşamalar olarak kur.
+- REFERANS NUMARALARI bölümündeki yöntem adımları tam liste olarak korunur. Ana istemde numarasız kapsayıcı
+  ifade kullanılabilir; ayrıntılı numaralı adımlar bağımlı istemde verilebilir.
+- "Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:" bölümü için method_steps tam ve tutarlı olsun.
+- Yalnızca yöntem modunda system_claim null olmalıdır. Yalnızca sistem modunda method_claim null olmalıdır.
+- Her bağımlı istem ana isteme göre gerçek bir daraltma sağlamalıdır.
+- Patent literatürü yalnızca ÖNCEKİ TEKNİK bölümünde, her doküman ayrı paragraf olacak biçimde kullanılsın.
+
+JSON dışında hiçbir şey yazma.
+ÇIKTI ŞEMASI:
+{TARIFNAME_DRAFT_SCHEMA}
+
+SİSTEM İSTEMİ ŞEMASI (varsa):
+{{"preamble":"","elements":[""],"closing":"içermesidir."}}
+YÖNTEM İSTEMİ ŞEMASI (varsa):
+{{"preamble":"","steps":[""],"closing":"işlem adımlarını içermesidir."}}
+
+YAPILANDIRILMIŞ ENVANTER:
+{json.dumps(extracted, ensure_ascii=False, indent=2)}
+
+ONAYLANAN PATENT LİTERATÜRÜ:
+{json.dumps(literature, ensure_ascii=False, indent=2)}
+
+HAM BBF:
+---
+{source_text}
+---
+
+MEVCUT REVİZE TARİFNAME:
+---
+{current_draft_text}
+---
+
+EK TEKNİK BELGELER/NOTLAR:
+---
+{technical_supplement_text}
+---
+
+ÖRNEK TARİFNAMELER - YALNIZCA KURGU:
+---
+{example_structure_text}
+---
+"""
+
+
+def tarifname_quality_prompt(
+    source_text: str,
+    current_draft_text: str,
+    technical_supplement_text: str,
+    extracted: dict[str, Any],
+    draft: dict[str, Any],
+    claim_mode: str,
+) -> str:
+    return f"""{TARIFNAME_RULES}
+Aşağıdaki tarifname taslağını kaynaklarla SATIR SATIR karşılaştır ve eksik/yanlış hususları düzelterek tam JSON'u yeniden üret.
+Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi geri eklenmelidir.
+
+ZORUNLU KONTROL LİSTESİ:
+1. BBF'deki önceki teknik anlatımının tamamı korunmuş mu?
+2. Referans tablosundaki bütün unsurlar ve yöntem adımları var mı?
+3. Farklı numaralı adımlar yanlışlıkla aynı metinle mi yazılmış? Aynı veri farklı aşamada kullanılıyorsa aşama farkı açık mı?
+4. "Yöntemin gerçekleştirdiği işlem adımları" tam liste ve referans tablosuyla uyumlu mu?
+5. Ana istem zorunlu çekirdeği kapsıyor mu; paralel tekrarları gereksiz yere tek tek sayıyor mu?
+6. Aynı alt akışa ait paralel analizler ve çıktılar gerekiyorsa tek bağımlı istemde mi?
+7. Eğitim/genel ve test aşamaları paralel fakat ayrı olarak mı kurulmuş?
+8. Formüller, değişken açıklamaları, tablolar, deneysel sonuçlar, alternatifler ve teknik etkiler eksiksiz mi?
+9. Seçilen istem modu ({claim_mode}) ile başlık, açıklama ve istemler tutarlı mı?
+10. Bağımlı istemler gerçek daraltma sağlıyor mu?
+
+JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
+{TARIFNAME_DRAFT_SCHEMA}
+
+YAPILANDIRILMIŞ ENVANTER:
+{json.dumps(extracted, ensure_ascii=False, indent=2)}
+
+HAM BBF:
+---
+{source_text}
+---
+
+MEVCUT REVİZE TARİFNAME:
+---
+{current_draft_text}
+---
+
+EK TEKNİK BELGELER:
+---
+{technical_supplement_text}
+---
+
+KONTROL EDİLECEK TASLAK:
+{json.dumps(draft, ensure_ascii=False, indent=2)}
+"""
+
+
+def _strip_claim_number(text: str) -> str:
+    return re.sub(r"^\s*\d+\s*[.)-]\s*", "", str(text or "")).strip()
+
+
+def add_numbered_claim(doc: Document, number: int, text: str):
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p.paragraph_format.line_spacing = 1.5
+    r_num = p.add_run(f"{number}. ")
+    r_num.bold = True
+    r_num.font.name = "Arial"
+    r_num.font.size = Pt(11)
+    r_text = p.add_run(_strip_claim_number(text))
+    r_text.font.name = "Arial"
+    r_text.font.size = Pt(11)
+    return p
+
+
+def validate_tarifname_draft(draft: dict[str, Any], claim_mode: str) -> list[str]:
+    warnings: list[str] = []
+    steps = draft.get("method_steps") or []
+    numbers = [str(x.get("number", "")).strip() for x in steps]
+    if len(numbers) != len(set(numbers)):
+        raise ValueError("REFERANS NUMARALARI bölümünde yinelenen yöntem adımı numarası bulundu.")
+    if any(not n for n in numbers):
+        raise ValueError("Numarası boş yöntem işlem adımı bulundu.")
+
+    normalized_to_numbers: dict[str, list[str]] = {}
+    for step in steps:
+        text = re.sub(r"\s+", " ", str(step.get("text", ""))).strip().lower()
+        if not text:
+            raise ValueError(f"{step.get('number','?')} numaralı yöntem adımının metni boş.")
+        normalized_to_numbers.setdefault(text, []).append(str(step.get("number", "")))
+    duplicate_groups = [nums for nums in normalized_to_numbers.values() if len(nums) > 1]
+    if duplicate_groups:
+        warnings.append(
+            "Aynı metinle yazılmış farklı yöntem adımları bulundu: "
+            + "; ".join(", ".join(group) for group in duplicate_groups)
+            + ". Bu adımların farklı aşamaları temsil edip etmediğini kontrol edin."
+        )
+
+    all_claim_text = json.dumps(
+        {
+            "system_claim": draft.get("system_claim"),
+            "dependent_system_claims": draft.get("dependent_system_claims"),
+            "method_claim": draft.get("method_claim"),
+            "dependent_method_claims": draft.get("dependent_method_claims"),
+        },
+        ensure_ascii=False,
+    )
+    referenced = set(re.findall(r"\((1\d{3})\)", all_claim_text))
+    missing = sorted(referenced - set(numbers))
+    if missing:
+        raise ValueError("İstemlerde bulunup referans listesinde bulunmayan yöntem adımları: " + ", ".join(missing))
+
+    if claim_mode == "Yalnızca yöntem" and draft.get("system_claim"):
+        raise ValueError("Yalnızca yöntem seçildiği halde sistem istemi üretildi.")
+    if claim_mode == "Yalnızca sistem" and draft.get("method_claim"):
+        raise ValueError("Yalnızca sistem seçildiği halde yöntem istemi üretildi.")
+    if claim_mode in {"Yalnızca yöntem", "Sistem ve yöntem"} and not draft.get("method_claim"):
+        raise ValueError("Seçilen istem yapısına rağmen bağımsız yöntem istemi üretilemedi.")
+    if claim_mode in {"Yalnızca sistem", "Sistem ve yöntem"} and not draft.get("system_claim"):
+        raise ValueError("Seçilen istem yapısına rağmen bağımsız sistem istemi üretilemedi.")
+    return warnings
 
 
 def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
@@ -409,86 +728,132 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
 
     add_heading(doc, "TARİFNAME", center=True)
     doc.add_paragraph()
-    add_text(doc, draft["title"], bold=True, center=True)
+    add_text(doc, draft.get("title", ""), bold=True, center=True)
     doc.add_paragraph()
     copy_template_paragraph(doc, template, 4)
     doc.add_paragraph()
 
     add_heading(doc, "TEKNİK ALAN")
     add_text(doc, draft.get("technical_field", ""))
+
     add_heading(doc, "ÖNCEKİ TEKNİK")
-    for p in draft.get("prior_art_general_paragraphs") or []:
-        add_text(doc, p)
+    prior = draft.get("prior_art_general_paragraphs") or []
+    for index, paragraph in enumerate(prior):
+        add_text(doc, paragraph)
+        if index < len(prior) - 1:
+            doc.add_paragraph()
+    literature = draft.get("literature_paragraphs") or []
+    if prior and literature:
         doc.add_paragraph()
-    for i, p in enumerate(draft.get("literature_paragraphs") or []):
-        add_text(doc, p)
-        if i < len(draft.get("literature_paragraphs") or []) - 1:
+    for index, paragraph in enumerate(literature):
+        add_text(doc, paragraph)
+        if index < len(literature) - 1:
             doc.add_paragraph()
     add_text(doc, "Sonuçta yukarıda bahsedilen ve mevcut teknik ışığında çözülemeyen sorunlar, ilgili teknik alanda bir yenilik yapmayı zorunlu kılmıştır.")
 
     add_heading(doc, "BULUŞUN KISA AÇIKLAMASI")
     add_text(doc, draft.get("short_description_intro", ""))
-    for i, objective in enumerate(draft.get("objectives") or []):
-        prefix = "Buluşun ana amacı, " if i == 0 else "Buluşun diğer bir amacı, "
+    for index, objective in enumerate(draft.get("objectives") or []):
+        prefix = "Buluşun ana amacı, " if index == 0 else "Buluşun diğer bir amacı, "
         objective = str(objective).strip()
         add_text(doc, prefix + (objective[:1].lower() + objective[1:] if objective else ""))
-    if draft.get("unumbered_system_definition"):
-        add_text(doc, draft["unumbered_system_definition"])
-    for item in draft.get("unumbered_system_elements") or []:
+    invention_definition = draft.get("unumbered_invention_definition") or draft.get("unumbered_system_definition")
+    if invention_definition:
+        add_text(doc, invention_definition)
+    invention_features = draft.get("unumbered_invention_features") or draft.get("unumbered_system_elements") or []
+    for item in invention_features:
         add_bullet(doc, item)
-    if draft.get("unumbered_system_elements"):
-        add_text(doc, "içermesidir.")
+    if invention_features:
+        add_text(doc, "işlem adımlarını içermesidir." if draft.get("method_claim") and not draft.get("system_claim") else "içermesidir.")
 
     add_heading(doc, "ŞEKİLLERİN KISA AÇIKLAMASI")
-    for figure in draft.get("figure_descriptions") or ["Şekil 1, buluşa konu sistemin temsili gösterimidir."]:
+    for figure in draft.get("figure_descriptions") or ["Şekil 1, buluşa konu yapılanmanın temsili gösterimidir."]:
         add_text(doc, figure)
 
     add_heading(doc, "REFERANS NUMARALARI")
     for element in draft.get("elements") or []:
-        add_text(doc, f"{element['number']}. {element['name']}")
-    if draft.get("method_steps"):
+        add_text(doc, f"{element.get('number','')}. {element.get('name','')}")
+    method_steps = draft.get("method_steps") or []
+    if draft.get("elements") and method_steps:
         doc.add_paragraph()
-    for step in draft.get("method_steps") or []:
+    for step in method_steps:
         text = re.sub(r"\s*\(\s*\d+\s*\)\s*", "", str(step.get("text", ""))).strip()
-        add_text(doc, f"{step['number']}. {text}")
+        add_text(doc, f"{step.get('number','')}. {text}")
 
     add_heading(doc, "BULUŞUN DETAYLI AÇIKLAMASI")
-    add_text(doc, f"Bu detaylı açıklamada, buluş konusu olan {draft['title'].lower()} sadece konunun daha iyi anlaşılmasına yönelik hiçbir sınırlayıcı etki oluşturmayacak örneklerle açıklanmaktadır.")
-    for p in draft.get("detailed_paragraphs") or []:
-        add_text(doc, p)
-    if draft.get("method_functions"):
-        add_text(doc, "Yöntemin gerçekleştirdiği işlevler aşağıdaki gibidir:")
-        for item in draft["method_functions"]:
-            add_bullet(doc, item, symbol="-")
+    title = str(draft.get("title", "buluş")).lower()
+    add_text(doc, f"Bu detaylı açıklamada, buluş konusu olan {title} sadece konunun daha iyi anlaşılmasına yönelik hiçbir sınırlayıcı etki oluşturmayacak örneklerle açıklanmaktadır.")
+    for paragraph in draft.get("detailed_paragraphs") or []:
+        add_text(doc, paragraph)
+
+    for formula in draft.get("formulas") or []:
+        if formula.get("label"):
+            add_text(doc, formula.get("label", ""), bold=True)
+        if formula.get("expression"):
+            add_text(doc, formula.get("expression", ""), center=True)
+        if formula.get("explanation"):
+            add_text(doc, formula.get("explanation", ""))
+
+    for table_data in draft.get("tables") or []:
+        caption = table_data.get("caption", "")
+        if caption:
+            add_text(doc, caption, bold=True)
+        headers = [str(x) for x in table_data.get("headers") or []]
+        rows = table_data.get("rows") or []
+        column_count = max(len(headers), max((len(row) for row in rows), default=0))
+        if column_count:
+            table = doc.add_table(rows=1 if headers else 0, cols=column_count)
+            table.alignment = WD_TABLE_ALIGNMENT.CENTER
+            if headers:
+                for idx in range(column_count):
+                    set_cell_text(table.rows[0].cells[idx], headers[idx] if idx < len(headers) else "", bold=True)
+            for row_data in rows:
+                cells = table.add_row().cells
+                for idx in range(column_count):
+                    set_cell_text(cells[idx], str(row_data[idx]) if idx < len(row_data) else "")
+
+    for paragraph in draft.get("experimental_results") or []:
+        add_text(doc, paragraph)
+    for paragraph in draft.get("alternatives") or []:
+        add_text(doc, paragraph)
+
+    if method_steps:
+        add_text(doc, "Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:")
+        for step in method_steps:
+            text = re.sub(r"\s*\(\s*\d+\s*\)\s*", "", str(step.get("text", ""))).strip()
+            add_bullet(doc, f"{text} ({step.get('number','')})", symbol="-")
     if draft.get("working_principle"):
-        add_text(doc, draft["working_principle"])
+        add_text(doc, draft.get("working_principle", ""))
 
     add_heading(doc, "İSTEMLER", center=True)
     for index in (79, 81, 83):
         copy_template_paragraph(doc, template, index)
+
     claim_no = 1
-    sc = draft.get("system_claim") or {}
-    add_text(doc, f"{claim_no}. {sc.get('preamble','')} olup, özelliği;")
-    for item in sc.get("elements") or []:
-        add_bullet(doc, item, symbol="-")
-    add_text(doc, sc.get("closing", "içermesidir."))
-    claim_no += 1
-    for dep in draft.get("dependent_system_claims") or []:
-        add_text(doc, f"{claim_no}. {dep}")
-        claim_no += 1
-    mc = draft.get("method_claim")
-    if mc:
-        add_text(doc, f"{claim_no}. {mc.get('preamble','')} olup, özelliği;")
-        for item in mc.get("steps") or []:
+    system_claim = draft.get("system_claim")
+    if system_claim:
+        add_numbered_claim(doc, claim_no, f"{system_claim.get('preamble','')} olup, özelliği;")
+        for item in system_claim.get("elements") or []:
             add_bullet(doc, item, symbol="-")
-        add_text(doc, mc.get("closing", "işlem adımlarını içermesidir."))
+        add_text(doc, system_claim.get("closing", "içermesidir."))
         claim_no += 1
-        for dep in draft.get("dependent_method_claims") or []:
-            add_text(doc, f"{claim_no}. {dep}")
+        for dependent in draft.get("dependent_system_claims") or []:
+            add_numbered_claim(doc, claim_no, dependent)
+            claim_no += 1
+
+    method_claim = draft.get("method_claim")
+    if method_claim:
+        add_numbered_claim(doc, claim_no, f"{method_claim.get('preamble','')} olup, özelliği;")
+        for item in method_claim.get("steps") or []:
+            add_bullet(doc, item, symbol="-")
+        add_text(doc, method_claim.get("closing", "işlem adımlarını içermesidir."))
+        claim_no += 1
+        for dependent in draft.get("dependent_method_claims") or []:
+            add_numbered_claim(doc, claim_no, dependent)
             claim_no += 1
 
     add_heading(doc, "ÖZET", center=True)
-    add_text(doc, draft["title"], bold=True, center=True)
+    add_text(doc, draft.get("title", ""), bold=True, center=True)
     add_text(doc, draft.get("abstract", ""))
     out = io.BytesIO()
     doc.save(out)
@@ -599,37 +964,59 @@ def build_gorus_docx(opinion: dict[str, Any]) -> bytes:
 # -----------------------------------------------------------------------------
 # TİP 3 ÖN ARAŞTIRMA MODÜLÜ
 # -----------------------------------------------------------------------------
-def top10_research_prompt(bbf_text: str) -> str:
+def top10_research_prompt(bbf_text: str, cutoff_date: str) -> str:
     return f"""{ARASTIRMA_RULES}
-Aşağıdaki BBF için global patent araştırması yap ve en benzer tam 10 patent dokümanını belirle.
+Aşağıdaki BBF için araştırma kesim tarihi {cutoff_date} olacak şekilde global patent araştırması yap ve en benzer tam 10 patent dokümanını belirle.
 Google Patents, Espacenet, PATENTSCOPE, TÜRKPATENT ve ulaşılabilir resmi/yarı resmi patent kaynaklarını kapsayacak geniş web araştırması yap.
 Dokümanları teknik yakınlığa göre sırala. Numara, başlık, tarih ve kaynak URL doğrulanmış olsun. JSON dışında yazma.
 ŞEMA:
 {{
- "subject_title":"", "technical_features":[""], "keywords":[""], "ipc_cpc":[""],
+ "subject_title":"",
+ "technical_problem":"",
+ "technical_effects":[""],
+ "technical_features":[""],
+ "method_steps":[{{"number":"1001","text":""}}],
+ "keywords":[""],
+ "ipc_cpc":[""],
  "documents":[{{
    "rank":1,"publication_number":"","application_number":"","title":"","date":"","jurisdiction":"","source_url":"",
    "summary":"","matching_features":[""],"missing_features":[""],"novelty_destroying":false,"novelty_reason":"","relevance_score":0
  }}],
- "proposed_d1":"publication_number", "proposed_d2":"publication_number veya boş",
- "preliminary_novelty":"sağlanır/sağlanmaz", "preliminary_inventive_step":"sağlanır/sağlanmaz/belirsiz"
+ "totalpatent_query":"TotalPatent arama sorgusu: CN... or US...",
+ "proposed_d1":"publication_number",
+ "proposed_d2":"publication_number veya boş",
+ "preliminary_novelty":"sağlanır/sağlanmaz",
+ "preliminary_inventive_step":"sağlanır/sağlanmaz/belirsiz"
 }}
 BBF:\n{bbf_text}"""
 
 
-def final_selection_prompt(bbf_text: str, top10: dict[str, Any], user_docs_text: str) -> str:
+def final_selection_prompt(
+    bbf_text: str,
+    top10: dict[str, Any],
+    user_docs_text: str,
+    decision_mode: str,
+) -> str:
     return f"""{ARASTIRMA_RULES}
 Aşağıdaki BBF, sistemin bulduğu 10 doküman ve kullanıcının varsa yüklediği dokümanları birlikte incele.
 Nihai D1 ve gerekiyorsa D2'yi seç. Kullanıcı dokümanı daha yakınsa D1/D2'yi değiştir.
 Tek doküman bütün esas teknik özellikleri doğrudan ve açık açıklıyorsa D1 ile yenilik sağlanmaz sonucuna git ve D2 seçme.
 Aksi halde D1 ve tamamlayıcı D2 ile buluş basamağını değerlendir.
+Kullanıcı sonuç modu: {decision_mode}
+- 'Otomatik belirle' seçildiyse sonucu teknik analize göre belirle.
+- Diğer seçeneklerde raporun sonuç yönünü kullanıcı seçimine göre kur; fakat kaynakta bulunmayan teknik özellik uydurma.
+- D1 ve D2 karşılaştırma satırları aynı özellik listesine ve aynı sıraya sahip olmalıdır.
+- status alanında yalnızca '+' veya '-' kullan; '±' kullanma.
 JSON dışında yazma.
 ŞEMA:
 {{
  "d1":{{"number":"","title":"","date":"","source":"system/user","summary":"","abstract":"","figure_description":""}},
  "d2":null,
- "novelty_result":"sağlanır/sağlanmaz", "inventive_step_result":"sağlanır/sağlanmaz",
- "novelty_reasoning":[""], "inventive_step_reasoning":[""],
+ "novelty_result":"sağlanır/sağlanmaz",
+ "inventive_step_result":"sağlanır/sağlanmaz",
+ "novelty_reasoning":[""],
+ "inventive_step_reasoning":[""],
+ "feature_list":[""],
  "comparison_rows_d1":[{{"feature":"","status":"+/-","evidence":""}}],
  "comparison_rows_d2":[{{"feature":"","status":"+/-","evidence":""}}],
  "helper_documents":[{{"number":"","title":"","role":""}}],
@@ -640,28 +1027,66 @@ TOP10:\n{json.dumps(top10, ensure_ascii=False, indent=2)}\n
 KULLANICI DOKÜMANLARI:\n{user_docs_text}"""
 
 
-def report_drafting_prompt(bbf_text: str, top10: dict[str, Any], selection: dict[str, Any], reference: str) -> str:
+def validate_research_selection(selection: dict[str, Any]) -> None:
+    allowed = {"+", "-"}
+    d1_rows = selection.get("comparison_rows_d1") or []
+    d2_rows = selection.get("comparison_rows_d2") or []
+    for label, rows in (("D1", d1_rows), ("D2", d2_rows)):
+        for row in rows:
+            status = str(row.get("status", "")).strip()
+            if status not in allowed:
+                raise ValueError(f"{label} karşılaştırma tablosunda yalnızca + veya - kullanılmalıdır: {status!r}")
+    if selection.get("d2"):
+        d1_features = [re.sub(r"\s+", " ", str(row.get("feature", ""))).strip() for row in d1_rows]
+        d2_features = [re.sub(r"\s+", " ", str(row.get("feature", ""))).strip() for row in d2_rows]
+        if d1_features != d2_features:
+            raise ValueError("D1 ve D2 karşılaştırma tablolarındaki teknik özellik listeleri birebir aynı değildir.")
+
+
+def report_drafting_prompt(
+    bbf_text: str,
+    top10: dict[str, Any],
+    selection: dict[str, Any],
+    reference: str,
+    cutoff_date: str,
+    decision_mode: str,
+) -> str:
     return f"""{ARASTIRMA_RULES}
 Aşağıdaki verilere göre Ön Araştırma Raporu_181612 biçiminde ayrıntılı rapor içeriği oluştur.
 DP referans numarası: {reference}
+Araştırma kesim tarihi: {cutoff_date}
+Kullanıcı sonuç modu: {decision_mode}
 JSON dışında yazma.
 ŞEMA:
 {{
- "reference":"{reference}", "title":"", "report_date":"{date.today().strftime('%d.%m.%Y')}",
- "purpose":"Belirlenen konuda araştırmanın gerçekleştirilmesi", "scope":"Global (İlan edilmiş olan patent başvuruları)",
- "keywords":[""], "ipc_cpc":[{{"code":"","description":""}}],
- "evaluation_intro":"", "novelty_heading":"2.1. Yenilik Değerlendirmesi",
+ "reference":"{reference}",
+ "title":"",
+ "report_date":"{date.today().strftime('%d.%m.%Y')}",
+ "purpose":"Belirlenen konuda araştırmanın gerçekleştirilmesi",
+ "scope":"Global (Araştırma kesim tarihine kadar ilan edilmiş patent başvuruları)",
+ "cutoff_date":"{cutoff_date}",
+ "keywords":[""],
+ "ipc_cpc":[{{"code":"","description":""}}],
+ "evaluation_intro":"",
+ "novelty_heading":"2.1. Yenilik Değerlendirmesi",
  "documents":[{{
-   "label":"D1","number":"","alternate_number":"","title":"","date":"","description":[""],"abstract":"",
-   "figure_caption":"D1- Şekil", "comparison_rows":[{{"feature":"","status_evidence":""}}], "novelty_assessment":[""]
+   "label":"D1","number":"","alternate_number":"","title":"","date":"",
+   "description":["2-3 cümle"],"abstract":"","figure_caption":"D1- Şekil",
+   "comparison_rows":[{{"feature":"","status":"+/-"}}],
+   "novelty_assessment":["5-10 satırlık değerlendirme"]
  }}],
- "inventive_step_paragraphs":[""], "conclusion_paragraphs":[""], "warnings":[""],
+ "inventive_step_paragraphs":[""],
+ "conclusion_paragraphs":[""],
+ "warnings":[""],
  "attachments":["Benzer Dokümanlar","Ön İnceleme Raporu","Makine Tercümeleri"]
 }}
 ÖZEL:
 - selection.d2 null ise yalnızca D1 bölümü oluştur.
+- D1 ve D2 tablolarındaki feature alanları birebir aynı ve aynı sırada olmalıdır.
+- status alanında yalnızca '+' veya '-' kullan.
 - Sonuçta yenilik ve buluş basamağı sonucunu açıkça yaz.
 - Yardımcı dokümanları yalnızca buluş basamağına destek olarak kullan.
+- Şablonda olmayan 'İncelenen diğer yakın dokümanlar...' benzeri cümle ekleme.
 - Metni ikinci kez kontrol edip düzelt.
 BBF:\n{bbf_text}\n
 TOP10:\n{json.dumps(top10, ensure_ascii=False, indent=2)}\n
@@ -739,7 +1164,7 @@ def build_research_docx(report: dict[str, Any]) -> bytes:
         for row in d.get("comparison_rows") or []:
             cells = table.add_row().cells
             set_cell_text(cells[0], row.get("feature", ""))
-            set_cell_text(cells[1], row.get("status_evidence", ""))
+            set_cell_text(cells[1], row.get("status", row.get("status_evidence", "")), bold=True)
         add_text(doc, "(+) İlgili özelliğin benzer dokümanda yer aldığını ifade etmektedir.\n(-) İlgili özelliğin benzer dokümanda yer almadığını ifade etmektedir.", size=9)
         for p in d.get("novelty_assessment") or []:
             add_text(doc, p)
@@ -778,20 +1203,37 @@ def build_research_docx(report: dict[str, Any]) -> bytes:
 # -----------------------------------------------------------------------------
 # ARAYÜZ
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Patent Atölyesi", page_icon="⚙️", layout="wide")
+st.set_page_config(page_title=f"Patent Atölyesi {APP_VERSION}", page_icon="⚙️", layout="wide")
 st.markdown(
-    """
+    f"""
     <style>
-      .block-container {max-width: 1180px; padding-top: 1.5rem; padding-bottom: 3rem;}
-      .hero {padding: 1.2rem 1.4rem; border:1px solid #e7e7e7; border-radius:16px; margin-bottom:1rem;}
-      .hero h1 {margin:0; font-size:2rem;}
-      .hero p {margin:.35rem 0 0 0; color:#666;}
-      div[data-testid="stDownloadButton"] button, div[data-testid="stFormSubmitButton"] button {width:100%;}
+      .block-container {{max-width: 1180px; padding-top: 1.5rem; padding-bottom: 3rem;}}
+      .hero {{padding: 1.2rem 1.4rem; border:1px solid #e7e7e7; border-radius:16px; margin-bottom:1rem;}}
+      .hero h1 {{margin:0; font-size:2rem;}}
+      .hero p {{margin:.35rem 0 0 0; color:#666;}}
+      .version {{font-size:.82rem; color:#888; margin-top:.45rem;}}
+      div[data-testid="stDownloadButton"] button, div[data-testid="stFormSubmitButton"] button {{width:100%;}}
     </style>
-    <div class="hero"><h1>Patent Atölyesi</h1><p>Tarifname, görüş ve Tip 3 ön araştırma çalışmalarını tek arayüzden oluşturun.</p></div>
+    <div class="hero">
+      <h1>Patent Atölyesi {APP_VERSION}</h1>
+      <p>Tarifname, görüş ve Tip 3 ön araştırma çalışmalarını tek arayüzden oluşturun.</p>
+      <div class="version">Kural sürümü: {RULESET_VERSION}</div>
+    </div>
     """,
     unsafe_allow_html=True,
 )
+
+with st.expander("Bu sürümde kaydedilmiş temel kurallar"):
+    st.markdown(
+        """
+        - BBF ve mevcut revize tarifnamedeki tüm teknik içerik korunur; formül, tablo, deneysel sonuç ve referans tablosu atlanmaz.
+        - Her buluş için sistem/yöntem istem yapısı ayrı analiz edilir.
+        - Paralel birinci–ikinci–k'ıncı işlemler ana istemde kapsayıcı yazılabilir; ayrıntıları tek bağımlı istemde toplanabilir.
+        - Eğitim/genel aşama ile test aşaması paralel fakat ayrı teknik akışlar olarak değerlendirilir.
+        - Referans listesi, detaylı yöntem adımları ve istemlerdeki numaralar birlikte kontrol edilir.
+        - Tip 3 araştırmada tam 10 doküman, TotalPatent sorgu satırı, kullanıcı dokümanları ve D1/D2 son seçimi kullanılır.
+        """
+    )
 
 if not os.getenv("OPENAI_API_KEY", "").strip():
     st.warning("OPENAI_API_KEY henüz tanımlı değil. Arayüzü inceleyebilirsiniz; üretim düğmeleri API anahtarı olmadan çalışmaz.")
@@ -804,45 +1246,198 @@ work_type = st.radio(
 
 # TARİFNAME
 if work_type == "Tarifname oluşturma":
-    st.subheader("Tarifname oluşturma")
+    st.subheader("Tarifname oluşturma / revizyon")
     with st.form("tarifname_form"):
-        bbf = st.file_uploader("BBF dosyası", type=["docx", "doc", "pdf", "txt"], key="tar_bbf")
-        output_name = st.text_input("Çıktı dosyasının adı", value="Tarifname_XXXXXX.docx")
-        claim_choice = st.selectbox("İstem yapısı", ["BBF'ye göre otomatik belirle", "Yalnızca sistem", "Sistem ve yöntem"])
-        literature = st.checkbox("Literatür araştırması yap ve önceki tekniğe ekle")
         c1, c2 = st.columns(2)
         with c1:
-            lit_count = st.number_input("Benzer patent sayısı", min_value=1, max_value=10, value=2, disabled=not literature)
+            bbf = st.file_uploader("BBF dosyası", type=["docx", "doc", "pdf", "txt"], key="tar_bbf")
+            reference = st.text_input("DP referans numarası", value="")
+            output_name = st.text_input("Çıktı dosyasının adı", value="Tarifname_XXXXXX.docx")
         with c2:
+            current_draft = st.file_uploader(
+                "Mevcut/revize tarifname (varsa)",
+                type=["docx", "doc", "pdf", "txt"],
+                key="tar_current_draft",
+                help="Bu dosyadaki kullanıcı düzenlemeleri korunarak BBF ile birlikte değerlendirilir.",
+            )
+            claim_choice = st.selectbox(
+                "İstem yapısı",
+                ["BBF'ye göre otomatik belirle", "Yalnızca sistem", "Yalnızca yöntem", "Sistem ve yöntem"],
+            )
+            user_notes = st.text_area(
+                "Özel talimat/not",
+                placeholder="Örneğin: yalnızca yöntem olarak kurgula; mevcut metni kısaltma; belirli istemleri koru...",
+            )
+
+        extra_technical_files = st.file_uploader(
+            "Ek teknik müşteri belgeleri/notları (varsa)",
+            type=["pdf", "docx", "doc", "txt", "md", "png", "jpg", "jpeg", "webp", "zip"],
+            accept_multiple_files=True,
+            key="tar_extra_technical",
+        )
+        example_files = st.file_uploader(
+            "Örnek tarifnameler (yalnızca unsur/istem kurgusu için)",
+            type=["pdf", "docx", "doc", "txt", "zip"],
+            accept_multiple_files=True,
+            key="tar_examples",
+            help="Bu dosyaların teknik içeriği yeni tarifnameye aktarılmaz.",
+        )
+
+        literature = st.checkbox("Literatür araştırması yap ve önceki tekniğe ekle")
+        lc1, lc2 = st.columns(2)
+        with lc1:
+            lit_count = st.number_input("Benzer patent sayısı", min_value=1, max_value=10, value=2, disabled=not literature)
+        with lc2:
             jurisdiction = st.text_input("Tercih edilen ülke/veri tabanı", disabled=not literature)
+
+        separate_figures = st.checkbox("Şekilleri ayrı Word dosyası olarak oluştur")
+        fc1, fc2 = st.columns(2)
+        with fc1:
+            figures_output_name = st.text_input("Şekiller dosyasının adı", value="Şekiller_XXXXXX.docx", disabled=not separate_figures)
+        with fc2:
+            figure_files = st.file_uploader(
+                "Ayrıca kullanılacak şekil dosyaları",
+                type=["png", "jpg", "jpeg", "webp", "docx", "pdf"],
+                accept_multiple_files=True,
+                key="tar_figures",
+                disabled=not separate_figures,
+            )
+
         submit = st.form_submit_button("Tarifnameyi oluştur", type="primary")
+
     if submit:
         if bbf is None:
             st.error("BBF yükleyin.")
         else:
             try:
-                progress = st.progress(0, text="BBF okunuyor...")
-                source = extract_text_from_asset(UploadedAsset(bbf.name, bbf.getvalue(), bbf.type))
-                extracted = ask_json(tarifname_extraction_prompt(source))
-                progress.progress(25, text="İstem yapısı belirleniyor...")
+                progress = st.progress(0, text="Kaynak dosyalar okunuyor...")
+                bbf_asset = UploadedAsset(bbf.name, bbf.getvalue(), bbf.type)
+                source = extract_text_from_asset(bbf_asset)
+
+                current_draft_text = ""
+                current_draft_asset = None
+                if current_draft is not None:
+                    current_draft_asset = UploadedAsset(current_draft.name, current_draft.getvalue(), current_draft.type)
+                    current_draft_text = extract_text_from_asset(current_draft_asset)
+
+                technical_assets = assets_from_uploads(extra_technical_files)
+                technical_text, technical_images = combine_asset_text("EK TEKNİK BELGE", technical_assets)
+                example_assets = assets_from_uploads(example_files)
+                example_text, _ = combine_asset_text("ÖRNEK TARİFNAME - YALNIZCA KURGU", example_assets)
+
+                embedded_images = extract_embedded_images(bbf_asset)
+                if current_draft_asset:
+                    embedded_images.extend(extract_embedded_images(current_draft_asset))
+                model_images = [*technical_images, *embedded_images][:12]
+
+                progress.progress(15, text="BBF içeriği, referans tablosu ve istem çekirdeği çıkarılıyor...")
+                extracted = ask_json(
+                    tarifname_extraction_prompt(source, current_draft_text, technical_text, example_text),
+                    images=model_images,
+                )
+
+                progress.progress(28, text="İstem yapısı belirleniyor...")
                 mode = claim_choice
                 if mode == "BBF'ye göre otomatik belirle":
-                    mode = "Sistem ve yöntem" if extracted.get("has_method_basis") else "Yalnızca sistem"
+                    recommended = str(extracted.get("recommended_claim_mode", "")).strip()
+                    if recommended in {"Yalnızca sistem", "Yalnızca yöntem", "Sistem ve yöntem"}:
+                        mode = recommended
+                    elif extracted.get("has_system_basis") and extracted.get("has_method_basis"):
+                        mode = "Sistem ve yöntem"
+                    elif extracted.get("has_method_basis"):
+                        mode = "Yalnızca yöntem"
+                    else:
+                        mode = "Yalnızca sistem"
+                st.info(f"Kullanılan istem yapısı: {mode}")
+
                 lit_docs: list[dict[str, Any]] = []
                 if literature:
-                    progress.progress(40, text="Patent literatürü araştırılıyor...")
-                    lit_docs = (ask_json(tarifname_literature_prompt(extracted, int(lit_count), jurisdiction), web_search=True).get("documents") or [])
-                progress.progress(65, text="Tarifname ve istemler hazırlanıyor...")
-                draft = ask_json(tarifname_drafting_prompt(extracted, mode, lit_docs))
+                    progress.progress(38, text="Patent literatürü araştırılıyor...")
+                    lit_docs = (
+                        ask_json(
+                            tarifname_literature_prompt(extracted, int(lit_count), jurisdiction),
+                            web_search=True,
+                        ).get("documents")
+                        or []
+                    )
+
+                progress.progress(55, text="Tarifname ve istemlerin tam taslağı hazırlanıyor...")
+                draft = ask_json(
+                    tarifname_drafting_prompt(
+                        extracted,
+                        mode,
+                        lit_docs,
+                        source,
+                        current_draft_text,
+                        technical_text,
+                        example_text,
+                        f"DP referansı: {reference}. {user_notes}".strip(),
+                    ),
+                    images=model_images,
+                )
+
+                progress.progress(73, text="BBF ile tamlık ve istem tutarlılığı ikinci kez kontrol ediliyor...")
+                draft = ask_json(
+                    tarifname_quality_prompt(
+                        source,
+                        current_draft_text,
+                        technical_text,
+                        extracted,
+                        draft,
+                        mode,
+                    ),
+                    images=model_images,
+                )
+
                 if mode == "Yalnızca sistem":
                     draft["method_claim"] = None
                     draft["dependent_method_claims"] = []
                     draft["method_steps"] = []
-                progress.progress(90, text="Word dosyası hazırlanıyor...")
+                elif mode == "Yalnızca yöntem":
+                    draft["system_claim"] = None
+                    draft["dependent_system_claims"] = []
+
+                warnings = validate_tarifname_draft(draft, mode)
+                for warning in warnings:
+                    st.warning(warning)
+
+                progress.progress(88, text="Word dosyası hazırlanıyor...")
                 data = build_tarifname_docx(draft)
+
+                figure_data = None
+                if separate_figures:
+                    all_figure_assets: list[UploadedAsset] = []
+                    for uploaded in figure_files or []:
+                        asset = UploadedAsset(uploaded.name, uploaded.getvalue(), uploaded.type)
+                        all_figure_assets.extend(extract_embedded_images(asset))
+                    if not all_figure_assets:
+                        all_figure_assets = embedded_images
+                    # Aynı görselin birden fazla kez eklenmesini engelle.
+                    deduplicated: list[UploadedAsset] = []
+                    seen_images: set[int] = set()
+                    for asset in all_figure_assets:
+                        marker = hash(asset.data)
+                        if marker not in seen_images:
+                            seen_images.add(marker)
+                            deduplicated.append(asset)
+                    figure_data = build_figures_docx(deduplicated)
+
                 progress.progress(100, text="Hazır")
-                st.success("Tarifname oluşturuldu.")
-                st.download_button("Word dosyasını indir", data=data, file_name=safe_output_name(output_name, "Tarifname.docx"), mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", type="primary")
+                st.success("Tarifname oluşturuldu ve BBF tamlık kontrolü tamamlandı.")
+                st.download_button(
+                    "Tarifname Word dosyasını indir",
+                    data=data,
+                    file_name=safe_output_name(output_name, "Tarifname.docx"),
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    type="primary",
+                )
+                if figure_data is not None:
+                    st.download_button(
+                        "Şekiller Word dosyasını indir",
+                        data=figure_data,
+                        file_name=safe_output_name(figures_output_name, "Şekiller.docx"),
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
             except Exception as exc:
                 st.exception(exc)
 
@@ -893,36 +1488,49 @@ elif work_type == "Görüş hazırlama":
 # ARAŞTIRMA
 else:
     st.subheader("Tip 3 - Ön araştırma raporu")
-    bbf = st.file_uploader("BBF dosyası", type=["docx", "doc", "pdf", "txt"], key="res_bbf")
-    reference = st.text_input("DP referans numarası", value="")
-    output_name = st.text_input("Çıktı dosyasının adı", value="Ön Araştırma Raporu_XXXXXX.docx")
+    c1, c2 = st.columns(2)
+    with c1:
+        bbf = st.file_uploader("BBF dosyası", type=["docx", "doc", "pdf", "txt"], key="res_bbf")
+        reference = st.text_input("DP referans numarası", value="")
+    with c2:
+        output_name = st.text_input("Çıktı dosyasının adı", value="Ön Araştırma Raporu_XXXXXX.docx")
+        cutoff = st.date_input("Araştırma kesim tarihi", value=date.today())
 
     if "top10_result" not in st.session_state:
         st.session_state.top10_result = None
         st.session_state.research_bbf_text = None
+        st.session_state.research_cutoff = None
 
     if st.button("1. Global araştırmayı yap ve en benzer 10 dokümanı bul", type="primary", use_container_width=True):
         if bbf is None:
             st.error("BBF yükleyin.")
         else:
             try:
-                progress = st.progress(0, text="BBF okunuyor...")
+                progress = st.progress(0, text="BBF okunuyor ve teknik çekirdek çıkarılıyor...")
                 bbf_text = extract_text_from_asset(UploadedAsset(bbf.name, bbf.getvalue(), bbf.type))
+                cutoff_text = cutoff.strftime("%d.%m.%Y")
                 progress.progress(20, text="Global patent veritabanlarında araştırma yapılıyor...")
-                top10 = ask_json(top10_research_prompt(bbf_text), web_search=True)
+                top10 = ask_json(top10_research_prompt(bbf_text, cutoff_text), web_search=True)
                 docs = top10.get("documents") or []
-                if len(docs) < 10:
-                    raise ValueError(f"10 doküman yerine {len(docs)} doküman döndü. Araştırmayı tekrar çalıştırın.")
+                if len(docs) != 10:
+                    raise ValueError(f"Tam 10 doküman yerine {len(docs)} doküman döndü. Araştırmayı tekrar çalıştırın.")
                 st.session_state.top10_result = top10
                 st.session_state.research_bbf_text = bbf_text
+                st.session_state.research_cutoff = cutoff_text
                 progress.progress(100, text="Araştırma tamamlandı")
             except Exception as exc:
                 st.exception(exc)
 
     if st.session_state.top10_result:
         st.success("En benzer 10 doküman bulundu.")
+        docs = st.session_state.top10_result.get("documents") or []
+        totalpatent_query = st.session_state.top10_result.get("totalpatent_query") or (
+            "TotalPatent arama sorgusu: " + " or ".join(str(d.get("publication_number", "")) for d in docs)
+        )
+        st.code(totalpatent_query, language=None)
+
         rows = []
-        for d in st.session_state.top10_result.get("documents") or []:
+        for d in docs:
             rows.append({
                 "Sıra": d.get("rank"),
                 "Yayın no": d.get("publication_number"),
@@ -934,10 +1542,16 @@ else:
         st.dataframe(rows, use_container_width=True, hide_index=True)
         st.caption(f"Önerilen D1: {st.session_state.top10_result.get('proposed_d1','')} | Önerilen D2: {st.session_state.top10_result.get('proposed_d2','') or '-'}")
 
-        own_docs = st.radio("Sizin araştırdığınız benzer doküman var mı?", ["Hayır", "Evet"], horizontal=True)
+        own_docs = st.radio("Sizin araştırdığınız benzer dokümanlar var mı?", ["Hayır", "Evet"], horizontal=True)
         user_files = []
         if own_docs == "Evet":
             user_files = st.file_uploader("Sizin bulduğunuz benzer dokümanlar", type=["pdf", "zip", "docx", "doc", "txt", "png", "jpg", "jpeg", "webp"], accept_multiple_files=True, key="res_user_docs")
+
+        decision_mode = st.selectbox(
+            "Rapor sonucu",
+            ["Otomatik belirle", "Buluş basamağı var", "Buluş basamağı yok"],
+            help="Ön analizden sonra istediğiniz sonuç yönünü seçebilirsiniz.",
+        )
 
         if st.button("2. Nihai D1/D2'yi belirle ve raporu oluştur", type="primary", use_container_width=True):
             if not reference.strip():
@@ -950,9 +1564,31 @@ else:
                     user_assets = assets_from_uploads(user_files)
                     user_text, user_images = combine_asset_text("KULLANICI BENZER DOKÜMANI", user_assets)
                     progress.progress(25, text="Nihai D1/D2 seçiliyor...")
-                    selection = ask_json(final_selection_prompt(st.session_state.research_bbf_text, st.session_state.top10_result, user_text), images=user_images)
+                    selection = ask_json(
+                        final_selection_prompt(
+                            st.session_state.research_bbf_text,
+                            st.session_state.top10_result,
+                            user_text,
+                            decision_mode,
+                        ),
+                        images=user_images,
+                    )
+                    if decision_mode == "Buluş basamağı var":
+                        selection["inventive_step_result"] = "sağlanır"
+                    elif decision_mode == "Buluş basamağı yok":
+                        selection["inventive_step_result"] = "sağlanmaz"
+                    validate_research_selection(selection)
                     progress.progress(55, text="Yenilik ve buluş basamağı raporu hazırlanıyor...")
-                    report = ask_json(report_drafting_prompt(st.session_state.research_bbf_text, st.session_state.top10_result, selection, reference))
+                    report = ask_json(
+                        report_drafting_prompt(
+                            st.session_state.research_bbf_text,
+                            st.session_state.top10_result,
+                            selection,
+                            reference,
+                            st.session_state.research_cutoff or cutoff.strftime("%d.%m.%Y"),
+                            decision_mode,
+                        )
+                    )
                     progress.progress(85, text="Word raporu oluşturuluyor...")
                     data = build_research_docx(report)
                     progress.progress(100, text="Hazır")

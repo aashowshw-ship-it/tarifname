@@ -2,24 +2,9 @@ from __future__ import annotations
 
 import json
 
-CORE_RULES = r"""
-TÜRK PATENT TARİFNAME KURALLARI
-1. Kaynak BBF'ye birebir sadık kal. BBF'de bulunmayan teknik unsur, algoritma, değer, bağlantı veya uygulama ekleme.
-2. İngilizce teknik terimi ilk geçtiği yerde Türkçe karşılığıyla bir kez açıkla. Örnek: handover (hücre geçişi). Sonraki kullanımlarda yalnızca Türkçe karşılığı kullan.
-3. Unsur adları normal cümle yazımıyla yazılır; her kelime büyük harfle başlamaz. AI yerine yapay zekâ yaz.
-4. BBF'deki unsur numaralandırmasını aynen koru. 1,2,3 ise aynı; 10,20,30 ise aynı. Sisteme veya yönteme BBF'de unsur olarak verilmemiş ek numara verme.
-5. REFERANS NUMARALARI bölümünden önce parantez içinde referans numarası kullanma.
-6. Referans listesinde önce unsurlar, ardından varsa yöntem işlem adımları bulunur. İşlem adımları '1001. ... toplanması' biçiminde yazılır.
-7. Detaylı açıklamada ve yöntem isteminde işlem adımı referansı işlem ifadesinin sonunda yer alır: '... toplanması (1001)'. Numara cümlenin başına alınmaz.
-8. Sistem isteminde unsurları sırayla kur. Bir unsur tanımlanırken yalnızca daha önce tanımlanmış unsurlarla ilişki kur; henüz tanımlanmamış sonraki unsuru kullanma.
-9. Ana istemde unsurlar birbirinden bağımsız liste gibi kalmamalı; veri, sinyal, kontrol veya işlem ilişkileri kurulmalı.
-10. Alt istemler ana istemi tekrar etmemeli, kısa olmalı ve sistem alt istemleri 'bir modül olmasıdır' veya 'içermesidir' şeklinde bitmelidir. 'yapmasıdır/etmesidir/belirlemesidir' şeklinde bitirme.
-11. İnsan veya soyut aktör yerine teknik araç kullan. Örnek: 'operatöre gönderen' değil, 'elektronik cihaz üzerinden operatöre ileten'.
-12. BBF açık, sıralı ve teknik işlem adımları içeriyorsa sistem istemine ek olarak bağımsız yöntem istemi hazırla. BBF yöntem akışını desteklemiyorsa yöntem istemi oluşturma.
-13. Yöntem istemindeki işlem adımları BBF'deki sıra, metin ve numaralara mümkün olduğunca birebir sadık olmalı.
-14. Şablonun giriş ve İSTEMLER altındaki kırmızı/mavi bilgilendirme paragrafları korunacaktır; bu metinleri çıktı JSON'una ekleme.
-15. Literatür araştırması kullanıcı tarafından seçilmediyse doküman uydurma veya önceki tekniğe patent numarası ekleme.
-"""
+from rules import TARIFNAME_RULES
+
+CORE_RULES = TARIFNAME_RULES
 
 
 def extraction_prompt(source_text: str) -> str:
@@ -57,6 +42,7 @@ def drafting_prompt(extracted: dict, claim_mode: str, selected_literature: list[
 
 Aşağıdaki BBF verilerinden Türk patent tarifnamesi oluştur. Kaynakta olmayan bilgi ekleme.
 İstem türü tercihi: {claim_mode}
+Her buluş için zorunlu teknik çekirdeği ayrıca analiz et; paralel tekrarları ana istemde kapsayıcı yaz, ayrıntılarını gerekirse tek bağımlı istemde topla.
 Onaylanan literatür dokümanları: {json.dumps(literature, ensure_ascii=False)}
 
 JSON dışında hiçbir şey yazma.
