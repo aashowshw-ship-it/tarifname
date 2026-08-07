@@ -70,11 +70,14 @@ JSON dışında hiçbir şey yazma.
 
 NOTLAR:
 - 'unumbered_system_definition' ve 'unumbered_system_elements' REFERANS NUMARALARI bölümünden önce kullanılacağı için numarasız olmalıdır.
-- elements alanında BBF unsur adı ve numarası aynen korunur.
+- elements alanında BBF unsur numarası aynen korunur; unsur adı teknik anlamı değiştirilmeden referans listesi için yalnızca ilk kelimenin baş harfi büyük olacak cümle düzenine çevrilir, standart teknik kısaltmalar korunur.
 - method_steps alanında numara ayrı, metin numarasızdır. Metin mastar isimle biter: toplanması, analiz edilmesi vb.
 - method_claim varsa her adım metninin sonunda '(1001)' gibi numara yer alsın.
 - Sistem istemi elemanları bir önceki tanımlanmış unsurla teknik ilişki kuracak biçimde sıralansın.
 - İstemlerde İngilizce kısaltmalar ilk kullanımda Türkçesiyle bir kez açıklansın; devamında Türkçe kullanılsın.
+- Kullanıcıya sunulan tarifname metninde BBF veya buluş bildirim formu ifadeleri kullanılmasın.
+- Sistem ve yöntem birlikteyse başlık “... Sistemi ve Yöntemi” biçiminde olsun.
+- “Buluşun bir gerçekleştirilmesinde” yerine “Buluşun bir yapılanmasında” kullanılsın.
 
 YAPILANDIRILMIŞ BBF VERİSİ:
 {json.dumps(extracted, ensure_ascii=False, indent=2)}

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.1"
-RULESET_VERSION = "2026-08-07.v3"
+APP_VERSION = "v5.2"
+RULESET_VERSION = "2026-08-07.v4"
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA VE REVİZYON KURALLARI
@@ -60,6 +60,14 @@ F. SON KALİTE KONTROLÜ
 41. Çıktıdan önce şu kontroller birlikte yapılmalıdır: BBF'deki tüm bilgilerin aktarımı, mevcut revizyonların korunması, referans tablosu tamlığı, detaylı açıklama–referans–istem uyumu, yöntem adımı sırası, ana istemin buluşu gerçekten yansıtması, bağımlı istemlerin gerçek daraltma sağlaması, formüller, tablolar ve deneysel sonuçların korunması.
 42. Aynı metinle yazılmış farklı yöntem adımı numaraları özellikle kontrol edilmelidir. Aynı veri farklı aşamalarda kullanılıyorsa aşama farkı metne yansıtılmalıdır.
 43. Kaynaktaki önemli bir bölümün yalnızca özetlenip ayrıntılarının kaybolduğu tespit edilirse taslak tamamlanmış sayılmaz; eksik bilgiler yeniden eklenmelidir.
+44. Sistem ve yöntem istemlerinin birlikte oluşturulduğu durumda buluş başlığı da bu yapıyla uyumlu olmalı ve uygun ise “... Sistemi ve Yöntemi” biçimini taşımalıdır; yalnızca sistem başlığı bırakılmamalıdır.
+45. Patent tarifnamesinin kullanıcıya sunulan metninde “BBF”, “buluş bildirim formu”, “kaynak formda açıklandığı üzere” veya benzeri kaynak-doküman atıfları kullanılmaz. Teknik bilgi doğrudan buluşun açıklaması olarak yazılır.
+46. REFERANS NUMARALARI bölümünde unsur adları başlık biçiminde yazılmaz. Yalnızca ilk kelimenin ilk harfi büyük olur; standart teknik kısaltmalar (SIM, IMEI, API vb.) kendi yazımıyla korunabilir. Aynı unsur adı cümle içinde geçtiğinde cümle gereği küçük harfle başlatılır.
+47. Detaylı açıklamada “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” ifadesinden sonra her işlem madde işaretli yazılır ve numara metnin başında “1001.” biçiminde değil, işlem metninin sonunda “(1001)” biçiminde gösterilir.
+48. Sistem ve yöntem bağımsız istemlerinde ayrı sistem unsurları ve işlem adımları düz cümle halinde arka arkaya verilmez; her unsur/adım ayrı madde işaretiyle gösterilir.
+49. TARİFNAME, bölüm başlıkları, buluş başlığı, İSTEMLER ve ÖZET başlıkları kalın yazılır. İSTEMLER yeni bir sayfadan, ÖZET ayrıca yeni bir sayfadan başlatılır.
+50. “Buluşun bir gerçekleştirilmesinde” kalıbı kullanılmaz. Bu anlatım gereken yerde “Buluşun bir yapılanmasında” yazılır.
+51. Önceki teknik bölümünde kaynakta müşterinin verdiği teknik arka plan, eksiklik, problem ve karşılaştırma bilgileri eksiksiz aktarılır; seçilen patent literatürü bu bilgilerin yerine geçmez ve yalnızca bunlara eklenir.
 """
 
 GORUS_RULES = r"""
@@ -84,6 +92,13 @@ TÜRK PATENT GÖRÜŞ ÇALIŞMASI KURALLARI
 18. Revizyonlarda kapsam aşımı/yeni konu yaratma. Eklenen her teknik ifade mevcut tarifname veya istemlerde açık ve doğrudan dayanak bulmalıdır. Ürün/sistem istemlerinde yöntem dili yerine yapısal unsur dili kullan; ürün ve yöntem istemlerini birbirinden ayır.
 19. İstem revizyonu onaylandıktan sonra görüş yalnızca kullanıcının onayladığı nihai istem seti üzerinden hazırlanır. Görüş oluşturma aşamasında istemlere kendiliğinden yeni değişiklik ekleme.
 20. İndirilen çıktı dosyasının adı URL-kodlu görünmemelidir. `%20`, `%C3` gibi kodlanmış parçalar dosya adına taşınmamalı; Türkçe karakterler ve normal boşluklar korunmalıdır.
+21. Görüş akışı tek adımda doğrudan Word üretmez. İlk düğme yalnızca raporu, önceki görüşü, tarifnameyi, X/Y dokümanlarını ve varsa müşteri bilgisini analiz eder; analiz sonucu ekranda gösterildikten sonra görüş oluşturma aşamasına geçilir.
+22. İlk analiz istem revizyonu gerekip gerekmediğini açıkça belirler. Revizyon gerekmiyorsa kullanıcıya bu durum gösterilir ve mevcut istemlerle görüş oluşturma düğmesi açılır.
+23. Revizyon gerekiyorsa önce önerilen değişiklikler istem bazında gösterilir. Her değişiklik için istem numarası, değişiklik gerekçesi, tarifname dayanağı, eski ifade ve önerilen yeni ifade ayrı ayrı verilmelidir.
+24. Revizyon önerileri kullanıcı onayı olmadan uygulanmaz. Kullanıcı isterse önerileri ek talimatla yeniden analiz ettirebilir. Kullanıcı önerilen revizyonları açıkça onayladıktan sonra revize istem çıktıları hazırlanır.
+25. Onaylı istem revizyonu için iki Word çıktısı oluşturulur: gerçek OOXML Track Changes işaretlerini içeren MARKUP sürümü ve aynı değişikliklerin kabul edilmiş halini içeren TEMİZ sürüm. Track Changes değişiklikleri mümkün olan en küçük ifade/kelime düzeyinde uygulanır; bütün istem paragrafı sırf kolaylık için silinip yeniden eklenmez.
+26. Markup üretimi için kaynak tarifname DOCX olmalıdır. PDF veya eski DOC kaynakta istem revizyonu gerekiyorsa kullanıcıdan DOCX tarifname istenir; dosya dönüştürülmüş gibi varsayım yapılmaz.
+27. Revize istemler kullanıcı tarafından son kez onaylanmadan görüş Word dosyası oluşturulmaz. Görüş metni yalnızca kullanıcının onayladığı mevcut veya revize nihai istem seti üzerinden hazırlanır.
 """
 
 ARASTIRMA_RULES = r"""

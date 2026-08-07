@@ -11,7 +11,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import unquote
@@ -570,12 +570,10 @@ def tarifname_drafting_prompt(
     current_draft_text: str,
     technical_supplement_text: str,
     example_structure_text: str,
-    user_notes: str,
 ) -> str:
     return f"""{TARIFNAME_RULES}
 Aşağıdaki kaynaklara dayanarak Türk patent tarifnamesinin TAM metnini oluştur.
 İstem yapısı: {claim_mode}
-Kullanıcı notu: {user_notes or 'Yok'}
 
 KRİTİK TALİMATLAR:
 - BBF'nin ve mevcut revize tarifnamenin bütün teknik bilgilerini kullan. Uzun önceki teknik, formüller, tablolar,
@@ -592,6 +590,11 @@ KRİTİK TALİMATLAR:
 - Yalnızca yöntem modunda system_claim null olmalıdır. Yalnızca sistem modunda method_claim null olmalıdır.
 - Her bağımlı istem ana isteme göre gerçek bir daraltma sağlamalıdır.
 - Patent literatürü yalnızca ÖNCEKİ TEKNİK bölümünde, her doküman ayrı paragraf olacak biçimde kullanılsın.
+- Kullanıcıya sunulan tarifname metninde “BBF”, “buluş bildirim formu” veya kaynak dokümana atıf yapan benzer ifadeler kesinlikle bulunmasın; teknik bilgi doğrudan buluş anlatımı olarak yazılsın.
+- Sistem ve yöntem istemleri birlikte oluşturuluyorsa başlık da buna uygun biçimde “... Sistemi ve Yöntemi” olsun; yalnızca “... Sistemi” olarak bırakılmasın.
+- REFERANS NUMARALARI bölümünde unsur adlarında yalnızca ilk kelimenin ilk harfi büyük olsun; standart teknik kısaltmaları koru. Unsur adları cümle içinde geçtiğinde küçük harfle başlat.
+- “Buluşun bir gerçekleştirilmesinde” ifadesini kullanma; gerekli yerde “Buluşun bir yapılanmasında” yaz.
+- Önceki teknik bölümüne ham kaynakta verilen bütün teknik arka plan, eksiklik ve problem anlatımını aktar; literatür paragrafları bunların yerine geçmez.
 
 JSON dışında hiçbir şey yazma.
 ÇIKTI ŞEMASI:
@@ -651,8 +654,12 @@ ZORUNLU KONTROL LİSTESİ:
 6. Aynı alt akışa ait paralel analizler ve çıktılar gerekiyorsa tek bağımlı istemde mi?
 7. Eğitim/genel ve test aşamaları paralel fakat ayrı olarak mı kurulmuş?
 8. Formüller, değişken açıklamaları, tablolar, deneysel sonuçlar, alternatifler ve teknik etkiler eksiksiz mi?
-9. Seçilen istem modu ({claim_mode}) ile başlık, açıklama ve istemler tutarlı mı?
+9. Seçilen istem modu ({claim_mode}) ile başlık, açıklama ve istemler tutarlı mı? Sistem ve yöntem ise başlık “Sistemi ve Yöntemi” yapısını taşıyor mu?
 10. Bağımlı istemler gerçek daraltma sağlıyor mu?
+11. Kullanıcıya sunulan metinde “BBF” veya “buluş bildirim formu” gibi kaynak atfı kalmış mı? Kalmışsa doğrudan buluş anlatımına dönüştür.
+12. “Buluşun bir gerçekleştirilmesinde” kalıbı var mı? Varsa “Buluşun bir yapılanmasında” olarak düzelt.
+13. REFERANS NUMARALARI unsur adları yalnızca ilk kelime büyük olacak biçimde mi? Cümle içindeki unsur adları küçük harfle mi başlıyor?
+14. Önceki teknik kaynakta verilen bütün müşteri teknik arka planını ve eksikliklerini içeriyor mu?
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
 {TARIFNAME_DRAFT_SCHEMA}
@@ -696,6 +703,41 @@ def add_numbered_claim(doc: Document, number: int, text: str):
     r_text.font.name = "Arial"
     r_text.font.size = Pt(11)
     return p
+
+
+def _replace_in_nested(value: Any, old: str, new: str) -> Any:
+    if isinstance(value, str):
+        return value.replace(old, new)
+    if isinstance(value, list):
+        return [_replace_in_nested(x, old, new) for x in value]
+    if isinstance(value, dict):
+        return {k: _replace_in_nested(v, old, new) for k, v in value.items()}
+    return value
+
+
+def _ensure_title_for_claim_mode(title: str, claim_mode: str) -> str:
+    text = str(title or "").strip()
+    if claim_mode != "Sistem ve yöntem" or not text:
+        return text
+    if "yöntem" in text.lower():
+        return text
+    matches = list(re.finditer(r"\bsistemi\b", text, flags=re.IGNORECASE))
+    if matches:
+        last = matches[-1]
+        return text[: last.start()] + "Sistemi ve Yöntemi" + text[last.end() :]
+    return text + " Sistemi ve Yöntemi"
+
+
+def apply_tarifname_house_style(draft: dict[str, Any], claim_mode: str) -> dict[str, Any]:
+    """Kullanıcının sabit terminoloji ve başlık tercihlerini çıktıdan önce uygula."""
+    draft = deepcopy(draft)
+    for old, new in [
+        ("Buluşun bir gerçekleştirilmesinde", "Buluşun bir yapılanmasında"),
+        ("buluşun bir gerçekleştirilmesinde", "buluşun bir yapılanmasında"),
+    ]:
+        draft = _replace_in_nested(draft, old, new)
+    draft["title"] = _ensure_title_for_claim_mode(draft.get("title", ""), claim_mode)
+    return draft
 
 
 def validate_tarifname_draft(draft: dict[str, Any], claim_mode: str) -> list[str]:
@@ -743,7 +785,34 @@ def validate_tarifname_draft(draft: dict[str, Any], claim_mode: str) -> list[str
         raise ValueError("Seçilen istem yapısına rağmen bağımsız yöntem istemi üretilemedi.")
     if claim_mode in {"Yalnızca sistem", "Sistem ve yöntem"} and not draft.get("system_claim"):
         raise ValueError("Seçilen istem yapısına rağmen bağımsız sistem istemi üretilemedi.")
+
+    user_facing_text = json.dumps(draft, ensure_ascii=False)
+    if re.search(r"\bBBF\b|buluş bildirim formu", user_facing_text, flags=re.IGNORECASE):
+        raise ValueError("Tarifname taslağında kullanıcıya görünmemesi gereken BBF/kaynak form atfı bulundu.")
+    if claim_mode == "Sistem ve yöntem" and "yöntem" not in str(draft.get("title", "")).lower():
+        raise ValueError("Sistem ve yöntem istem yapısında başlık yöntem ifadesini içermiyor.")
     return warnings
+
+
+def _reference_sentence_case(name: str) -> str:
+    """Referans unsurunu başlık biçiminden çıkar; teknik kısaltmaları koru."""
+    text = str(name or "").strip()
+    first_seen = False
+
+    def repl(match: re.Match[str]) -> str:
+        nonlocal first_seen
+        word = match.group(0)
+        is_acronym = len(word) > 1 and word.isupper()
+        if not first_seen:
+            first_seen = True
+            if is_acronym:
+                return word
+            return word[:1].upper() + word[1:].lower()
+        if is_acronym:
+            return word
+        return word.lower()
+
+    return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", repl, text)
 
 
 def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
@@ -802,7 +871,7 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
 
     add_heading(doc, "REFERANS NUMARALARI")
     for element in draft.get("elements") or []:
-        add_text(doc, f"{element.get('number','')}. {element.get('name','')}")
+        add_text(doc, f"{element.get('number','')}. {_reference_sentence_case(element.get('name',''))}")
     method_steps = draft.get("method_steps") or []
     if draft.get("elements") and method_steps:
         doc.add_paragraph()
@@ -855,6 +924,7 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
     if draft.get("working_principle"):
         add_text(doc, draft.get("working_principle", ""))
 
+    doc.add_page_break()
     add_heading(doc, "İSTEMLER", center=True)
     for index in (79, 81, 83):
         copy_template_paragraph(doc, template, index)
@@ -882,6 +952,7 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
             add_numbered_claim(doc, claim_no, dependent)
             claim_no += 1
 
+    doc.add_page_break()
     add_heading(doc, "ÖZET", center=True)
     add_text(doc, draft.get("title", ""), bold=True, center=True)
     add_text(doc, draft.get("abstract", ""))
@@ -893,7 +964,7 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
 # -----------------------------------------------------------------------------
 # GÖRÜŞ MODÜLÜ
 # -----------------------------------------------------------------------------
-def gorus_prompt(
+def gorus_analysis_prompt(
     report_type: str,
     reference: str,
     report_text: str,
@@ -903,9 +974,111 @@ def gorus_prompt(
     customer_text: str,
 ) -> str:
     return f"""{GORUS_RULES}
+Aşağıdaki dosyaları önce YALNIZCA analiz et. Bu aşamada görüş Word metni yazma.
+Görüş türü: {report_type}
+Ana dosya referansı: {reference}
+
+Önce rapordaki itirazları, X/Y dokümanlarını, mevcut istemleri, tarifname dayanaklarını, varsa önceki görüşü ve müşteri bilgisini birlikte değerlendir.
+İstem değişikliği sırf daha iyi yazılabilir diye önerilmez. Yalnızca itirazı gidermek için gerçekten zorunluysa amendment_required=true yap.
+Revizyon gerekiyorsa EN AZ DEĞİŞİKLİK ilkesini uygula. Her old_text, TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olsun; tüm istemi old_text olarak verme.
+Her basis_quote tarifnamede birebir bulunan dayanak pasajı olsun. Kapsam aşımı/yeni konu yaratma.
+
+JSON dışında yazma.
+ŞEMA:
+{{
+  "analysis_summary":"",
+  "examiner_issues":[""],
+  "defense_direction":[""],
+  "amendment_required":false,
+  "amendment_reason":"",
+  "no_amendment_reason":"",
+  "amendments":[
+    {{
+      "claim_number":"1",
+      "reason":"",
+      "basis_quote":"",
+      "old_text":"",
+      "new_text":""
+    }}
+  ]
+}}
+
+RAPOR:\n{report_text}\n
+TARİFNAME:\n{spec_text}\n
+ÖNCEKİ GÖRÜŞ:\n{prior_opinion_text}\n
+BENZER DOKÜMANLAR:\n{similar_text}\n
+MÜŞTERİ BİLGİLERİ:\n{customer_text}\n"""
+
+
+def gorus_revision_refine_prompt(
+    report_type: str,
+    report_text: str,
+    spec_text: str,
+    prior_opinion_text: str,
+    similar_text: str,
+    customer_text: str,
+    current_analysis: dict[str, Any],
+    user_instruction: str,
+) -> str:
+    return f"""{GORUS_RULES}
+Aşağıdaki mevcut istem-revizyon analizini kullanıcının talimatına göre yeniden değerlendir.
+Yalnızca gerçekten zorunlu değişiklikleri bırak. En az değişiklik, açık tarifname dayanağı ve kapsam aşımı yapmama kuralları bağlayıcıdır.
+old_text, kaynak TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olmalıdır.
+Tüm istemi silip yeniden yazma. Kullanıcının talimatı teknik kaynaklarla çelişiyorsa uydurma yapma; güvenli olan minimum revizyonu seç.
+
+JSON dışında yazma ve ilk analizle AYNI şemayı kullan.
+Görüş türü: {report_type}
+KULLANICI TALİMATI:\n{user_instruction}\n
+MEVCUT ANALİZ:\n{json.dumps(current_analysis, ensure_ascii=False, indent=2)}\n
+RAPOR:\n{report_text}\n
+TARİFNAME:\n{spec_text}\n
+ÖNCEKİ GÖRÜŞ:\n{prior_opinion_text}\n
+BENZER DOKÜMANLAR:\n{similar_text}\n
+MÜŞTERİ BİLGİLERİ:\n{customer_text}\n"""
+
+
+def validate_gorus_analysis(analysis: dict[str, Any], spec_text: str) -> None:
+    required = bool(analysis.get("amendment_required"))
+    amendments = analysis.get("amendments") or []
+    if required and not amendments:
+        raise ValueError("Analiz istem revizyonu gerekli dedi ancak revizyon önerisi üretmedi.")
+    normalized_spec = re.sub(r"\s+", " ", spec_text).strip()
+    for item in amendments:
+        old_text = re.sub(r"\s+", " ", str(item.get("old_text", ""))).strip()
+        new_text = str(item.get("new_text", "")).strip()
+        basis = re.sub(r"\s+", " ", str(item.get("basis_quote", ""))).strip()
+        if not old_text or not new_text:
+            raise ValueError("Revizyon önerisinde old_text/new_text boş bırakılamaz.")
+        if required and not basis:
+            raise ValueError("Her istem revizyonu için tarifnameden birebir dayanak gösterilmelidir.")
+        if re.match(r"^\s*\d+\s*[.)-]", old_text) or len(old_text) > 600:
+            raise ValueError("Revizyon old_text alanı tüm istemi kapsamamalı; mümkün olan en küçük ifade seçilmelidir.")
+        if old_text not in normalized_spec:
+            raise ValueError(f"Revize edilecek eski ifade tarifnamede birebir doğrulanamadı: {old_text[:120]}...")
+        if basis and basis not in normalized_spec:
+            raise ValueError(f"Revizyon dayanağı tarifnamede birebir doğrulanamadı: {basis[:120]}...")
+
+
+def gorus_prompt(
+    report_type: str,
+    reference: str,
+    report_text: str,
+    spec_text: str,
+    prior_opinion_text: str,
+    similar_text: str,
+    customer_text: str,
+    preanalysis: dict[str, Any] | None = None,
+    revision_status: str = "Mevcut istemlerle devam",
+) -> str:
+    return f"""{GORUS_RULES}
 Aşağıdaki dosyalara dayanarak Türk Patent ve Marka Kurumu için ayrıntılı görüş metni hazırla.
 Görüş türü: {report_type}
 Ana dosya referansı: {reference}
+Nihai istem durumu: {revision_status}
+
+Bu aşama ilk teknik analizden SONRA çalışmaktadır. İstemlerde kendiliğinden yeni revizyon önerme veya onaylanmış istem setini değiştirme.
+Aşağıdaki ÖN ANALİZ yalnızca savunma yönünü ve kullanıcının onayladığı revizyon durumunu anlamak içindir.
+
 JSON dışında yazma.
 ŞEMA:
 {{
@@ -920,10 +1093,12 @@ JSON dışında yazma.
 - Tarifname alıntıları spec metninde birebir geçen tam cümle/pasaj olsun.
 - Müşteri bilgisinin dayanağı yoksa doğrudan kullanma.
 - İnceleme raporuysa önceki görüşteki savunmaların neden ikna etmemiş olabileceğini değerlendir ve farklı teknik hat geliştir.
+- Onaylı istem setine yeni değişiklik ekleme.
 - Metni ikinci kez kalite kontrolünden geçir.
 
+ÖN ANALİZ:\n{json.dumps(preanalysis or {}, ensure_ascii=False, indent=2)}\n
 RAPOR:\n{report_text}\n
-TARİFNAME:\n{spec_text}\n
+TARİFNAME / ONAYLI NİHAİ İSTEM SETİ:\n{spec_text}\n
 ÖNCEKİ GÖRÜŞ:\n{prior_opinion_text}\n
 BENZER DOKÜMANLAR:\n{similar_text}\n
 MÜŞTERİ BİLGİLERİ:\n{customer_text}\n"""
@@ -1018,6 +1193,206 @@ def build_gorus_docx(opinion: dict[str, Any]) -> bytes:
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
+
+
+
+
+def _find_relaxed_phrase_span(text: str, phrase: str) -> tuple[int, int] | None:
+    tokens = re.findall(r"\S+", str(phrase or "").strip())
+    if not tokens:
+        return None
+    pattern = r"\s+".join(re.escape(token) for token in tokens)
+    match = re.search(pattern, text)
+    return (match.start(), match.end()) if match else None
+
+
+def _claim_paragraph_map(doc: Document) -> dict[int, str | None]:
+    """Her paragrafı İSTEMLER bölümü içinde en son görülen istem numarasıyla eşleştirir."""
+    mapping: dict[int, str | None] = {}
+    in_claims = False
+    current_claim: str | None = None
+    for idx, paragraph in enumerate(doc.paragraphs):
+        text = paragraph.text.strip()
+        upper = text.upper()
+        if upper == "İSTEMLER":
+            in_claims = True
+            current_claim = None
+            mapping[idx] = None
+            continue
+        if in_claims and upper == "ÖZET":
+            in_claims = False
+            current_claim = None
+        if in_claims:
+            match = re.match(r"^\s*(\d+)\s*[.)-]\s+", text)
+            if match:
+                current_claim = match.group(1)
+            mapping[idx] = current_claim
+        else:
+            mapping[idx] = None
+    return mapping
+
+
+def _run_style_spans(paragraph) -> list[tuple[int, int, Any]]:
+    spans: list[tuple[int, int, Any]] = []
+    cursor = 0
+    for run in paragraph.runs:
+        text = run.text or ""
+        if not text:
+            continue
+        rpr = run._r.find(qn("w:rPr"))
+        spans.append((cursor, cursor + len(text), deepcopy(rpr) if rpr is not None else None))
+        cursor += len(text)
+    return spans
+
+
+def _style_at(spans: list[tuple[int, int, Any]], position: int) -> Any:
+    for start, end, rpr in spans:
+        if start <= position < end:
+            return deepcopy(rpr) if rpr is not None else None
+    if spans:
+        rpr = spans[-1][2]
+        return deepcopy(rpr) if rpr is not None else None
+    return None
+
+
+def _append_unchanged_with_styles(parent, original: str, start: int, end: int, spans: list[tuple[int, int, Any]]) -> None:
+    if end <= start:
+        return
+    cursor = start
+    for span_start, span_end, rpr in spans:
+        overlap_start = max(cursor, span_start)
+        overlap_end = min(end, span_end)
+        if overlap_end <= overlap_start:
+            continue
+        if overlap_start > cursor:
+            _append_plain_run(parent, original[cursor:overlap_start], None)
+        _append_plain_run(parent, original[overlap_start:overlap_end], rpr)
+        cursor = overlap_end
+        if cursor >= end:
+            break
+    if cursor < end:
+        _append_plain_run(parent, original[cursor:end], _style_at(spans, cursor))
+
+
+def _append_plain_run(parent, text: str, rpr: Any = None, *, deleted: bool = False) -> None:
+    if not text:
+        return
+    run = OxmlElement("w:r")
+    if rpr is not None:
+        run.append(deepcopy(rpr))
+    text_node = OxmlElement("w:delText" if deleted else "w:t")
+    text_node.set(qn("xml:space"), "preserve")
+    text_node.text = text
+    run.append(text_node)
+    parent.append(run)
+
+
+def _append_revision(parent, text: str, *, kind: str, change_id: int, rpr: Any = None) -> None:
+    if not text:
+        return
+    wrapper = OxmlElement("w:del" if kind == "delete" else "w:ins")
+    wrapper.set(qn("w:id"), str(change_id))
+    wrapper.set(qn("w:author"), "Patent Atölyesi")
+    wrapper.set(qn("w:date"), datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    _append_plain_run(wrapper, text, rpr, deleted=(kind == "delete"))
+    parent.append(wrapper)
+
+
+def _rewrite_paragraph_with_changes(paragraph, operations: list[dict[str, Any]], *, track_changes: bool, id_start: int) -> int:
+    original = paragraph.text
+    if not original:
+        raise ValueError("Revizyon uygulanacak paragraf boş.")
+
+    spans: list[tuple[int, int, dict[str, Any]]] = []
+    for op in operations:
+        old_text = str(op.get("old_text", "")).strip()
+        span = _find_relaxed_phrase_span(original, old_text)
+        if span is None:
+            raise ValueError(f"Markup için eski ifade aynı paragrafta bulunamadı: {old_text[:120]}...")
+        spans.append((span[0], span[1], op))
+    spans.sort(key=lambda x: x[0])
+    for left, right in zip(spans, spans[1:]):
+        if right[0] < left[1]:
+            raise ValueError("Aynı istem paragrafında birbiriyle çakışan iki revizyon önerisi bulundu.")
+
+    style_spans = _run_style_spans(paragraph)
+    p_el = paragraph._p
+    for child in list(p_el):
+        if child.tag != qn("w:pPr"):
+            p_el.remove(child)
+
+    cursor = 0
+    change_id = id_start
+    for start, end, op in spans:
+        old_actual = original[start:end]
+        new_text = str(op.get("new_text", ""))
+        _append_unchanged_with_styles(p_el, original, cursor, start, style_spans)
+        change_style = _style_at(style_spans, start)
+        if track_changes:
+            _append_revision(p_el, old_actual, kind="delete", change_id=change_id, rpr=change_style)
+            change_id += 1
+            _append_revision(p_el, new_text, kind="insert", change_id=change_id, rpr=change_style)
+            change_id += 1
+        else:
+            _append_plain_run(p_el, new_text, change_style)
+        cursor = end
+    _append_unchanged_with_styles(p_el, original, cursor, len(original), style_spans)
+    return change_id
+
+
+def _enable_track_revisions(doc: Document) -> None:
+    settings = doc.settings._element
+    if settings.find(qn("w:trackRevisions")) is None:
+        track = OxmlElement("w:trackRevisions")
+        settings.insert(0, track)
+
+
+def build_claim_revision_docx(source_docx: bytes, amendments: list[dict[str, Any]], *, track_changes: bool) -> bytes:
+    if not amendments:
+        raise ValueError("Uygulanacak istem revizyonu bulunamadı.")
+    doc = Document(io.BytesIO(source_docx))
+    claim_map = _claim_paragraph_map(doc)
+
+    assignments: dict[int, list[dict[str, Any]]] = {}
+    for op in amendments:
+        claim_no = str(op.get("claim_number", "")).strip()
+        old_text = str(op.get("old_text", "")).strip()
+        candidates: list[int] = []
+        for idx, paragraph in enumerate(doc.paragraphs):
+            if claim_map.get(idx) != claim_no:
+                continue
+            if _find_relaxed_phrase_span(paragraph.text, old_text) is not None:
+                candidates.append(idx)
+        if len(candidates) != 1:
+            if not candidates:
+                raise ValueError(
+                    f"İstem {claim_no} için Markup uygulanacak ifade ilgili istem paragrafında bulunamadı: {old_text[:120]}..."
+                )
+            raise ValueError(
+                f"İstem {claim_no} için aynı eski ifade birden fazla paragrafta bulundu. Revizyon ifadesini daha özgül hale getirin."
+            )
+        assignments.setdefault(candidates[0], []).append(op)
+
+    if track_changes:
+        _enable_track_revisions(doc)
+    change_id = 1
+    for paragraph_index in sorted(assignments):
+        change_id = _rewrite_paragraph_with_changes(
+            doc.paragraphs[paragraph_index],
+            assignments[paragraph_index],
+            track_changes=track_changes,
+            id_start=change_id,
+        )
+
+    out = io.BytesIO()
+    doc.save(out)
+    return out.getvalue()
+
+
+def build_claim_revision_pair(source_docx: bytes, amendments: list[dict[str, Any]]) -> tuple[bytes, bytes]:
+    markup = build_claim_revision_docx(source_docx, amendments, track_changes=True)
+    clean = build_claim_revision_docx(source_docx, amendments, track_changes=False)
+    return markup, clean
 
 
 # -----------------------------------------------------------------------------
@@ -1290,6 +1665,8 @@ with st.expander("Bu sürümde kaydedilmiş temel kurallar"):
         - Paralel birinci–ikinci–k'ıncı işlemler ana istemde kapsayıcı yazılabilir; ayrıntıları tek bağımlı istemde toplanabilir.
         - Eğitim/genel aşama ile test aşaması paralel fakat ayrı teknik akışlar olarak değerlendirilir.
         - Referans listesi, detaylı yöntem adımları ve istemlerdeki numaralar birlikte kontrol edilir.
+        - Tarifname metninde BBF/kaynak-form atfı kullanılmaz; “Buluşun bir yapılanmasında” terminolojisi ve yeni sayfa başlık düzeni uygulanır.
+        - Görüşte ilk adım rapor analizidir; revizyon gerekiyorsa kullanıcı mutabakatı ve gerçek Track Changes/Markup aşamasından sonra görüş oluşturulur.
         - Tip 3 araştırmada tam 10 doküman, TotalPatent sorgu satırı, kullanıcı dokümanları ve D1/D2 son seçimi kullanılır.
         """
     )
@@ -1317,15 +1694,11 @@ if work_type == "Tarifname oluşturma":
                 "Mevcut/revize tarifname (varsa)",
                 type=["docx", "doc", "pdf", "txt"],
                 key="tar_current_draft",
-                help="Bu dosyadaki kullanıcı düzenlemeleri korunarak BBF ile birlikte değerlendirilir.",
+                help="Varsa doğrudan yükleyin; ayrıca Var/Yok sorusu sorulmaz. Kullanıcı düzenlemeleri korunur.",
             )
             claim_choice = st.selectbox(
                 "İstem yapısı",
                 ["BBF'ye göre otomatik belirle", "Yalnızca sistem", "Yalnızca yöntem", "Sistem ve yöntem"],
-            )
-            user_notes = st.text_area(
-                "Özel talimat/not",
-                placeholder="Örneğin: yalnızca yöntem olarak kurgula; mevcut metni kısaltma; belirli istemleri koru...",
             )
 
         extra_technical_files = st.file_uploader(
@@ -1342,13 +1715,6 @@ if work_type == "Tarifname oluşturma":
             help="Bu dosyaların teknik içeriği yeni tarifnameye aktarılmaz.",
         )
 
-        literature = st.checkbox("Literatür araştırması yap ve önceki tekniğe ekle")
-        lc1, lc2 = st.columns(2)
-        with lc1:
-            lit_count = st.number_input("Benzer patent sayısı", min_value=1, max_value=10, value=2, disabled=not literature)
-        with lc2:
-            jurisdiction = st.text_input("Tercih edilen ülke/veri tabanı", disabled=not literature)
-
         separate_figures = st.checkbox("Şekilleri ayrı Word dosyası olarak oluştur")
         fc1, fc2 = st.columns(2)
         with fc1:
@@ -1361,6 +1727,13 @@ if work_type == "Tarifname oluşturma":
                 key="tar_figures",
                 disabled=not separate_figures,
             )
+
+        literature = st.checkbox("Literatür araştırması yap ve önceki tekniğe ekle")
+        lc1, lc2 = st.columns(2)
+        with lc1:
+            lit_count = st.number_input("Benzer patent sayısı", min_value=1, max_value=10, value=2, disabled=not literature)
+        with lc2:
+            jurisdiction = st.text_input("Tercih edilen ülke/veri tabanı", disabled=not literature)
 
         submit = st.form_submit_button("Tarifnameyi oluştur", type="primary")
 
@@ -1430,7 +1803,6 @@ if work_type == "Tarifname oluşturma":
                         current_draft_text,
                         technical_text,
                         example_text,
-                        f"DP referansı: {reference}. {user_notes}".strip(),
                     ),
                     images=model_images,
                 )
@@ -1456,6 +1828,7 @@ if work_type == "Tarifname oluşturma":
                     draft["system_claim"] = None
                     draft["dependent_system_claims"] = []
 
+                draft = apply_tarifname_house_style(draft, mode)
                 warnings = validate_tarifname_draft(draft, mode)
                 for warning in warnings:
                     st.warning(warning)
@@ -1503,29 +1876,60 @@ if work_type == "Tarifname oluşturma":
 # GÖRÜŞ
 elif work_type == "Görüş hazırlama":
     st.subheader("Görüş hazırlama")
+    st.caption("Akış: dosyaları yükle → raporu analiz et → gerekiyorsa istem revizyonunda mutabakat/Markup → görüşü oluştur.")
+
     report_type = st.selectbox("Görüş türü", ["Araştırma raporuna karşı görüş", "İnceleme raporuna karşı görüş"])
-    reference = st.text_input("Ana dosya referansı nedir?", value="")
-    output_name = st.text_input("Çıktı dosyasının adı", value="Görüş Metni_XXXXXX.docx")
     report_file = st.file_uploader("Araştırma / inceleme raporu", type=["pdf", "docx", "doc", "txt"], key="gor_report")
-    spec_file = st.file_uploader("Tarifname", type=["pdf", "docx", "doc", "txt"], key="gor_spec")
-    similar_files = st.file_uploader("Rapordaki X/Y benzer dokümanlar (D1, D2 vb.)", type=["pdf", "docx", "doc", "txt", "zip"], accept_multiple_files=True, key="gor_sim")
-    customer_yes = st.radio("Müşteriden bilgi var mı?", ["Hayır", "Evet"], horizontal=True)
-    customer_files = []
-    if customer_yes == "Evet":
-        customer_files = st.file_uploader("Müşteri bilgileri", type=["pdf", "docx", "doc", "txt", "png", "jpg", "jpeg", "webp", "zip"], accept_multiple_files=True, key="gor_customer")
+
     prior_file = None
     if report_type == "İnceleme raporuna karşı görüş":
         prior_file = st.file_uploader("Önceki sunulan görüş", type=["pdf", "docx", "doc", "txt"], key="gor_prior")
-    if st.button("Görüş metnini oluştur", type="primary", use_container_width=True):
+
+    customer_yes = st.radio("Müşteriden bilgi var mı?", ["Hayır", "Evet"], horizontal=True)
+    customer_files = []
+    if customer_yes == "Evet":
+        customer_files = st.file_uploader(
+            "Müşteri bilgileri",
+            type=["pdf", "docx", "doc", "txt", "png", "jpg", "jpeg", "webp", "zip"],
+            accept_multiple_files=True,
+            key="gor_customer",
+        )
+
+    spec_file = st.file_uploader("Tarifname", type=["pdf", "docx", "doc", "txt"], key="gor_spec")
+    similar_files = st.file_uploader(
+        "Rapordaki X/Y benzer dokümanlar (D1, D2 vb.)",
+        type=["pdf", "docx", "doc", "txt", "zip"],
+        accept_multiple_files=True,
+        key="gor_sim",
+    )
+    reference = st.text_input("Ana dosya referansı nedir?", value="")
+    output_name = st.text_input("Çıktı dosyasının adı", value="Görüş Metni_XXXXXX.docx")
+
+    for key, default in {
+        "gorus_analysis": None,
+        "gorus_source": None,
+        "gorus_markup_data": None,
+        "gorus_clean_data": None,
+        "gorus_final_spec_text": None,
+        "gorus_opinion_data": None,
+        "gorus_opinion_status": None,
+    }.items():
+        if key not in st.session_state:
+            st.session_state[key] = default
+
+    if st.button("1. Raporu analiz et", type="primary", use_container_width=True):
         if not all([reference.strip(), report_file, spec_file]) or not similar_files:
             st.error("Referans, rapor, tarifname ve X/Y dokümanlarını yükleyin.")
         elif report_type == "İnceleme raporuna karşı görüş" and prior_file is None:
             st.error("İnceleme raporu için önceki sunulan görüşü yükleyin.")
+        elif customer_yes == "Evet" and not customer_files:
+            st.error("Müşteriden bilgi var seçildi; müşteri bilgilerini yükleyin.")
         else:
             try:
                 progress = st.progress(0, text="Dosyalar okunuyor...")
                 report_text = extract_text_from_asset(UploadedAsset(report_file.name, report_file.getvalue(), report_file.type))
-                spec_text = extract_text_from_asset(UploadedAsset(spec_file.name, spec_file.getvalue(), spec_file.type))
+                spec_bytes = spec_file.getvalue()
+                spec_text = extract_text_from_asset(UploadedAsset(spec_file.name, spec_bytes, spec_file.type))
                 prior_text = ""
                 if prior_file:
                     prior_text = extract_text_from_asset(UploadedAsset(prior_file.name, prior_file.getvalue(), prior_file.type))
@@ -1533,23 +1937,235 @@ elif work_type == "Görüş hazırlama":
                 sim_text, sim_images = combine_asset_text("BENZER DOKÜMAN", sim_assets)
                 cust_assets = assets_from_uploads(customer_files)
                 cust_text, cust_images = combine_asset_text("MÜŞTERİ BİLGİSİ", cust_assets)
-                progress.progress(35, text="Teknik farklar ve tarifname dayanakları analiz ediliyor...")
-                opinion = ask_json(gorus_prompt(report_type, reference, report_text, spec_text, prior_text, sim_text, cust_text), images=[*sim_images, *cust_images])
-                validate_quotes(opinion, spec_text)
-                progress.progress(85, text="Word görüş metni hazırlanıyor...")
-                data = build_gorus_docx(opinion)
-                progress.progress(100, text="Hazır")
-                st.success("Görüş metni oluşturuldu.")
-                download_name = safe_output_name(output_name, "Görüş Metni.docx")
-                st.download_button(
-                    "Word dosyasını indir",
-                    data=data,
-                    file_name=download_name,
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    type="primary",
+                model_images = [*sim_images, *cust_images]
+
+                progress.progress(35, text="Rapor itirazları, X/Y dokümanları ve mevcut istemler analiz ediliyor...")
+                analysis = ask_json(
+                    gorus_analysis_prompt(
+                        report_type,
+                        reference,
+                        report_text,
+                        spec_text,
+                        prior_text,
+                        sim_text,
+                        cust_text,
+                    ),
+                    images=model_images,
                 )
+                validate_gorus_analysis(analysis, spec_text)
+
+                st.session_state.gorus_analysis = analysis
+                st.session_state.gorus_source = {
+                    "report_type": report_type,
+                    "reference": reference,
+                    "output_name": output_name,
+                    "report_text": report_text,
+                    "spec_text": spec_text,
+                    "spec_name": spec_file.name,
+                    "spec_bytes": spec_bytes,
+                    "prior_text": prior_text,
+                    "sim_text": sim_text,
+                    "cust_text": cust_text,
+                    "model_images": model_images,
+                }
+                st.session_state.gorus_markup_data = None
+                st.session_state.gorus_clean_data = None
+                st.session_state.gorus_final_spec_text = None
+                st.session_state.gorus_opinion_data = None
+                st.session_state.gorus_opinion_status = None
+                progress.progress(100, text="İlk analiz tamamlandı")
             except Exception as exc:
                 st.exception(exc)
+
+    analysis = st.session_state.gorus_analysis
+    source_state = st.session_state.gorus_source
+
+    ready_to_generate = False
+    final_spec_text = None
+    revision_status = ""
+    opinion_step = 2
+
+    if analysis and source_state:
+        st.success("İlk rapor analizi tamamlandı.")
+        if analysis.get("analysis_summary"):
+            st.write(analysis.get("analysis_summary"))
+
+        issues = analysis.get("examiner_issues") or []
+        if issues:
+            st.markdown("**Raporda odaklanılması gereken hususlar:**")
+            for item in issues:
+                st.markdown(f"- {item}")
+
+        directions = analysis.get("defense_direction") or []
+        if directions:
+            st.markdown("**Önerilen savunma yönü:**")
+            for item in directions:
+                st.markdown(f"- {item}")
+
+        amendment_required = bool(analysis.get("amendment_required"))
+        if amendment_required:
+            st.warning("Analiz, istemlerde sınırlı bir revizyonun gerekli olabileceğini belirledi. Görüş henüz oluşturulmayacak.")
+            if analysis.get("amendment_reason"):
+                st.write(analysis.get("amendment_reason"))
+
+            amendments = analysis.get("amendments") or []
+            for idx, amendment in enumerate(amendments, 1):
+                claim_no = amendment.get("claim_number", "")
+                with st.expander(f"Revizyon {idx} – İstem {claim_no}", expanded=True):
+                    st.markdown(f"**Gerekçe:** {amendment.get('reason','')}")
+                    if amendment.get("basis_quote"):
+                        st.markdown("**Tarifname dayanağı:**")
+                        st.code(amendment.get("basis_quote", ""), language=None)
+                    st.markdown("**Mevcut ifade:**")
+                    st.code(amendment.get("old_text", ""), language=None)
+                    st.markdown("**Önerilen ifade:**")
+                    st.code(amendment.get("new_text", ""), language=None)
+
+            refine_instruction = st.text_area(
+                "Revizyon önerileri için düzeltme talimatı (varsa)",
+                key="gor_revision_instruction",
+                placeholder="Örneğin: yalnızca istem 1'i değiştir; istem 4'e dokunma; eklenen ifadeyi tarifnamedeki şu dayanakla sınırla...",
+            )
+            if st.button("Revizyon önerilerini yeniden analiz et", use_container_width=True):
+                if not refine_instruction.strip():
+                    st.error("Yeniden analiz için düzeltme talimatını yazın.")
+                else:
+                    try:
+                        progress = st.progress(0, text="Revizyon önerileri yeniden değerlendiriliyor...")
+                        revised_analysis = ask_json(
+                            gorus_revision_refine_prompt(
+                                source_state["report_type"],
+                                source_state["report_text"],
+                                source_state["spec_text"],
+                                source_state["prior_text"],
+                                source_state["sim_text"],
+                                source_state["cust_text"],
+                                analysis,
+                                refine_instruction,
+                            ),
+                            images=source_state.get("model_images") or [],
+                        )
+                        validate_gorus_analysis(revised_analysis, source_state["spec_text"])
+                        st.session_state.gorus_analysis = revised_analysis
+                        st.session_state.gorus_markup_data = None
+                        st.session_state.gorus_clean_data = None
+                        st.session_state.gorus_final_spec_text = None
+                        st.session_state.gorus_opinion_data = None
+                        st.session_state.gorus_opinion_status = None
+                        progress.progress(100, text="Revizyon önerileri güncellendi")
+                        st.rerun()
+                    except Exception as exc:
+                        st.exception(exc)
+
+            decision = st.radio(
+                "İstem revizyonu kararı",
+                ["Henüz karar vermedim", "Önerilen revizyonları uygula", "Revizyon yapmadan mevcut istemlerle devam et"],
+                key="gor_revision_decision",
+            )
+
+            if decision == "Önerilen revizyonları uygula":
+                if Path(source_state.get("spec_name", "")).suffix.lower() != ".docx":
+                    st.error("Gerçek Word Track Changes/Markup üretimi için tarifnameyi .docx olarak yükleyin.")
+                else:
+                    if st.button("2. Onaylı revizyonlardan Markup ve temiz tarifnameyi oluştur", type="primary", use_container_width=True):
+                        try:
+                            progress = st.progress(0, text="İstem revizyonları Word dosyasına uygulanıyor...")
+                            markup_data, clean_data = build_claim_revision_pair(
+                                source_state["spec_bytes"],
+                                analysis.get("amendments") or [],
+                            )
+                            st.session_state.gorus_markup_data = markup_data
+                            st.session_state.gorus_clean_data = clean_data
+                            st.session_state.gorus_final_spec_text = docx_text(clean_data)
+                            st.session_state.gorus_opinion_data = None
+                            st.session_state.gorus_opinion_status = None
+                            progress.progress(100, text="Markup ve temiz sürüm hazır")
+                        except Exception as exc:
+                            st.exception(exc)
+
+                    if st.session_state.gorus_markup_data and st.session_state.gorus_clean_data:
+                        ref_name = re.sub(r"[^0-9A-Za-zÇĞİÖŞÜçğıöşü_-]+", "_", source_state.get("reference", "")) or "rev"
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            st.download_button(
+                                "Markup (Track Changes) tarifnameyi indir",
+                                data=st.session_state.gorus_markup_data,
+                                file_name=f"Düzenlenen_tarifname_track_changes_{ref_name}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                use_container_width=True,
+                            )
+                        with c2:
+                            st.download_button(
+                                "Temiz revize tarifnameyi indir",
+                                data=st.session_state.gorus_clean_data,
+                                file_name=f"Düzenlenen_tarifname_temiz_{ref_name}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                use_container_width=True,
+                            )
+
+                        confirmed = st.checkbox(
+                            "Revize istemleri kontrol ettim ve bu istem setini görüş için onaylıyorum.",
+                            key="gor_revised_claims_confirmed",
+                        )
+                        if confirmed:
+                            ready_to_generate = True
+                            final_spec_text = st.session_state.gorus_final_spec_text
+                            revision_status = "Kullanıcı tarafından onaylanmış revize istem seti"
+                            opinion_step = 3
+
+            elif decision == "Revizyon yapmadan mevcut istemlerle devam et":
+                no_revision_confirm = st.checkbox(
+                    "Revizyon önerisini gördüm; mevcut istemlerle görüş hazırlanmasını onaylıyorum.",
+                    key="gor_no_revision_confirmed",
+                )
+                if no_revision_confirm:
+                    ready_to_generate = True
+                    final_spec_text = source_state["spec_text"]
+                    revision_status = "Kullanıcının açık kararıyla mevcut istemlerle revizyonsuz devam"
+                    opinion_step = 2
+        else:
+            st.info(analysis.get("no_amendment_reason") or "İlk analizde istem revizyonu gerekli görülmedi. Mevcut istemlerle görüş hazırlanabilir.")
+            ready_to_generate = True
+            final_spec_text = source_state["spec_text"]
+            revision_status = "İlk analizde revizyon gerekmiyor; mevcut istemler esas alındı"
+            opinion_step = 2
+
+        if ready_to_generate and final_spec_text:
+            if st.button(f"{opinion_step}. Görüş metnini oluştur", type="primary", use_container_width=True):
+                try:
+                    progress = st.progress(0, text="Onaylı istem seti üzerinden görüş hazırlanıyor...")
+                    opinion = ask_json(
+                        gorus_prompt(
+                            source_state["report_type"],
+                            source_state["reference"],
+                            source_state["report_text"],
+                            final_spec_text,
+                            source_state["prior_text"],
+                            source_state["sim_text"],
+                            source_state["cust_text"],
+                            preanalysis=analysis,
+                            revision_status=revision_status,
+                        ),
+                        images=source_state.get("model_images") or [],
+                    )
+                    validate_quotes(opinion, final_spec_text)
+                    data = build_gorus_docx(opinion)
+                    st.session_state.gorus_opinion_data = data
+                    st.session_state.gorus_opinion_status = revision_status
+                    progress.progress(100, text="Görüş metni hazır")
+                except Exception as exc:
+                    st.exception(exc)
+
+        if st.session_state.gorus_opinion_data and st.session_state.gorus_opinion_status == revision_status:
+            st.success("Görüş metni oluşturuldu.")
+            st.download_button(
+                "Word görüş metnini indir",
+                data=st.session_state.gorus_opinion_data,
+                file_name=safe_output_name(source_state.get("output_name") or output_name, "Görüş Metni.docx"),
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                type="primary",
+                use_container_width=True,
+            )
 
 # ARAŞTIRMA
 else:

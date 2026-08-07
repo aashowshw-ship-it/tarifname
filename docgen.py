@@ -148,6 +148,7 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
         doc.add_paragraph()
         _add_text(doc, para)
 
+    doc.add_page_break()
     _add_heading(doc, "İSTEMLER")
     doc.add_paragraph()
     for idx in (79, 81, 83):
@@ -178,6 +179,7 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
             _numbered_claim(doc, claim_no, dep)
             claim_no += 1
 
+    doc.add_page_break()
     _add_heading(doc, "ÖZET")
     doc.add_paragraph()
     _add_text(doc, draft["title"], bold=True, center=True)
