@@ -1,4 +1,4 @@
-# Patent Atölyesi v5
+# Patent Atölyesi v5.1
 
 Bu paket, Render üzerinde çalışan mevcut **Patent Atölyesi v4** projesinin güncellenmiş tam sürümüdür. Ayrı bir GitHub Pages projesi değildir.
 
@@ -26,7 +26,7 @@ GitHub web arayüzüyle güncelleme:
 2. Mevcut deponun ana sayfasında **Add file → Upload files** seçin.
 3. ZIP içindeki bütün dosyaları sürükleyin.
 4. Aynı isimli dosyaların değiştirilmesine izin verin.
-5. Commit mesajı olarak `Patent Atölyesi v5` yazın.
+5. Commit mesajı olarak `Patent Atölyesi v5.1` yazın.
 6. **Commit changes** düğmesine basın.
 
 Render servisi mevcut GitHub deposuna bağlı ve `autoDeploy: true` olduğu için commit sonrasında otomatik olarak yeniden yayınlanır.
@@ -41,6 +41,15 @@ Render servisinde şu ortam değişkenleri bulunmalıdır:
 `render.yaml` varsayılan model değerini `gpt-5.6` olarak taşır. OpenAI hesabında farklı bir model adı kullanılıyorsa Render Environment ekranından değiştirilmelidir.
 
 ## v5'te eklenenler
+
+### Görüş oluşturma
+
+- Bağlayıcı tek görüş şablonu: `Gorus_metni_696809_template.docx`
+- Başvuru bilgi etiketleri kalın, değerleri normal; gövde paragrafları iki yana yaslı
+- İstem revizyonu gerekiyorsa önce kullanıcı mutabakatı, sonra görüş oluşturma kuralı
+- En az istem değişikliği ve yalnızca uzman itirazlarına müdahale kuralı
+- `%20` / `%C3...` gibi URL-kodlu çıktı adlarını normal Türkçe dosya adına çeviren ortak indirme adı düzeltmesi
+
 
 ### Tarifname
 
@@ -85,7 +94,7 @@ RULES_MEMORY.md
 Arayüzde görünen kural sürümü:
 
 ```text
-2026-08-04.v2
+2026-08-07.v3
 ```
 
 ## Yerel çalıştırma

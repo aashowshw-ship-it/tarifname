@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.0"
-RULESET_VERSION = "2026-08-04.v2"
+APP_VERSION = "v5.1"
+RULESET_VERSION = "2026-08-07.v3"
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA VE REVİZYON KURALLARI
@@ -74,8 +74,16 @@ TÜRK PATENT GÖRÜŞ ÇALIŞMASI KURALLARI
 8. Yenilik itirazında ilgili istemin tüm özelliklerinin tek dokümanda doğrudan ve açık biçimde açıklanmadığını göster.
 9. Buluş basamağı itirazında D1 ve D2'yi tek başına ve birlikte değerlendir; teknik fark, teknik etki, objektif teknik problem, birleştirme motivasyonu ve geriye dönük değerlendirme riskini ele al.
 10. Başvuru numarası ve başvuru sahibi rapordan çekilsin. Referans kullanıcıdan alınsın.
-11. Görüş formatı yüklenen Görüş metni_696809 örneğine sadık kalsın.
+11. Görüş formatı bağlayıcı `Gorus_metni_696809_template.docx` şablonuna birebir sadık kalsın.
 12. Çıktı oluşturulduktan sonra ikinci bir kalite kontrolü yap: yanlış doküman, dayanağı olmayan müşteri bilgisi, eksik alıntı, tekrar eden savunma ve sonuç tutarlılığı bakımından düzelt.
+13. Görüş için bağlayıcı ve tek Word şablonu `Gorus_metni_696809_template.docx` dosyasıdır. Başka eski görüş dosyalarını şablon yerine kullanma. Şablonun logo, header/footer, marj, sayfa geometrisi, başlık konumu, font, punto ve paragraf düzenini değiştirme.
+14. Başvuru bilgi alanlarında `Başvuru No`, `Başvuru Sahibi` ve `Referans` etiketleri kalın; bunların karşısındaki değerler normal yazı olmalıdır. Başvuru numarası veya diğer değerleri kalınlaştırma. Görüş gövdesindeki normal paragraflar iki yana yaslı olmalıdır.
+15. İnceleme/araştırma raporunda istem değişikliği zorunlu görülmüyorsa istemleri sırf iyileştirmek amacıyla değiştirme. Bu durumda mevcut tarifname ve istemleri esas alarak görüş oluştur.
+16. İstem revizyonu gerçekten gerekiyorsa önce yalnızca önerilen istem değişikliklerini kullanıcıyla netleştir. Kullanıcı açıkça onaylamadan görüş metni oluşturma ve onaylanmamış bir istem kurgusunu görüşe taşıma.
+17. İstem revizyonlarında en az değişiklik ilkesi uygulanır. Yalnızca uzmanın itiraz ettiği veya düzeltme istediği noktaya ve bu noktayı gidermek için zorunlu olan ifadeye müdahale edilir; genel redaksiyon veya kapsamı gereksiz değiştiren yeniden yazım yapılmaz.
+18. Revizyonlarda kapsam aşımı/yeni konu yaratma. Eklenen her teknik ifade mevcut tarifname veya istemlerde açık ve doğrudan dayanak bulmalıdır. Ürün/sistem istemlerinde yöntem dili yerine yapısal unsur dili kullan; ürün ve yöntem istemlerini birbirinden ayır.
+19. İstem revizyonu onaylandıktan sonra görüş yalnızca kullanıcının onayladığı nihai istem seti üzerinden hazırlanır. Görüş oluşturma aşamasında istemlere kendiliğinden yeni değişiklik ekleme.
+20. İndirilen çıktı dosyasının adı URL-kodlu görünmemelidir. `%20`, `%C3` gibi kodlanmış parçalar dosya adına taşınmamalı; Türkçe karakterler ve normal boşluklar korunmalıdır.
 """
 
 ARASTIRMA_RULES = r"""

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import unquote
 
 import streamlit as st
 from docx import Document
@@ -353,8 +354,11 @@ def format_paragraph(p, *, bold: bool = False, center: bool = False, italic: boo
     for run in p.runs:
         run.font.name = "Arial"
         run.font.size = Pt(size)
-        run.bold = bold or run.bold
-        run.italic = italic or run.italic
+        # Set explicit direct formatting. The 696809 template's Normal style is
+        # bold by default, so leaving run.bold=None would accidentally render
+        # ordinary opinion paragraphs in bold.
+        run.bold = bool(bold)
+        run.italic = bool(italic)
     return p
 
 
@@ -408,10 +412,36 @@ def copy_template_paragraph(doc: Document, template: Document, index: int):
 
 
 def safe_output_name(name: str, default: str) -> str:
-    name = (name or default).strip()
-    if not name.lower().endswith(".docx"):
-        name += ".docx"
-    return Path(name).name
+    """Return a human-readable, filesystem-safe DOCX download name.
+
+    Browser/URL encoded names such as ``Görüş%20Metni_698891.docx`` or
+    ``G%C3%B6r%C3%BC%C5%9F%20Metni_698891.docx`` are decoded before they
+    reach Streamlit's ``file_name`` parameter. Turkish characters and normal
+    spaces are deliberately preserved; the downloaded file must not contain
+    literal ``%20``/``%C3...`` fragments.
+    """
+    raw = str(name or default).strip()
+
+    # Decode once or twice so a previously double-encoded filename is also
+    # repaired, while avoiding an unbounded decode loop.
+    for _ in range(2):
+        decoded = unquote(raw)
+        if decoded == raw:
+            break
+        raw = decoded
+
+    raw = raw.replace("\u00a0", " ")
+    raw = re.sub(r"[\r\n\t]+", " ", raw)
+    raw = re.sub(r"\s+", " ", raw).strip()
+
+    # Strip any user-supplied path and keep only the filename. Handle both
+    # Windows and POSIX separators regardless of the server OS.
+    raw = raw.replace("\\", "/").split("/")[-1].strip()
+    if not raw:
+        raw = default
+    if not raw.lower().endswith(".docx"):
+        raw += ".docx"
+    return raw
 
 
 # -----------------------------------------------------------------------------
@@ -909,32 +939,57 @@ def validate_quotes(opinion: dict[str, Any], spec_text: str) -> None:
 
 
 def build_gorus_docx(opinion: dict[str, Any]) -> bytes:
+    # 696809 is the binding opinion template. Keep its section geometry,
+    # header/footer, logo, margins and page setup exactly as stored in the
+    # template. The first-page title, metadata table and salutation are cloned
+    # from the template so their positions/column widths do not drift.
     doc = Document(str(GORUS_TEMPLATE))
-    clear_body(doc)
-    for section in doc.sections:
-        section.top_margin = Cm(2.2)
-        section.bottom_margin = Cm(2.0)
-        section.left_margin = Cm(2.2)
-        section.right_margin = Cm(2.0)
 
-    add_text(doc, "TÜRK PATENT VE MARKA KURUMU", bold=True, center=True)
-    add_text(doc, "Patent Dairesi Başkanlığına", bold=True, center=True)
-    doc.add_paragraph()
-    table = doc.add_table(rows=3, cols=2)
-    table.alignment = WD_TABLE_ALIGNMENT.LEFT
-    labels = ["Başvuru No", "Başvuru Sahibi", "Referans"]
-    values = [opinion.get("application_no", ""), opinion.get("applicant", ""), opinion.get("reference", "")]
-    for row, label, value in zip(table.rows, labels, values):
-        set_cell_text(row.cells[0], label, bold=True)
-        set_cell_text(row.cells[1], f":   {value}")
-    doc.add_paragraph()
-    add_text(doc, "Sayın Uzman,")
+    title_1 = deepcopy(doc.paragraphs[0]._p)
+    title_2 = deepcopy(doc.paragraphs[1]._p)
+    blank_after_meta = deepcopy(doc.paragraphs[2]._p)
+    salutation = deepcopy(doc.paragraphs[3]._p)
+    metadata_table = deepcopy(doc.tables[0]._tbl)
+
+    clear_body(doc)
+    body = doc._element.body
+    body.insert(-1, title_1)
+    body.insert(-1, title_2)
+    body.insert(-1, metadata_table)
+    body.insert(-1, blank_after_meta)
+    body.insert(-1, salutation)
+
+    # Update the cloned 3-column metadata table while preserving the exact
+    # 696809 column widths and layout. Labels remain bold; values remain normal.
+    table = doc.tables[0]
+    values = [
+        opinion.get("application_no", ""),
+        opinion.get("applicant", ""),
+        opinion.get("reference", ""),
+    ]
+    for row, value in zip(table.rows, values):
+        # Col 0 and col 1 already contain the template label and colon.
+        set_cell_text(row.cells[2], str(value), bold=False, size=11)
+        row.cells[2].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
+        # Preserve/force the label semantics requested for the template.
+        for run in row.cells[0].paragraphs[0].runs:
+            run.bold = True
+            run.font.name = "Arial"
+            run.font.size = Pt(11)
+        for run in row.cells[1].paragraphs[0].runs:
+            run.bold = False
+            run.font.name = "Arial"
+            run.font.size = Pt(11)
+
     add_text(doc, opinion.get("intro", ""))
 
     docs = opinion.get("cited_documents") or []
     if docs:
+        doc.add_paragraph()
         for d in docs:
             add_text(doc, f"{d.get('label','')}: {d.get('number','')} {d.get('title','')}")
+        doc.add_paragraph()
+
     for section in opinion.get("sections") or []:
         add_heading(doc, section.get("heading", ""))
         paras = list(section.get("paragraphs") or [])
@@ -946,16 +1001,20 @@ def build_gorus_docx(opinion: dict[str, Any]) -> bytes:
             add_quote(doc, q.get("text", ""))
             if q.get("following"):
                 add_text(doc, q["following"])
+
     combined = opinion.get("combined_assessment") or {}
     if combined:
         add_heading(doc, combined.get("heading", "Dokümanların birlikte değerlendirilmesi"))
         for p in combined.get("paragraphs") or []:
             add_text(doc, p)
+
     for p in opinion.get("conclusion") or []:
         add_text(doc, p)
+
     doc.add_paragraph()
     for line in str(opinion.get("signoff", "Saygılarımızla,\nDESTEK PATENT A.Ş.")).splitlines():
-        add_text(doc, line)
+        add_text(doc, line, bold=True)
+
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
@@ -1446,7 +1505,7 @@ elif work_type == "Görüş hazırlama":
     st.subheader("Görüş hazırlama")
     report_type = st.selectbox("Görüş türü", ["Araştırma raporuna karşı görüş", "İnceleme raporuna karşı görüş"])
     reference = st.text_input("Ana dosya referansı nedir?", value="")
-    output_name = st.text_input("Çıktı dosyasının adı", value="Görüş metni_XXXXXX.docx")
+    output_name = st.text_input("Çıktı dosyasının adı", value="Görüş Metni_XXXXXX.docx")
     report_file = st.file_uploader("Araştırma / inceleme raporu", type=["pdf", "docx", "doc", "txt"], key="gor_report")
     spec_file = st.file_uploader("Tarifname", type=["pdf", "docx", "doc", "txt"], key="gor_spec")
     similar_files = st.file_uploader("Rapordaki X/Y benzer dokümanlar (D1, D2 vb.)", type=["pdf", "docx", "doc", "txt", "zip"], accept_multiple_files=True, key="gor_sim")
@@ -1481,7 +1540,14 @@ elif work_type == "Görüş hazırlama":
                 data = build_gorus_docx(opinion)
                 progress.progress(100, text="Hazır")
                 st.success("Görüş metni oluşturuldu.")
-                st.download_button("Word dosyasını indir", data=data, file_name=safe_output_name(output_name, "Görüş metni.docx"), mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", type="primary")
+                download_name = safe_output_name(output_name, "Görüş Metni.docx")
+                st.download_button(
+                    "Word dosyasını indir",
+                    data=data,
+                    file_name=download_name,
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    type="primary",
+                )
             except Exception as exc:
                 st.exception(exc)
 
