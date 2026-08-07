@@ -1,10 +1,10 @@
-# Patent Atölyesi v5.2
+# Patent Atölyesi v5.3.1
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 07.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.2-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.3.1-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -28,7 +28,7 @@ GitHub web arayüzünde **Add file → Upload files** ile bütün dosyaları yü
 
 `render.yaml` varsayılan model değerini `gpt-5.6` olarak taşır. Hesabınızda farklı model adı kullanılıyorsa Render Environment ekranından değiştirin.
 
-## v5.2'de görüş akışı
+## v5.3.1'de görüş akışı
 
 Görüş bölümü artık doğrudan Word üretmez.
 
@@ -46,7 +46,7 @@ Görüş bölümü artık doğrudan Word üretmez.
 
 Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün olan en küçük ifade/kelime düzeyinde uygulanır.
 
-## v5.2'de tarifname kuralları
+## v5.3.1'de tarifname kuralları
 
 - `Tarifname_181176_template.docx` bağlayıcı şablondur.
 - Kaynaktaki bütün teknik bilgi, özellikle önceki teknik, teknik problem/çözüm, unsurlar, yöntem adımları, formüller, tablolar, deneysel sonuçlar, alternatifler, kullanım senaryoları ve teknik etkiler eksiksiz aktarılır.
@@ -58,8 +58,14 @@ Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün
 - `İSTEMLER` ve `ÖZET` ayrı yeni sayfalardan başlar; başlıklar kalındır.
 - `Buluşun bir gerçekleştirilmesinde` kullanılmaz; `Buluşun bir yapılanmasında` kullanılır.
 - Önceki teknik bölümündeki müşteri anlatımı eksiksiz korunur; patent literatürü bunun yerine geçmez.
-- Tarifname arayüzünde ayrıca `Özel talimat/not` alanı yoktur. Mevcut/revize tarifname varsa doğrudan yüklenir; ayrıca Var/Yok sorusu sorulmaz.
+- Tarifname oluşturma arayüzünde `Mevcut/revize tarifname` alanı yoktur. Mevcut bir tarifnamenin değiştirilmesi ileride ayrı `Tarifname düzenleme` iş akışında ele alınacaktır; yeni tarifname oluşturma akışına karıştırılmaz.
 - Şekiller seçimi literatür araştırmasından önce gösterilir.
+- `TEKNİK ALAN` ilk cümlesi `Buluş, ... ile ilgilidir.` yapısında kurulur. Teknik alan tek paragraf halinde tamamlanabilir; ancak `Buluş, özellikle ...` biçiminde ikinci bir açıklama kullanılacaksa bu ifade ayrı paragrafta başlatılır.
+- `ÖNCEKİ TEKNİK` içinde aynı anlatımın devamı olan `Özellikle`, `Bununla birlikte`, `Bu nedenle` gibi cümleler gereksiz yere ayrı paragraf yapılmaz.
+- Patent literatürü paragraflarında doğrulanmış İngilizce başlık ve Türkçe karşılığı birlikte yazılır.
+- `BULUŞUN DETAYLI AÇIKLAMASI` içinde referanslı unsurlar tek tek ayrı paragraf yapılmaz; unsur açıklamaları tek sürekli paragrafta birleştirilir.
+- Detaylı açıklamadaki yöntem listesinde ara maddeler virgülle, son madde noktayla biter.
+- `Tarifname_181176_template.docx` fontların yanı sıra boş satır, 1,5 satır aralığı, gerçek Word madde işaretleri/numaralandırması ve istemler arası boşluk bakımından da birebir bağlayıcıdır.
 
 ## Tip 3 ön araştırma
 
@@ -81,7 +87,7 @@ Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-07.v4`
+Kural sürümü: `2026-08-07.v6`
 
 ## Yerel çalıştırma
 

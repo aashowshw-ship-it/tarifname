@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-07.v4**
+Kural sürümü: **2026-08-07.v6**
 
 Bu dosya arayüzde kullanılan kuralların okunabilir özetidir. Uygulamanın çalıştırdığı tam metin `rules.py` içindedir.
 
@@ -8,7 +8,7 @@ Bu dosya arayüzde kullanılan kuralların okunabilir özetidir. Uygulamanın ç
 
 BBF'de bulunan bütün teknik bilgiler kullanılmalıdır. Önceki teknik açıklamaları, teknik problem, çözüm, unsurlar, işlevler, yöntem akışı, formüller, matematiksel ilişkiler, deneysel sonuçlar, tablolar, alternatif gerçekleştirmeler, kullanım senaryoları, şekil açıklamaları, referans tablosu ve teknik etkiler atlanamaz.
 
-Kullanıcının mevcut tarifnameye aktardığı veya düzelttiği teknik metin korunur. Metin sırf kısaltmak amacıyla daraltılmaz. Önceden hazırlanmış benzer tarifnameler yalnızca unsur ve istem kurgusunu görmek için kullanılır; bunların teknik içeriği yeni buluşa taşınmaz.
+Yeni tarifname oluşturma akışında teknik kaynak BBF ve açıkça teknik kaynak olarak yüklenen müşteri belgeleridir. `Mevcut/revize tarifname` bu ekranda kullanılmaz; mevcut tarifnameyi değiştirme işlemi ileride ayrı `Tarifname düzenleme` iş akışında ele alınacaktır. Önceden hazırlanmış benzer tarifnameler yalnızca unsur ve istem kurgusunu görmek için kullanılır; bunların teknik içeriği yeni buluşa taşınmaz.
 
 ## 2. Her buluş aynı istem mantığında değildir
 
@@ -109,10 +109,17 @@ Başvuru bilgi alanlarında **Başvuru No**, **Başvuru Sahibi** ve **Referans**
 - Tarifname ve bölüm başlıkları kalındır. `İSTEMLER` yeni bir sayfadan, `ÖZET` ayrıca yeni bir sayfadan başlar.
 - **“Buluşun bir gerçekleştirilmesinde” kullanılmaz; “Buluşun bir yapılanmasında” kullanılır.**
 - Önceki teknik bölümünde müşterinin kaynakta verdiği teknik arka plan, eksiklikler, problem anlatımı ve karşılaştırmalar eksiksiz korunur. Seçilen patent literatürü bunların yerine geçmez, yalnızca ayrı patent paragrafları olarak eklenir.
-- Tarifname oluşturma arayüzünde ayrıca “Var/Yok” şeklinde mevcut tarifname sorusu sorulmaz; varsa mevcut/revize tarifname doğrudan yüklenir. Standart kurallar zaten bağlayıcı olduğu için ayrıca `Özel talimat/not` alanı gösterilmez.
+- Tarifname oluşturma arayüzünde `Mevcut/revize tarifname` alanı bulunmaz. Mevcut tarifnameyi değiştirme işi ayrı `Tarifname düzenleme` akışıdır ve şimdilik bu pakete eklenmemiştir.
 - Şekiller seçimi tarifname akışında literatür araştırmasından önce gösterilir.
+- `TEKNİK ALAN` ilk cümlesi **“Buluş, ... ile ilgilidir.”** biçiminde yazılır. Teknik alan ya tek bir bütün paragraf halinde tamamlanır ve bu paragraf içinde ikinci kez **“Buluş, özellikle ...”** diye başlanmaz; ya da ek açıklama **“Buluş, özellikle ...”** ile verilecekse bu ifade mutlaka ayrı bir paragrafın başlangıcında yer alır.
+- `ÖNCEKİ TEKNİK`te aynı teknik anlatımın devamı olan **“Özellikle...”**, **“Bununla birlikte...”**, **“Bu nedenle...”** gibi cümleler sırf yeni cümle başladığı için ayrı paragraf yapılmaz.
+- Literatür araştırması sonucu eklenen her patent paragrafında **İngilizce başlık + Türkçe başlık karşılığı** birlikte verilir.
+- `BULUŞUN DETAYLI AÇIKLAMASI`nda referanslı unsurlar tek tek ayrı paragraflara bölünmez; unsur açıklamaları tek ve sürekli bir paragrafta birleştirilir. Ayrı yapılanma/alternatif, yöntem listesi ve çalışma prensibi ayrı paragraf olabilir.
+- `Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:` sonrasında ara maddeler virgülle, son madde noktayla biter; maddeler noktalamasız bırakılmaz.
+- Şekillerin kısa açıklamasında gerekli değilse yöntem adımı numara aralığı tekrarlanmaz; kısa ve işlevsel açıklama kullanılır.
+- `Tarifname_181176_template.docx` font ve başlık kadar **boş paragraflar, 1,5 satır aralığı, otomatik istem numaralandırması, gerçek Word madde işaretleri, istemler arası boşluklar ve sayfa geçişleri** bakımından da bağlayıcıdır.
 
-## 12. Görüş v5.2 – analiz, revizyon mutabakatı ve Markup akışı
+## 12. Görüş akışı – analiz, revizyon mutabakatı ve Markup
 
 Görüş modülü artık tek düğmeyle doğrudan Word üretmez. İlk düğme **`1. Raporu analiz et`** düğmesidir. Bu aşamada rapor, inceleme dosyalarında önceki görüş, varsa müşteri bilgisi, tarifname ve X/Y dokümanları birlikte analiz edilir.
 

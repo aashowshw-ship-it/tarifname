@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -98,7 +99,13 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
 
     _add_heading(doc, "TEKNİK ALAN")
     doc.add_paragraph()
-    _add_text(doc, draft.get("technical_field", ""))
+    technical_field_parts = [
+        x.strip() for x in re.split(r"\n\s*\n", str(draft.get("technical_field", "") or "")) if x.strip()
+    ]
+    for idx, paragraph in enumerate(technical_field_parts):
+        _add_text(doc, paragraph)
+        if idx < len(technical_field_parts) - 1:
+            doc.add_paragraph()
     doc.add_paragraph()
 
     _add_heading(doc, "ÖNCEKİ TEKNİK")
@@ -123,14 +130,14 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
     if draft.get("unumbered_system_elements"):
         _add_text(doc, "içermesidir.")
     doc.add_paragraph()
-    _add_text(doc, "Mevcut buluşun yapılanması ve ek elemanlarla birlikte avantajlarının en iyi şekilde anlaşılabilmesi için aşağıda açıklaması yapılan şekiller ile birlikte değerlendirilmesi gerekir.")
+    _add_text(doc, "Buluşun yapılanması ve ek elemanlarla birlikte avantajlarının en iyi şekilde anlaşılabilmesi için aşağıda açıklaması yapılan şekiller ile birlikte değerlendirilmesi gerekmektedir.")
 
     _add_heading(doc, "ŞEKİLLERİN KISA AÇIKLAMASI")
     doc.add_paragraph()
     figures = draft.get("figure_descriptions") or ["Şekil 1, buluşa konu sistemin temsili bir gösterimidir."]
     for x in figures:
         _add_text(doc, x)
-    _add_text(doc, "Çizimlerin mutlaka ölçeklendirilmesi gerekmemektedir ve mevcut buluşu anlamak için gerekli olmayan detaylar ihmal edilmiş olabilmektedir. Bundan başka, en azından büyük ölçüde özdeş olan veya en azından büyük ölçüde özdeş işlevleri olan elemanlar, aynı numara ile gösterilmektedir.")
+    _add_text(doc, "Çizimlerin mutlaka ölçeklendirilmesi gerekmemektedir ve buluşu anlamak için gerekli olmayan detaylar ihmal edilmiş olabilmektedir. Bundan başka, en azından büyük ölçüde özdeş olan veya en azından büyük ölçüde özdeş işlevleri olan elemanlar, aynı numara ile gösterilmektedir.")
 
     _add_heading(doc, "REFERANS NUMARALARI")
     doc.add_paragraph()

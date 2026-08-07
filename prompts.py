@@ -78,6 +78,9 @@ NOTLAR:
 - Kullanıcıya sunulan tarifname metninde BBF veya buluş bildirim formu ifadeleri kullanılmasın.
 - Sistem ve yöntem birlikteyse başlık “... Sistemi ve Yöntemi” biçiminde olsun.
 - “Buluşun bir gerçekleştirilmesinde” yerine “Buluşun bir yapılanmasında” kullanılsın.
+- TEKNİK ALAN ilk cümlesi “Buluş, ... ile ilgilidir.” olsun. Teknik alan ya tek bir bütün paragrafta tamamlanmalı ve bu paragraf içinde yeniden “Buluş, özellikle ...” diye başlanmamalı; ya da ek açıklama “Buluş, özellikle ...” ile verilecekse bu ifade yeni ve ayrı bir paragrafta başlamalıdır. Ayrı paragraf gerekiyorsa technical_field içinde iki paragrafı \n\n ile ayır.
+- Detaylı açıklamada referanslı unsurlar tek sürekli paragrafta anlatılsın.
+- Literatür paragraflarında İngilizce başlık ve Türkçe karşılığı birlikte yazılsın.
 
 YAPILANDIRILMIŞ BBF VERİSİ:
 {json.dumps(extracted, ensure_ascii=False, indent=2)}
@@ -91,7 +94,7 @@ Doküman uydurma. Doğrulanamayan numarayı ekleme. Bu aşamada tarifnameye meti
 JSON dışında hiçbir şey yazma.
 
 ŞEMA:
-{{"documents":[{{"publication_number":"","title":"","publication_date":"","similarity":"","url":""}}]}}
+{{"documents":[{{"publication_number":"","title_en":"","title_tr":"","publication_date":"","similarity":"","url":""}}]}}
 
 BULUŞ VERİSİ:
 {json.dumps(extracted, ensure_ascii=False, indent=2)}

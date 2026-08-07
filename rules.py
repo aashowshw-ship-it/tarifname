@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.2"
-RULESET_VERSION = "2026-08-07.v4"
+APP_VERSION = "v5.3.1"
+RULESET_VERSION = "2026-08-07.v6"
 
 TARIFNAME_RULES = r"""
-TÜRK PATENT TARİFNAME OLUŞTURMA VE REVİZYON KURALLARI
+TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI
 
 A. KAYNAK SADAKATİ VE İÇERİK TAMLIĞI
-1. Teknik içerik bakımından yalnızca ilgili BBF, kullanıcının revize edilmesini istediği mevcut tarifname ve ayrıca teknik kaynak olarak açıkça yüklenen müşteri belgeleri kullanılabilir. Önceden hazırlanmış benzer tarifnameler yalnızca unsur, yöntem adımı, istem ve biçim kurgusunun nasıl kurulacağını görmek için kullanılabilir; bunların teknik içeriği yeni dosyaya taşınamaz.
+1. Yeni tarifname oluşturma modülünde teknik içerik bakımından yalnızca ilgili BBF ve ayrıca teknik kaynak olarak açıkça yüklenen müşteri belgeleri kullanılabilir. Önceden hazırlanmış benzer tarifnameler yalnızca unsur, yöntem adımı, istem ve biçim kurgusunun nasıl kurulacağını görmek için kullanılabilir; bunların teknik içeriği yeni dosyaya taşınamaz.
 2. BBF'deki bütün teknik bilgiler eksiksiz kullanılmalıdır. Özellikle önceki teknik açıklamaları, teknik problem, çözüm, unsurlar, işlevler, yöntem akışı, formüller, matematiksel ilişkiler, deneysel sonuçlar, tablolar, alternatif gerçekleştirmeler, kullanım senaryoları, şekil açıklamaları, referans tablosu ve teknik etkiler atlanamaz veya kısa bir özetle ikame edilemez.
-3. Kullanıcının mevcut tarifnameye aktardığı veya düzelttiği teknik bilgiler korunmalıdır. Kullanıcının metnini gereksiz yere kısaltma, teknik içeriği silme veya başka bir ifadeyle anlam daraltma yapma.
+3. Yeni tarifname oluşturma ekranında “Mevcut/revize tarifname” kaynağı kullanılmaz. Mevcut bir tarifnamenin değiştirilmesi ayrı bir “Tarifname düzenleme” iş akışıdır; bu işlev yeni tarifname oluşturma akışına karıştırılmaz.
 4. Kaynakta bulunmayan unsur, bağlantı, değer, algoritma, formül, teknik etki, kullanım biçimi veya avantaj ekleme. Bir husus açık değilse belirsizlik olarak belirt; uydurma yapma.
 5. Önceki teknik bölümü BBF'de uzun ve ayrıntılı verilmişse aynı kapsam korunmalıdır. Patent literatürü paragrafları BBF'deki önceki teknik anlatımının yerine geçmez; yalnızca seçilmiş patent dokümanları için ayrı paragraflar olarak eklenir.
 6. Formüller ve tablolar kaynakta bulunduğu biçim, değişken anlamları ve bağlamlarıyla korunmalıdır. Formülün zorunlu çekirdek mi yoksa tercihli gerçekleştirme mi olduğu ayrıca değerlendirilmelidir.
@@ -48,26 +48,34 @@ D. İSTEM KURGUSU
 33. İstem numaraları kalın yazılmalıdır.
 34. İstemler oluşturulduktan sonra ikinci bir istem kalite kontrolü yapılmalıdır: zorunlu çekirdek, kapsam, teknik taşıyıcı, unsur sırası, paralel adımların gruplanması, tekrar, dayanak, formül kullanımı ve dil.
 
-E. DİL VE BİÇİM
+E. DİL, PARAGRAF VE BİÇİM
 35. İngilizce teknik terimi ilk geçtiği yerde Türkçesini önce, İngilizcesini parantez içinde ver. Sonraki kullanımlarda yalnızca Türkçe karşılığını kullan. AI yerine yapay zekâ yaz.
 36. Unsur adlarını normal cümle düzeninde yaz; her kelimeyi başlık biçiminde büyük harfle başlatma.
 37. Şablondaki kırmızı/mavi açıklama metinlerini ve biçimlerini koru.
-38. Detaylı açıklamadaki modül ve çalışma prensibi anlatımını gereksiz yere çok sayıda küçük paragrafa bölme; teknik akış elverdiği ölçüde bağlantılı ve sürekli anlat.
+38. Detaylı açıklamadaki modül/unsur ve çalışma prensibi anlatımını gereksiz yere çok sayıda küçük paragrafa bölme; teknik akış elverdiği ölçüde bağlantılı ve sürekli anlat.
 39. İSTEMLER ve ÖZET başlıklarını ortala. Özet tek paragraf ve tercihen tek cümle olacak biçimde kısa tutulmalıdır.
-40. Patent literatürü paragrafında yayın numarası, İngilizce başlık ve Türkçe karşılık birlikte verilmeli; dokümanın teknik konusu ve buluşta bulunmayan temel fark açıkça belirtilmelidir.
+40. Patent literatürü paragrafında yayın/başvuru numarası ile doğrulanmış İngilizce başlık ve bunun Türkçe karşılığı birlikte verilmeli; dokümanın teknik konusu ve buluşta bulunmayan temel fark açıkça belirtilmelidir.
+41. TEKNİK ALAN bölümünün ilk cümlesi "Buluş, ... ile ilgilidir." yapısında kurulmalıdır. Teknik alan ya tek bir bütün paragraf halinde tamamlanmalı ve bu durumda aynı paragraf içinde ikinci kez "Buluş, özellikle ..." diye yeni cümle başlatılmamalı; ya da ek açıklama "Buluş, özellikle ..." ile verilecekse bu ifade mutlaka ayrı bir paragrafın başlangıcı olmalıdır. "Buluş özellikle" yerine "Buluş, özellikle" kullanılır.
+42. ÖNCEKİ TEKNİK bölümünde aynı teknik anlatımın devamı olan "Özellikle...", "Bununla birlikte...", "Bu nedenle...", "Ayrıca...", "Böylece..." gibi devam cümleleri sırf yeni cümle başladığı için ayrı paragraf yapılmaz; önceki paragrafın devamı olarak birleştirilir. Ancak patent literatüründeki her ayrı doküman kendi paragrafında kalır.
+43. BULUŞUN DETAYLI AÇIKLAMASI bölümünde referanslı sistem/cihaz unsurları tek tek ayrı paragraf yapılmaz. Unsurlar BBF sırası ve teknik bağlantıları korunarak tek ve sürekli bir unsur-açıklama paragrafında anlatılır. "Buluşun bir yapılanmasında...", farklı alternatif/gerçekleştirme, yöntem adımları veya çalışma prensibi gibi gerçekten farklı anlatımlar ayrı paragraf olabilir.
+44. "Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:" ifadesinden sonraki madde işaretli adımlar noktalamasız bırakılmaz. Birden fazla adım varsa ara maddeler virgülle, son madde noktayla biter; tek adım varsa noktayla biter.
+45. ŞEKİLLERİN KISA AÇIKLAMASI bölümündeki açıklamalar kısa ve işlevsel tutulur. Akış diyagramı açıklamasında gerekli değilse "1001-1004 numaralı" gibi adım numarası aralıkları tekrarlanmaz; "işlem adımlarını gösteren temsili akış diyagramıdır" türü ifade yeterlidir.
+46. `Tarifname_181176_template.docx` yalnız font ve başlık açısından değil; boş paragraf düzeni, paragraf aralıkları, 1,5 satır aralığı, madde işareti/otomatik numaralandırma yapısı, istemler arası boşluklar, sayfa geçişleri ve hizalamalar bakımından da bağlayıcıdır. Çıktı bu şablonun görsel ritmini birebir takip etmelidir.
 
 F. SON KALİTE KONTROLÜ
-41. Çıktıdan önce şu kontroller birlikte yapılmalıdır: BBF'deki tüm bilgilerin aktarımı, mevcut revizyonların korunması, referans tablosu tamlığı, detaylı açıklama–referans–istem uyumu, yöntem adımı sırası, ana istemin buluşu gerçekten yansıtması, bağımlı istemlerin gerçek daraltma sağlaması, formüller, tablolar ve deneysel sonuçların korunması.
-42. Aynı metinle yazılmış farklı yöntem adımı numaraları özellikle kontrol edilmelidir. Aynı veri farklı aşamalarda kullanılıyorsa aşama farkı metne yansıtılmalıdır.
-43. Kaynaktaki önemli bir bölümün yalnızca özetlenip ayrıntılarının kaybolduğu tespit edilirse taslak tamamlanmış sayılmaz; eksik bilgiler yeniden eklenmelidir.
-44. Sistem ve yöntem istemlerinin birlikte oluşturulduğu durumda buluş başlığı da bu yapıyla uyumlu olmalı ve uygun ise “... Sistemi ve Yöntemi” biçimini taşımalıdır; yalnızca sistem başlığı bırakılmamalıdır.
-45. Patent tarifnamesinin kullanıcıya sunulan metninde “BBF”, “buluş bildirim formu”, “kaynak formda açıklandığı üzere” veya benzeri kaynak-doküman atıfları kullanılmaz. Teknik bilgi doğrudan buluşun açıklaması olarak yazılır.
-46. REFERANS NUMARALARI bölümünde unsur adları başlık biçiminde yazılmaz. Yalnızca ilk kelimenin ilk harfi büyük olur; standart teknik kısaltmalar (SIM, IMEI, API vb.) kendi yazımıyla korunabilir. Aynı unsur adı cümle içinde geçtiğinde cümle gereği küçük harfle başlatılır.
-47. Detaylı açıklamada “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” ifadesinden sonra her işlem madde işaretli yazılır ve numara metnin başında “1001.” biçiminde değil, işlem metninin sonunda “(1001)” biçiminde gösterilir.
-48. Sistem ve yöntem bağımsız istemlerinde ayrı sistem unsurları ve işlem adımları düz cümle halinde arka arkaya verilmez; her unsur/adım ayrı madde işaretiyle gösterilir.
-49. TARİFNAME, bölüm başlıkları, buluş başlığı, İSTEMLER ve ÖZET başlıkları kalın yazılır. İSTEMLER yeni bir sayfadan, ÖZET ayrıca yeni bir sayfadan başlatılır.
-50. “Buluşun bir gerçekleştirilmesinde” kalıbı kullanılmaz. Bu anlatım gereken yerde “Buluşun bir yapılanmasında” yazılır.
-51. Önceki teknik bölümünde kaynakta müşterinin verdiği teknik arka plan, eksiklik, problem ve karşılaştırma bilgileri eksiksiz aktarılır; seçilen patent literatürü bu bilgilerin yerine geçmez ve yalnızca bunlara eklenir.
+47. Çıktıdan önce şu kontroller birlikte yapılmalıdır: BBF'deki tüm bilgilerin aktarımı, referans tablosu tamlığı, detaylı açıklama–referans–istem uyumu, yöntem adımı sırası, ana istemin buluşu gerçekten yansıtması, bağımlı istemlerin gerçek daraltma sağlaması, formüller, tablolar ve deneysel sonuçların korunması.
+48. Aynı metinle yazılmış farklı yöntem adımı numaraları özellikle kontrol edilmelidir. Aynı veri farklı aşamalarda kullanılıyorsa aşama farkı metne yansıtılmalıdır.
+49. Kaynaktaki önemli bir bölümün yalnızca özetlenip ayrıntılarının kaybolduğu tespit edilirse taslak tamamlanmış sayılmaz; eksik bilgiler yeniden eklenmelidir.
+50. Sistem ve yöntem istemlerinin birlikte oluşturulduğu durumda buluş başlığı da bu yapıyla uyumlu olmalı ve uygun ise “... Sistemi ve Yöntemi” biçimini taşımalıdır; yalnızca sistem başlığı bırakılmamalıdır.
+51. Patent tarifnamesinin kullanıcıya sunulan metninde “BBF”, “buluş bildirim formu”, “kaynak formda açıklandığı üzere” veya benzeri kaynak-doküman atıfları kullanılmaz. Teknik bilgi doğrudan buluşun açıklaması olarak yazılır.
+52. REFERANS NUMARALARI bölümünde unsur adları başlık biçiminde yazılmaz. Yalnızca ilk kelimenin ilk harfi büyük olur; standart teknik kısaltmalar (SIM, IMEI, API vb.) kendi yazımıyla korunabilir. Aynı unsur adı cümle içinde geçtiğinde cümle gereği küçük harfle başlatılır.
+53. Detaylı açıklamada “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” ifadesinden sonra her işlem madde işaretli yazılır ve numara metnin başında “1001.” biçiminde değil, işlem metninin sonunda “(1001)” biçiminde gösterilir.
+54. Sistem ve yöntem bağımsız istemlerinde ayrı sistem unsurları ve işlem adımları düz cümle halinde arka arkaya verilmez; her unsur/adım ayrı gerçek Word madde işaretiyle gösterilir.
+55. TARİFNAME, bölüm başlıkları, buluş başlığı, İSTEMLER ve ÖZET başlıkları kalın yazılır. İSTEMLER yeni bir sayfadan, ÖZET ayrıca yeni bir sayfadan başlatılır.
+56. “Buluşun bir gerçekleştirilmesinde” kalıbı kullanılmaz. Bu anlatım gereken yerde “Buluşun bir yapılanmasında” yazılır.
+57. Önceki teknik bölümünde kaynakta müşterinin verdiği teknik arka plan, eksiklik, problem ve karşılaştırma bilgileri eksiksiz aktarılır; seçilen patent literatürü bu bilgilerin yerine geçmez ve yalnızca bunlara eklenir.
+58. Kısa açıklamadaki şekillere geçiş cümlesi “Mevcut buluş...” ile başlamaz; “Buluşun yapılanması...” yapısında yazılır. Çizim açıklama kapanışında da “mevcut buluş” kullanılmaz; “buluş” kullanılır.
+59. Otomatik kalite kontrolünde TEKNİK ALAN giriş kalıbı, önceki teknik devam paragrafları, literatürde İngilizce+Türkçe başlık, detaylı açıklamadaki unsur paragraf bütünlüğü, yöntem adımlarının noktalaması ve şablon boşluk yapısı ayrıca kontrol edilir.
 """
 
 GORUS_RULES = r"""
