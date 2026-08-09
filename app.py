@@ -15,6 +15,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import unquote
+from urllib.request import Request, urlopen
+import html as html_lib
 
 import streamlit as st
 from docx import Document
@@ -33,7 +35,7 @@ except ImportError:  # pragma: no cover - bağımlılık Render üzerinde requir
     fitz = None
 from pypdf import PdfReader
 
-from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, GORUS_RULES, TARIFNAME_RULES
+from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES
 
 BASE_DIR = Path(__file__).resolve().parent
 TARIFNAME_TEMPLATE = BASE_DIR / "Tarifname_181176_template.docx"
@@ -1617,6 +1619,9 @@ Dokümanları teknik yakınlığa göre sırala. Numara, başlık, tarih ve kayn
 BBF:\n{bbf_text}"""
 
 
+# -----------------------------------------------------------------------------
+# TİP 3 - ŞABLONA SIKI SADAKAT / ARAŞTIRMA GÜNCELLEME (v5.4)
+# -----------------------------------------------------------------------------
 def final_selection_prompt(
     bbf_text: str,
     top10: dict[str, Any],
@@ -1624,7 +1629,7 @@ def final_selection_prompt(
     decision_mode: str,
 ) -> str:
     return f"""{ARASTIRMA_RULES}
-Aşağıdaki BBF, sistemin bulduğu 10 doküman ve kullanıcının varsa yüklediği dokümanları birlikte incele.
+Aşağıdaki araştırma konusu, sistemin bulduğu 10 doküman ve kullanıcının varsa yüklediği dokümanları birlikte incele.
 Nihai D1 ve gerekiyorsa D2'yi seç. Kullanıcı dokümanı daha yakınsa D1/D2'yi değiştir.
 Tek doküman bütün esas teknik özellikleri doğrudan ve açık açıklıyorsa D1 ile yenilik sağlanmaz sonucuna git ve D2 seçme.
 Aksi halde D1 ve tamamlayıcı D2 ile buluş basamağını değerlendir.
@@ -1632,36 +1637,39 @@ Kullanıcı sonuç modu: {decision_mode}
 - 'Otomatik belirle' seçildiyse sonucu teknik analize göre belirle.
 - Diğer seçeneklerde raporun sonuç yönünü kullanıcı seçimine göre kur; fakat kaynakta bulunmayan teknik özellik uydurma.
 - D1 ve D2 karşılaştırma satırları aynı özellik listesine ve aynı sıraya sahip olmalıdır.
-- status alanında yalnızca '+' veya '-' kullan; '±' kullanma.
+- Sağ hücre metni çıplak + veya - olmasın. `+ Özet; İstem 1; Şekil 3 ...` veya `- Dokümanda ... açıklanmamaktadır.` mantığında somut dayanak yaz.
+- Patent şekli için model tarafından üretilmiş veya temsili bir görsel verme. Kaynakta bulunan özgün şekle ait doğrudan URL bulunabiliyorsa `figure_image_url` alanına yaz; aksi halde boş bırak.
 JSON dışında yazma.
 ŞEMA:
 {{
- "d1":{{"number":"","title":"","date":"","source":"system/user","summary":"","abstract":"","figure_description":""}},
+ "d1":{{"number":"","alternate_number":"","title":"","date":"","source":"system/user","source_url":"","summary":"","abstract":"","figure_reference":"","figure_image_url":""}},
  "d2":null,
  "novelty_result":"sağlanır/sağlanmaz",
  "inventive_step_result":"sağlanır/sağlanmaz",
  "novelty_reasoning":[""],
  "inventive_step_reasoning":[""],
  "feature_list":[""],
- "comparison_rows_d1":[{{"feature":"","status":"+/-","evidence":""}}],
- "comparison_rows_d2":[{{"feature":"","status":"+/-","evidence":""}}],
- "helper_documents":[{{"number":"","title":"","role":""}}],
+ "comparison_rows_d1":[{{"feature":"","status_evidence":"+ Özet; İstem ...; Şekil ..."}}],
+ "comparison_rows_d2":[{{"feature":"","status_evidence":"- ..."}}],
+ "helper_documents":[{{"number":"","title":"","source_url":"","role":""}}],
  "warnings":[""]
 }}
-BBF:\n{bbf_text}\n
+ARAŞTIRMA KONUSU:\n{bbf_text}\n
 TOP10:\n{json.dumps(top10, ensure_ascii=False, indent=2)}\n
 KULLANICI DOKÜMANLARI:\n{user_docs_text}"""
 
 
 def validate_research_selection(selection: dict[str, Any]) -> None:
-    allowed = {"+", "-"}
     d1_rows = selection.get("comparison_rows_d1") or []
     d2_rows = selection.get("comparison_rows_d2") or []
     for label, rows in (("D1", d1_rows), ("D2", d2_rows)):
         for row in rows:
-            status = str(row.get("status", "")).strip()
-            if status not in allowed:
-                raise ValueError(f"{label} karşılaştırma tablosunda yalnızca + veya - kullanılmalıdır: {status!r}")
+            evidence = str(row.get("status_evidence") or row.get("status") or "").strip()
+            if not (evidence.startswith("+") or evidence.startswith("-")):
+                raise ValueError(f"{label} karşılaştırma hücresi + veya - ile başlamalı ve dayanak içermelidir: {evidence!r}")
+            if evidence.startswith("+") and len(evidence) < 5:
+                raise ValueError(f"{label} karşılaştırma hücresinde '+' yanında dokümandaki somut yer/dayanak da belirtilmelidir.")
+            row["status_evidence"] = evidence
     if selection.get("d2"):
         d1_features = [re.sub(r"\s+", " ", str(row.get("feature", ""))).strip() for row in d1_rows]
         d2_features = [re.sub(r"\s+", " ", str(row.get("feature", ""))).strip() for row in d2_rows]
@@ -1678,7 +1686,7 @@ def report_drafting_prompt(
     decision_mode: str,
 ) -> str:
     return f"""{ARASTIRMA_RULES}
-Aşağıdaki verilere göre Ön Araştırma Raporu_181612 biçiminde ayrıntılı rapor içeriği oluştur.
+Aşağıdaki verilere göre bağlayıcı `On_Arastirma_Raporu_181612_template.docx` içeriğine tam uyumlu Ön Araştırma Raporu metni oluştur.
 DP referans numarası: {reference}
 Araştırma kesim tarihi: {cutoff_date}
 Kullanıcı sonuç modu: {decision_mode}
@@ -1689,16 +1697,14 @@ JSON dışında yazma.
  "title":"",
  "report_date":"{date.today().strftime('%d.%m.%Y')}",
  "purpose":"Belirlenen konuda araştırmanın gerçekleştirilmesi",
- "scope":"Global (Araştırma kesim tarihine kadar ilan edilmiş patent başvuruları)",
- "cutoff_date":"{cutoff_date}",
+ "scope":"Global ({cutoff_date} tarihine kadar ilan edilmiş olan patent başvuruları)",
  "keywords":[""],
  "ipc_cpc":[{{"code":"","description":""}}],
  "evaluation_intro":"",
- "novelty_heading":"2.1. Yenilik Değerlendirmesi",
  "documents":[{{
-   "label":"D1","number":"","alternate_number":"","title":"","date":"",
+   "label":"D1","number":"","alternate_number":"","title":"","date":"","source_url":"","figure_reference":"","figure_image_url":"",
    "description":["2-3 cümle"],"abstract":"","figure_caption":"D1- Şekil",
-   "comparison_rows":[{{"feature":"","status":"+/-"}}],
+   "comparison_rows":[{{"feature":"","status_evidence":"+ Özet; İstem ...; Şekil ..."}}],
    "novelty_assessment":["5-10 satırlık değerlendirme"]
  }}],
  "inventive_step_paragraphs":[""],
@@ -1709,122 +1715,430 @@ JSON dışında yazma.
 ÖZEL:
 - selection.d2 null ise yalnızca D1 bölümü oluştur.
 - D1 ve D2 tablolarındaki feature alanları birebir aynı ve aynı sırada olmalıdır.
-- status alanında yalnızca '+' veya '-' kullan.
+- comparison_rows sağ hücresi `status_evidence` alanıdır; + veya - ile başlar ve dokümandaki yeri açıkça yazar. Çıplak + / - kullanma.
+- `documents` alanındaki D1/D2, NİHAİ SEÇİM içindeki D1/D2 ile aynı dokümanlar olmalı; yayın numarası, alternatif numara, başlık, tarih, source_url ve figure_image_url bilgilerini aynen taşı.
+- Rapor metninde BBF/buluş bildirim formu ifadesi kullanma; `araştırma konusu` de.
+- `→`, `=>` veya `özellik + özellik + özellik` gibi sembolik/yapay zekâ görünümlü anlatım kullanma.
+- Yardımcı dokümanları yeni bir D3 başlığı açmadan yalnız buluş basamağı değerlendirmesinin doğal paragraf akışında kullan.
+- Şablonda olmayan bölüm/başlık ekleme.
 - Sonuçta yenilik ve buluş basamağı sonucunu açıkça yaz.
-- Yardımcı dokümanları yalnızca buluş basamağına destek olarak kullan.
-- Şablonda olmayan 'İncelenen diğer yakın dokümanlar...' benzeri cümle ekleme.
 - Metni ikinci kez kontrol edip düzelt.
-BBF:\n{bbf_text}\n
+ARAŞTIRMA KONUSU:\n{bbf_text}\n
 TOP10:\n{json.dumps(top10, ensure_ascii=False, indent=2)}\n
 NİHAİ SEÇİM:\n{json.dumps(selection, ensure_ascii=False, indent=2)}"""
 
 
-def build_research_docx(report: dict[str, Any]) -> bytes:
-    doc = Document(str(ARASTIRMA_TEMPLATE))
-    clear_body(doc)
-    for section in doc.sections:
-        section.top_margin = Cm(2.0)
-        section.bottom_margin = Cm(1.8)
-        section.left_margin = Cm(1.7)
-        section.right_margin = Cm(1.7)
+def research_update_analysis_prompt(first_text: str, revised_text: str, prior_report_text: str) -> str:
+    return f"""{ARASTIRMA_GUNCELLEME_RULES}
+İlk araştırma konusu, revize araştırma konusu ve ilk Ön Araştırma Raporunu birlikte analiz et.
+Bu aşamada web araştırması yapma ve Word raporu yazma. İlk ve revize teknik içerik arasındaki gerçek teknik farkları çıkar; yalnız ifade/başlık değişikliklerini teknik katkı sayma.
+İlk rapordaki D1/D2 ile yenilik/buluş basamağı gerekçelerini ayrıca çıkar ve her yeni farkın bu gerekçeler üzerindeki etkisini değerlendir.
+JSON dışında yazma.
+ŞEMA:
+{{
+ "first_title":"",
+ "revised_title":"",
+ "prior_d1":{{"number":"","alternate_number":"","title":"","date":""}},
+ "prior_d2":{{"number":"","alternate_number":"","title":"","date":""}},
+ "prior_novelty_result":"sağlanır/sağlanmaz/belirsiz",
+ "prior_inventive_step_result":"sağlanır/sağlanmaz/belirsiz",
+ "differences":[{{
+   "old":"",
+   "new":"",
+   "technical_contribution":"evet/hayır/kısmen",
+   "technical_effect":"",
+   "effect_against_prior_d1_d2":""
+ }}],
+ "meaningful_change":true,
+ "search_focus":[""],
+ "preliminary_opinion":"",
+ "reasons":[""]
+}}
+İLK ARAŞTIRMA KONUSU:\n{first_text}\n
+REVİZE ARAŞTIRMA KONUSU:\n{revised_text}\n
+İLK ÖN ARAŞTIRMA RAPORU:\n{prior_report_text}"""
 
-    # Kapak
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    r = p.add_run("DP Referans Numarası\n" + report.get("reference", ""))
-    r.bold = True
-    r.font.name = "Arial"
-    r.font.size = Pt(12)
-    doc.add_paragraph()
-    add_text(doc, "ÖN ARAŞTIRMA RAPORU", bold=True, center=True, size=14)
-    doc.add_paragraph()
-    add_text(doc, report.get("title", ""), bold=True, center=True, size=13)
-    doc.add_paragraph()
-    add_text(doc, "RAPOR İÇERİĞİ:", bold=True)
-    for item in ["1. ÖN ARAŞTIRMA KRİTERLERİ", "2. PATENTLENEBİLİRLİK DEĞERLENDİRMESİ", "2.1 Yenilik Değerlendirmesi", "2.2 Buluş Basamağı Değerlendirmesi", "3. SONUÇ"]:
-        add_text(doc, item)
-    doc.add_paragraph()
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    run = p.add_run("Rapor Düzenleme Tarihi:\n" + report.get("report_date", ""))
-    run.bold = True
-    run.font.name = "Arial"
-    run.font.size = Pt(11)
-    doc.add_page_break()
 
-    add_heading(doc, "1. ÖN ARAŞTIRMA KRİTERLERİ")
-    criteria = doc.add_table(rows=5, cols=2)
-    criteria.alignment = WD_TABLE_ALIGNMENT.LEFT
-    rows = [
-        ("Amaç", report.get("purpose", "")),
-        ("Konu", report.get("title", "")),
-        ("Kapsam", report.get("scope", "")),
-        ("Anahtar Kelimeler", "\n".join(report.get("keywords") or [])),
-        ("IPC/CPC Kodu", "\n".join(f"{x.get('code','')}: {x.get('description','')}" for x in report.get("ipc_cpc") or [])),
-    ]
-    for row, (label, value) in zip(criteria.rows, rows):
-        set_cell_text(row.cells[0], label, bold=True)
-        set_cell_text(row.cells[1], value)
-    add_text(doc, "Araştırma kapsamının belirlenmesi aşamasında tarafımıza ulaştırılan ‘buluş bilgileri’ temel alınmış ve yukarıda belirtilen anahtar kelimeler ile türevleri kullanılarak sorgulama yapılmıştır. Ayrıca konu ile ilgili olarak belirlenen anahtar kelimeler, uluslararası IPC ve CPC patent sınıflandırmasına ait kodlamalar ile uyumlu hale getirilerek belirlenen teknik kapsam içerisinde araştırma gerçekleştirilmiştir.", italic=True)
+def research_update_search_prompt(
+    revised_text: str,
+    prior_report_text: str,
+    analysis: dict[str, Any],
+    cutoff_date: str,
+) -> str:
+    return f"""{ARASTIRMA_GUNCELLEME_RULES}
+Revize araştırma konusu için araştırma kesim tarihi {cutoff_date} olacak şekilde global patent araştırması yap.
+İlk ön araştırma raporundaki D1/D2'yi başlangıç noktası olarak doğrula; özellikle revizyonda eklenen ayırt edici teknik özelliklere odaklan. Eski sorguyu aynen tekrarlama.
+TR, EP, US, CN, KR, JP, GB, DE, WIPO ve ilgili diğer veri tabanlarında araştır. En yakın toplam 10 doğrulanmış patent dokümanını sırala. İlk D1/D2 bu 10 içinde olabilir.
+Yeni bulunan ve ilk raporda bulunmayan dokümanları ayrıca işaretle. Nihai D1/D2'yi seç; yeni bir belge daha güçlü ise D1/D2'yi değiştir, değilse yardımcı doküman olarak tut.
+D1/D2 karşılaştırma tablosunun sağ hücrelerinde yalnız + / - verme; somut yer/dayanak belirt.
+Özgün patent şekli için doğrulanabilir doğrudan `figure_image_url` bulunabiliyorsa yaz. Model tarafından şekil üretme.
+JSON dışında yazma.
+ŞEMA:
+{{
+ "documents":[{{"rank":1,"publication_number":"","alternate_number":"","title":"","date":"","jurisdiction":"","source_url":"","is_new_vs_prior_report":true,"summary":"","matching_revision_features":[""],"missing_revision_features":[""],"relevance_score":0}}],
+ "new_documents":[{{"number":"","title":"","date":"","source_url":"","technical_relevance":""}}],
+ "d1":{{"number":"","alternate_number":"","title":"","date":"","source_url":"","summary":"","abstract":"","figure_reference":"","figure_image_url":""}},
+ "d2":{{"number":"","alternate_number":"","title":"","date":"","source_url":"","summary":"","abstract":"","figure_reference":"","figure_image_url":""}},
+ "feature_list":[""],
+ "comparison_rows_d1":[{{"feature":"","status_evidence":"+ Özet; İstem ...; Şekil ..."}}],
+ "comparison_rows_d2":[{{"feature":"","status_evidence":"- ..."}}],
+ "helper_documents":[{{"number":"","title":"","date":"","source_url":"","role":""}}],
+ "novelty_result":"sağlanır/sağlanmaz",
+ "inventive_step_result":"sağlanır/sağlanmaz",
+ "technical_opinion":"Kanaatim: ...",
+ "totalpatent_query":"TotalPatent arama sorgusu: ..."
+}}
+REVİZE ARAŞTIRMA KONUSU:\n{revised_text}\n
+İLK ÖN ARAŞTIRMA RAPORU:\n{prior_report_text}\n
+FARK ANALİZİ:\n{json.dumps(analysis, ensure_ascii=False, indent=2)}"""
 
-    add_heading(doc, "2. DEĞERLENDİRME")
-    add_text(doc, report.get("evaluation_intro", ""))
-    add_heading(doc, report.get("novelty_heading", "2.1. Yenilik Değerlendirmesi"))
-    for d in report.get("documents") or []:
-        header = f"{d.get('label','')}- {d.get('number','')}"
-        if d.get("alternate_number"):
-            header += f" ({d.get('alternate_number')})"
-        header += f"- {d.get('title','')}- {d.get('date','')}"
-        add_heading(doc, header)
-        for p in d.get("description") or []:
-            add_text(doc, p)
-        add_heading(doc, f"{d.get('label','')}-Özet")
-        add_text(doc, d.get("abstract", ""))
-        add_heading(doc, d.get("figure_caption", f"{d.get('label','')}- Şekil"))
-        add_text(doc, "[İlgili patent şekli mevcutsa buraya eklenir.]")
-        add_text(doc, f"Araştırma konusu ile {d.get('label','')} dokümanı arasında benzerlik değerlendirmesi:", italic=True)
-        table = doc.add_table(rows=1, cols=2)
-        table.alignment = WD_TABLE_ALIGNMENT.CENTER
-        set_cell_text(table.rows[0].cells[0], "Araştırma konusu", bold=True)
-        set_cell_text(table.rows[0].cells[1], f"{d.get('label','')} Dokümanı", bold=True)
-        for row in d.get("comparison_rows") or []:
+
+def research_update_report_prompt(
+    revised_text: str,
+    prior_report_text: str,
+    analysis: dict[str, Any],
+    research: dict[str, Any],
+    reference: str,
+    cutoff_date: str,
+    decision_mode: str,
+) -> str:
+    return f"""{ARASTIRMA_GUNCELLEME_RULES}
+Aşağıdaki verilerden `On_Arastirma_Raporu_181612_template.docx` biçiminde nihai Ön Araştırma Raporu metni oluştur.
+Bu bir güncelleme çalışması olsa da Word raporunda yeni bir format veya `Revizyon farkları` bölümü açma. Tam Tip 3 Ön Araştırma Raporu düzenini kullan.
+DP referans numarası: {reference}
+Araştırma kesim tarihi: {cutoff_date}
+Kullanıcının buluş basamağı sonuç seçimi: {decision_mode}
+Araştırmanın teknik yenilik sonucu: {research.get('novelty_result','')}
+
+Kullanıcı 'Buluş basamağı sağlanıyor' seçtiyse inventive step sonucunu `sağlanır`, 'Buluş basamağı sağlanmıyor' seçtiyse `sağlanmaz` yaz. Ancak yenilik sonucu kaynaklarla çelişecek şekilde değiştirilmez.
+İlk rapora atıf gerekiyorsa `ilk ön araştırma raporu`, teknik konuya atıf gerekiyorsa `revize araştırma konusu` de. `BBF` ifadesi kullanma.
+Yeni bulunan yardımcı dokümanları şablonda olmayan D3/D4 başlığı açmadan buluş basamağı değerlendirmesinin doğal paragrafı içinde açıkla. Daha güçlü yeni doküman D1/D2 seçilmişse normal D1/D2 bölümünde kullan.
+`documents` alanındaki D1 ve D2, YENİ ARAŞTIRMA içindeki `d1` ve `d2` ile aynı dokümanlar olmalı; yayın numarası, alternatif numara, başlık, tarih, source_url, figure_reference ve figure_image_url bilgilerini değiştirmeden taşı.
+Karşılaştırma hücrelerinde + veya - işaretinin ardından dokümandaki somut yeri yaz.
+`→`, `=>`, oklar veya `özellik + özellik` gibi kısa sembolik anlatım kullanma.
+JSON dışında yazma.
+ŞEMA:
+{{
+ "reference":"{reference}",
+ "title":"",
+ "report_date":"{date.today().strftime('%d.%m.%Y')}",
+ "purpose":"Belirlenen konuda araştırmanın gerçekleştirilmesi",
+ "scope":"Global ({cutoff_date} tarihine kadar ilan edilmiş olan patent başvuruları)",
+ "keywords":[""],
+ "ipc_cpc":[{{"code":"","description":""}}],
+ "evaluation_intro":"",
+ "documents":[{{
+   "label":"D1","number":"","alternate_number":"","title":"","date":"","source_url":"","figure_reference":"","figure_image_url":"",
+   "description":[""],"abstract":"","figure_caption":"D1- Şekil",
+   "comparison_rows":[{{"feature":"","status_evidence":"+ Özet; İstem ...; Şekil ..."}}],
+   "novelty_assessment":[""]
+ }}],
+ "inventive_step_paragraphs":[""],
+ "conclusion_paragraphs":[""],
+ "warnings":[""],
+ "attachments":["Benzer Dokümanlar","Ön İnceleme Raporu","Makine Tercümeleri"]
+}}
+REVİZE ARAŞTIRMA KONUSU:\n{revised_text}\n
+İLK ÖN ARAŞTIRMA RAPORU:\n{prior_report_text}\n
+FARK ANALİZİ:\n{json.dumps(analysis, ensure_ascii=False, indent=2)}\n
+YENİ ARAŞTIRMA:\n{json.dumps(research, ensure_ascii=False, indent=2)}"""
+
+
+def _iter_strings(value: Any):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from _iter_strings(v)
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            yield from _iter_strings(v)
+
+
+def validate_research_report_language(report: dict[str, Any]) -> None:
+    banned = [r"\bBBF\b", r"buluş bildirim formu", r"→", r"=>"]
+    # Tablo durum/evidence hücrelerindeki + / - izinlidir; diğer alanlarda ok ve BBF dili yasaktır.
+    for text in _iter_strings(report):
+        for pattern in banned:
+            if re.search(pattern, text, flags=re.IGNORECASE):
+                raise ValueError(f"Ön araştırma raporu metninde kullanılmaması gereken ifade bulundu: {pattern}")
+
+
+def _replace_paragraph_text_preserve_format(paragraph, text: str) -> None:
+    proto = next((r for r in paragraph.runs if r.text or r._r.rPr is not None), None)
+    proto_rpr = deepcopy(proto._r.rPr) if proto is not None and proto._r.rPr is not None else None
+    paragraph.clear()
+    run = paragraph.add_run(str(text or ""))
+    if proto_rpr is not None:
+        current = run._r.rPr
+        if current is not None:
+            run._r.remove(current)
+        run._r.insert(0, proto_rpr)
+
+
+def _replace_cell_text_preserve_format(cell, text: str) -> None:
+    p = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
+    _replace_paragraph_text_preserve_format(p, text)
+    # Hücrede önceki metinden kalan fazladan paragrafları temizle; hücre ölçüsü/kenarlıkları korunur.
+    for extra in list(cell.paragraphs[1:]):
+        extra._element.getparent().remove(extra._element)
+
+
+def _replace_cell_lines_preserve_format(cell, lines: list[str]) -> None:
+    vals = [str(x).strip() for x in lines if str(x).strip()]
+    protos = list(cell.paragraphs)
+    # keep at least one paragraph
+    while len(cell.paragraphs) > 1:
+        extra = cell.paragraphs[-1]
+        extra._element.getparent().remove(extra._element)
+    if not vals:
+        _replace_paragraph_text_preserve_format(cell.paragraphs[0], "")
+        return
+    _replace_paragraph_text_preserve_format(cell.paragraphs[0], vals[0])
+    for i, value in enumerate(vals[1:], 1):
+        new_p = cell.add_paragraph()
+        if i < len(protos):
+            src = protos[i]
+            # paragraph properties
+            if src._p.pPr is not None:
+                new_p._p.insert(0, deepcopy(src._p.pPr))
+            proto_run = next((r for r in src.runs if r.text or r._r.rPr is not None), None)
+            run = new_p.add_run(value)
+            if proto_run is not None and proto_run._r.rPr is not None:
+                if run._r.rPr is not None:
+                    run._r.remove(run._r.rPr)
+                run._r.insert(0, deepcopy(proto_run._r.rPr))
+        else:
+            _replace_paragraph_text_preserve_format(new_p, value)
+
+
+def _fill_keyword_table(cell, keywords: list[str]) -> None:
+    if not cell.tables:
+        return
+    table = cell.tables[0]
+    vals = [str(x).strip() for x in keywords if str(x).strip()][:10]
+    vals += [""] * (10 - len(vals))
+    k = 0
+    for row in table.rows:
+        for c in row.cells:
+            _replace_cell_text_preserve_format(c, vals[k])
+            k += 1
+
+
+def _replace_comparison_table(table, rows: list[dict[str, Any]], label: str) -> None:
+    # Şablon başlığını, satır yüksekliğini, hücre genişliklerini ve yazı biçimini koru.
+    header = table.rows[0]
+    _replace_cell_text_preserve_format(header.cells[0], "Araştırma konusu")
+    _replace_cell_text_preserve_format(header.cells[1], f"{label} Dokümanı")
+    prototype_tr = deepcopy(table.rows[1]._tr) if len(table.rows) > 1 else None
+    for tr in list(table._tbl.tr_lst)[1:]:
+        table._tbl.remove(tr)
+    for item in rows:
+        if prototype_tr is not None:
+            table._tbl.append(deepcopy(prototype_tr))
+            cells = table.rows[-1].cells
+        else:
             cells = table.add_row().cells
-            set_cell_text(cells[0], row.get("feature", ""))
-            set_cell_text(cells[1], row.get("status", row.get("status_evidence", "")), bold=True)
-        add_text(doc, "(+) İlgili özelliğin benzer dokümanda yer aldığını ifade etmektedir.\n(-) İlgili özelliğin benzer dokümanda yer almadığını ifade etmektedir.", size=9)
-        for p in d.get("novelty_assessment") or []:
-            add_text(doc, p)
+        _replace_cell_text_preserve_format(cells[0], str(item.get("feature", "")))
+        evidence = str(item.get("status_evidence") or item.get("status") or "").strip()
+        _replace_cell_text_preserve_format(cells[1], evidence)
 
-    add_heading(doc, "2.2. Buluş Basamağı Değerlendirmesi")
-    for p in report.get("inventive_step_paragraphs") or []:
-        add_text(doc, p)
-    add_heading(doc, "3. SONUÇ")
-    for p in report.get("conclusion_paragraphs") or []:
-        add_text(doc, p)
-    if report.get("warnings"):
-        add_heading(doc, "Uyarılar")
-        for warning in report["warnings"]:
-            add_bullet(doc, warning, symbol="▪")
-    add_text(doc, "Bilgilerinize sunar, çalışmalarınızda başarılar dileriz.")
-    add_text(doc, "Saygılarımızla,")
-    doc.add_page_break()
-    add_heading(doc, "Ekler:")
-    for item in report.get("attachments") or []:
-        add_bullet(doc, item)
-    add_heading(doc, "Önemli Not:")
-    notes = [
-        "Ön araştırma; rapor düzenleme tarihine kadar yayınlanan patent/faydalı model müracaatlarını kapsar.",
-        "Raporlanan dokümanlar, aynı teknik alandaki birçok patent başvurusundan kapsamın olabildiğince geniş tutulması kaydıyla daraltılarak incelemenize sunulan patentlerdir.",
-        "Orijinallerine ek olarak sunulan makine tercümelerinin anlaşılırlığı ve güvenirliği konusunda güvence verilemez. Ticari/hukuki kritik kararlar bunlara dayandırılmamalıdır.",
-        "Bazı ülkelerin resmi veritabanlarını güncellememesinden kaynaklanabilecek eksiklikler olabilir.",
-        "Çalışmamız resmi nitelikli bir araştırma değildir. Resmi patent araştırmaları ülkelerin patent ofisleri nezdinde yapılabilmektedir.",
-    ]
-    for i, note in enumerate(notes, 1):
-        add_text(doc, f"{i}. {note}", size=9)
+
+def _safe_remote_url(url: str) -> bool:
+    url = str(url or "").strip().lower()
+    return url.startswith("https://patents.google.com/") or url.startswith("https://patentimages.storage.googleapis.com/") or url.startswith("https://patentscope.wipo.int/") or url.startswith("https://worldwide.espacenet.com/")
+
+
+def _fetch_remote_bytes(url: str, timeout: int = 30) -> bytes:
+    if not _safe_remote_url(url):
+        raise ValueError("Patent şekli için yalnız doğrulanabilir patent kaynağı URL'si kullanılabilir.")
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0 PatentAtolyesi/5.4"})
+    with urlopen(req, timeout=timeout) as resp:
+        data = resp.read(25 * 1024 * 1024 + 1)
+    if len(data) > 25 * 1024 * 1024:
+        raise ValueError("Patent şekli dosyası beklenenden büyük.")
+    return data
+
+
+def _google_patent_image_urls(source_url: str) -> list[str]:
+    if not str(source_url).startswith("https://patents.google.com/"):
+        return []
+    try:
+        html = _fetch_remote_bytes(source_url).decode("utf-8", errors="ignore")
+    except Exception:
+        return []
+    urls = re.findall(r"https://patentimages\.storage\.googleapis\.com/[^\"'<>\s]+?\.(?:png|jpg|jpeg|webp)", html, flags=re.I)
+    out: list[str] = []
+    seen: set[str] = set()
+    for url in urls:
+        url = html_lib.unescape(url)
+        if url in seen:
+            continue
+        seen.add(url)
+        out.append(url)
+    return out
+
+
+def _normalize_image_bytes(data: bytes) -> bytes:
+    with Image.open(io.BytesIO(data)) as im:
+        im.load()
+        if im.width < 300 or im.height < 180:
+            raise ValueError("Patent şekli çözünürlüğü yetersiz.")
+        if im.format == "PNG":
+            return data
+        out = io.BytesIO()
+        if im.mode not in {"RGB", "RGBA", "L"}:
+            im = im.convert("RGB")
+        im.save(out, format="PNG")
+        return out.getvalue()
+
+
+def resolve_original_patent_figure(document_info: dict[str, Any]) -> bytes | None:
+    """Yalnız özgün patent kaynağından şekil getirir; hiçbir zaman yapay şekil üretmez."""
+    candidates: list[str] = []
+    direct = str(document_info.get("figure_image_url") or "").strip()
+    if direct:
+        candidates.append(direct)
+    source = str(document_info.get("source_url") or "").strip()
+    if source:
+        urls = _google_patent_image_urls(source)
+        # D00000 çoğunlukla kapak/ilk çizim sayfasıdır; mümkünse ilk gerçek çizim sayfasını seç.
+        preferred = [u for u in urls if "D00000" not in u.upper()]
+        candidates.extend(preferred or urls)
+    seen: set[str] = set()
+    for url in candidates:
+        if url in seen:
+            continue
+        seen.add(url)
+        try:
+            return _normalize_image_bytes(_fetch_remote_bytes(url))
+        except Exception:
+            continue
+    return None
+
+
+def _report_pdf_fallback_figures(asset: UploadedAsset | None) -> list[bytes]:
+    """İlk raporda zaten bulunan özgün patent şekillerini son çare olarak yeniden kullanır."""
+    if asset is None:
+        return []
+    imgs = extract_embedded_images(asset)
+    unique: list[tuple[int, bytes]] = []
+    seen: set[str] = set()
+    import hashlib
+    for img in imgs:
+        try:
+            with Image.open(io.BytesIO(img.data)) as im:
+                area = im.width * im.height
+                if im.width < 420 or im.height < 230:
+                    continue
+        except Exception:
+            continue
+        h = hashlib.sha1(img.data).hexdigest()
+        if h in seen:
+            continue
+        seen.add(h)
+        unique.append((area, img.data))
+    # Patent şekilleri rapor logolarından belirgin biçimde daha büyük olur. Belge sırasını mümkün olduğunca korumak için
+    # ilk dört büyük adayı alıp kaynak çıkarma sırasına göre kullanıyoruz.
+    large_hashes = {hashlib.sha1(data).hexdigest() for _, data in sorted(unique, key=lambda x: x[0], reverse=True)[:4]}
+    return [data for _, data in unique if hashlib.sha1(data).hexdigest() in large_hashes]
+
+
+def _replace_figure_paragraph(paragraph, image_data: bytes | None) -> None:
+    paragraph.clear()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if not image_data:
+        return
+    try:
+        with Image.open(io.BytesIO(image_data)) as im:
+            w, h = im.size
+        max_w_cm, max_h_cm = 15.8, 11.5
+        ratio = min(max_w_cm / max(w, 1), max_h_cm / max(h, 1))
+        width_cm = max(5.0, min(max_w_cm, w * ratio))
+        paragraph.add_run().add_picture(io.BytesIO(image_data), width=Cm(width_cm))
+    except Exception as exc:
+        raise ValueError("Özgün patent şekli Word raporuna eklenemedi.") from exc
+
+
+def build_research_docx(report: dict[str, Any], figure_fallbacks: list[bytes] | None = None) -> bytes:
+    """Bağlayıcı Tip 3 şablonunu yerinde doldurur; gövdeyi yeniden kurmaz."""
+    validate_research_report_language(report)
+    docs = report.get("documents") or []
+    if not docs:
+        raise ValueError("Rapor için D1 dokümanı bulunamadı.")
+    if len(docs) > 2:
+        docs = docs[:2]
+    d1 = docs[0]
+    d2 = docs[1] if len(docs) > 1 else None
+
+    doc = Document(str(ARASTIRMA_TEMPLATE))
+    ps = doc.paragraphs
+    if len(ps) < 107 or len(doc.tables) < 5:
+        raise ValueError("Bağlayıcı Ön Araştırma Raporu şablonunun yapısı beklenen formatta değil.")
+
+    # Kapak ve kriterler: paragraf/boşluk/section yapısı aynen korunur.
+    _replace_paragraph_text_preserve_format(ps[1], report.get("reference", ""))
+    _replace_paragraph_text_preserve_format(ps[6], report.get("title", ""))
+    _replace_paragraph_text_preserve_format(ps[29], report.get("report_date", date.today().strftime('%d.%m.%Y')))
+
+    criteria = doc.tables[0]
+    _replace_cell_text_preserve_format(criteria.rows[0].cells[2], report.get("purpose", "Belirlenen konuda araştırmanın gerçekleştirilmesi"))
+    _replace_cell_text_preserve_format(criteria.rows[1].cells[2], report.get("title", ""))
+    _replace_cell_text_preserve_format(criteria.rows[2].cells[2], report.get("scope", "Global (İlan edilmiş olan patent başvuruları)"))
+    _fill_keyword_table(criteria.rows[3].cells[2], report.get("keywords") or [])
+    ipc_lines = [f"{x.get('code','')}: {x.get('description','')}" for x in report.get("ipc_cpc") or []]
+    _replace_cell_lines_preserve_format(criteria.rows[4].cells[2], ipc_lines)
+
+    _replace_paragraph_text_preserve_format(ps[36], report.get("evaluation_intro", ""))
+
+    def apply_doc(block: dict[str, Any], label: str, indices: dict[str, int], table_idx: int, fallback_idx: int):
+        header = f"{label}- {block.get('number','')}"
+        if block.get("alternate_number"):
+            header += f" ({block.get('alternate_number')})"
+        header += f"- {block.get('title','')}- {block.get('date','')}"
+        _replace_paragraph_text_preserve_format(ps[indices['header']], header)
+        _replace_paragraph_text_preserve_format(ps[indices['description']], " ".join(block.get("description") or []))
+        _replace_paragraph_text_preserve_format(ps[indices['abstract']], block.get("abstract", ""))
+        _replace_paragraph_text_preserve_format(ps[indices['figure_heading']], block.get("figure_caption", f"{label}- Şekil"))
+        _replace_paragraph_text_preserve_format(ps[indices['comparison_heading']], f"Araştırma konusu ile {label} dokümanı arasında benzerlik değerlendirmesi:")
+        _replace_comparison_table(doc.tables[table_idx], block.get("comparison_rows") or [], label)
+        _replace_paragraph_text_preserve_format(ps[indices['assessment']], " ".join(block.get("novelty_assessment") or []))
+        fig = resolve_original_patent_figure(block)
+        if fig is None and figure_fallbacks and fallback_idx < len(figure_fallbacks):
+            fig = figure_fallbacks[fallback_idx]
+        if fig is None:
+            raise ValueError(f"{label} için özgün patent şekli otomatik temin edilemedi. Yapay şekil oluşturulmadı; ilgili patentin orijinal PDF/şekil kaynağı gereklidir.")
+        _replace_figure_paragraph(ps[indices['figure']], fig)
+
+    apply_doc(d1, "D1", {"header":40,"description":42,"abstract":46,"figure_heading":47,"figure":48,"comparison_heading":49,"assessment":55}, 2, 0)
+
+    if d2:
+        apply_doc(d2, "D2", {"header":57,"description":59,"abstract":62,"figure_heading":64,"figure":65,"comparison_heading":66,"assessment":71}, 3, 1)
+    else:
+        # Şablonda D2 için ayrılmış alanı görünmez kıl; diğer format öğelerini bozma.
+        for i in [57,59,61,62,64,65,66,68,69,71]:
+            _replace_paragraph_text_preserve_format(ps[i], "")
+        for tr in list(doc.tables[3]._tbl.tr_lst)[1:]:
+            doc.tables[3]._tbl.remove(tr)
+        _replace_cell_text_preserve_format(doc.tables[3].rows[0].cells[0], "")
+        _replace_cell_text_preserve_format(doc.tables[3].rows[0].cells[1], "")
+
+    inv = report.get("inventive_step_paragraphs") or []
+    slots = [75, 77, 79, 81]
+    for i, pidx in enumerate(slots):
+        _replace_paragraph_text_preserve_format(ps[pidx], inv[i] if i < len(inv) else "")
+
+    conclusion = report.get("conclusion_paragraphs") or []
+    _replace_paragraph_text_preserve_format(ps[85], " ".join(conclusion))
+
+    # Uyarılar tablosu şablonun kendi yerinde kalır; ayrı yeni bölüm açılmaz.
+    warnings = [str(x).strip() for x in (report.get("warnings") or []) if str(x).strip()]
+    warning_text = "\n".join(warnings)
+    _replace_cell_text_preserve_format(doc.tables[4].rows[0].cells[2], warning_text)
+
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
-
 
 # -----------------------------------------------------------------------------
 # ARAYÜZ
@@ -1842,36 +2156,20 @@ st.markdown(
     </style>
     <div class="hero">
       <h1>Patent Atölyesi {APP_VERSION}</h1>
-      <p>Tarifname, görüş ve Tip 3 ön araştırma çalışmalarını tek arayüzden oluşturun.</p>
+      <p>Tarifname, görüş, Tip 3 ön araştırma ve araştırma güncelleme çalışmalarını tek arayüzden oluşturun.</p>
       <div class="version">Kural sürümü: {RULESET_VERSION}</div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-with st.expander("Bu sürümde kaydedilmiş temel kurallar"):
-    st.markdown(
-        """
-        - BBF ve açık teknik müşteri belgelerindeki tüm teknik içerik korunur; formül, tablo, deneysel sonuç ve referans tablosu atlanmaz.
-        - Her buluş için sistem/yöntem istem yapısı ayrı analiz edilir.
-        - Paralel birinci–ikinci–k'ıncı işlemler ana istemde kapsayıcı yazılabilir; ayrıntıları tek bağımlı istemde toplanabilir.
-        - Eğitim/genel aşama ile test aşaması paralel fakat ayrı teknik akışlar olarak değerlendirilir.
-        - Referans listesi, detaylı yöntem adımları ve istemlerdeki numaralar birlikte kontrol edilir.
-        - Tarifname metninde BBF/kaynak-form atfı kullanılmaz; “Buluşun bir yapılanmasında” terminolojisi ve yeni sayfa başlık düzeni uygulanır.
-        - TEKNİK ALAN “Buluş, ... ile ilgilidir.” ile başlar; tek paragraf olarak tamamlanabilir veya “Buluş, özellikle ...” ek açıklaması kullanılacaksa bu açıklama ayrı paragrafta başlatılır. ÖNCEKİ TEKNİK devam cümleleri ve detaylı unsur açıklamaları gereksiz yere ayrı paragraflara bölünmez.
-        - Literatür paragraflarında İngilizce patent başlığı ve Türkçe karşılığı birlikte verilir; yöntem listesinde ara maddeler virgül, son madde nokta ile biter.
-        - Tarifname oluşturma ekranında mevcut/revize tarifname alanı yoktur; düzenleme ayrı bir iş akışı olacaktır.
-        - Görüşte ilk adım rapor analizidir; revizyon gerekiyorsa kullanıcı mutabakatı ve gerçek Track Changes/Markup aşamasından sonra görüş oluşturulur.
-        - Tip 3 araştırmada tam 10 doküman, TotalPatent sorgu satırı, kullanıcı dokümanları ve D1/D2 son seçimi kullanılır.
-        """
-    )
 
 if not os.getenv("OPENAI_API_KEY", "").strip():
     st.warning("OPENAI_API_KEY henüz tanımlı değil. Arayüzü inceleyebilirsiniz; üretim düğmeleri API anahtarı olmadan çalışmaz.")
 
 work_type = st.radio(
     "İş türü",
-    ["Tarifname oluşturma", "Görüş hazırlama", "Tip 3 - Ön araştırma raporu"],
+    ["Tarifname oluşturma", "Görüş hazırlama", "Tip 3 - Ön araştırma raporu", "Araştırma güncelleme - Tip 3"],
     horizontal=True,
 )
 
@@ -2349,7 +2647,7 @@ elif work_type == "Görüş hazırlama":
             )
 
 # ARAŞTIRMA
-else:
+elif work_type == "Tip 3 - Ön araştırma raporu":
     st.subheader("Tip 3 - Ön araştırma raporu")
     c1, c2 = st.columns(2)
     with c1:
@@ -2457,6 +2755,178 @@ else:
                     progress.progress(100, text="Hazır")
                     st.success(f"Nihai D1: {selection.get('d1',{}).get('number','')} | Nihai D2: {(selection.get('d2') or {}).get('number','-')}")
                     st.info(f"Yenilik: {selection.get('novelty_result','')} | Buluş basamağı: {selection.get('inventive_step_result','')}")
-                    st.download_button("Word raporunu indir", data=data, file_name=safe_output_name(output_name, "Ön Araştırma Raporu.docx"), mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", type="primary")
+                    effective_output_name = output_name.replace("XXXXXX", reference.strip()) if reference.strip() else output_name
+                    st.download_button("Word raporunu indir", data=data, file_name=safe_output_name(effective_output_name, "Ön Araştırma Raporu.docx"), mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", type="primary")
                 except Exception as exc:
                     st.exception(exc)
+
+# ARAŞTIRMA GÜNCELLEME
+else:
+    st.subheader("Araştırma güncelleme - Tip 3")
+    st.caption("İlk araştırma konusu ile revize araştırma konusu karşılaştırılır; ilk rapordaki D1/D2 dikkate alınarak yeni araştırma yapılır ve nihai rapor standart Tip 3 Ön Araştırma Raporu formatında oluşturulur.")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        first_bbf = st.file_uploader("1. İlk BBF", type=["docx", "doc", "pdf", "txt"], key="upd_first_bbf")
+        revised_bbf = st.file_uploader("2. Revize BBF", type=["docx", "doc", "pdf", "txt"], key="upd_revised_bbf")
+        prior_report = st.file_uploader("3. İlk Ön Araştırma Raporu", type=["pdf", "docx", "doc", "txt"], key="upd_prior_report")
+    with c2:
+        update_reference = st.text_input("DP referans numarası", value="", key="upd_reference")
+        update_output_name = st.text_input("Çıktı dosyasının adı", value="Ön Araştırma Raporu_XXXXXX_rev.docx", key="upd_output_name")
+        update_cutoff = st.date_input("Araştırma kesim tarihi", value=date.today(), key="upd_cutoff")
+
+    for key, default in {
+        "update_analysis": None,
+        "update_research": None,
+        "update_first_text": None,
+        "update_revised_text": None,
+        "update_prior_report_text": None,
+        "update_prior_report_asset": None,
+    }.items():
+        if key not in st.session_state:
+            st.session_state[key] = default
+
+    if st.button("1. Farkları ve teknik katkıyı analiz et", type="primary", use_container_width=True):
+        if first_bbf is None:
+            st.error("İlk BBF dosyasını yükleyin.")
+        elif revised_bbf is None:
+            st.error("Revize BBF dosyasını yükleyin.")
+        elif prior_report is None:
+            st.error("İlk Ön Araştırma Raporunu yükleyin.")
+        else:
+            try:
+                progress = st.progress(0, text="İlk araştırma konusu okunuyor...")
+                first_asset = UploadedAsset(first_bbf.name, first_bbf.getvalue(), first_bbf.type)
+                revised_asset = UploadedAsset(revised_bbf.name, revised_bbf.getvalue(), revised_bbf.type)
+                report_asset = UploadedAsset(prior_report.name, prior_report.getvalue(), prior_report.type)
+                first_text = extract_text_from_asset(first_asset)
+                progress.progress(25, text="Revize araştırma konusu okunuyor...")
+                revised_text = extract_text_from_asset(revised_asset)
+                progress.progress(45, text="İlk ön araştırma raporu ve D1/D2 gerekçeleri okunuyor...")
+                report_text = extract_text_from_asset(report_asset)
+                progress.progress(65, text="Teknik farklar ve katkılar karşılaştırılıyor...")
+                analysis = ask_json(research_update_analysis_prompt(first_text, revised_text, report_text))
+                st.session_state.update_analysis = analysis
+                st.session_state.update_research = None
+                st.session_state.update_first_text = first_text
+                st.session_state.update_revised_text = revised_text
+                st.session_state.update_prior_report_text = report_text
+                st.session_state.update_prior_report_asset = report_asset
+                progress.progress(100, text="Fark analizi tamamlandı")
+            except Exception as exc:
+                st.exception(exc)
+
+    if st.session_state.update_analysis:
+        analysis = st.session_state.update_analysis
+        st.markdown("### Fark analizi")
+        diff_rows = []
+        for i, d in enumerate(analysis.get("differences") or [], 1):
+            diff_rows.append({
+                "No": i,
+                "İlk araştırma konusu": d.get("old", ""),
+                "Revize araştırma konusu": d.get("new", ""),
+                "Teknik katkı": d.get("technical_contribution", ""),
+                "Teknik etki": d.get("technical_effect", ""),
+                "İlk D1/D2 karşısındaki etkisi": d.get("effect_against_prior_d1_d2", ""),
+            })
+        if diff_rows:
+            st.dataframe(diff_rows, use_container_width=True, hide_index=True)
+        st.write(f"**İlk rapordaki D1:** {(analysis.get('prior_d1') or {}).get('number','-')}  |  **D2:** {(analysis.get('prior_d2') or {}).get('number','-')}")
+        st.info(analysis.get("preliminary_opinion", ""))
+
+        if st.button("2. Revize konu için yeni patent araştırmasını yap", type="primary", use_container_width=True):
+            try:
+                progress = st.progress(0, text="Revize teknik farklara göre global araştırma yapılıyor...")
+                research = ask_json(
+                    research_update_search_prompt(
+                        st.session_state.update_revised_text or "",
+                        st.session_state.update_prior_report_text or "",
+                        analysis,
+                        update_cutoff.strftime("%d.%m.%Y"),
+                    ),
+                    web_search=True,
+                )
+                docs = research.get("documents") or []
+                if len(docs) != 10:
+                    raise ValueError(f"Araştırma güncellemede tam 10 doğrulanmış doküman beklenirken {len(docs)} doküman döndü. Araştırmayı tekrar çalıştırın.")
+                temp_selection = {
+                    "d1": research.get("d1") or {},
+                    "d2": research.get("d2"),
+                    "comparison_rows_d1": research.get("comparison_rows_d1") or [],
+                    "comparison_rows_d2": research.get("comparison_rows_d2") or [],
+                }
+                validate_research_selection(temp_selection)
+                st.session_state.update_research = research
+                progress.progress(100, text="Yeni araştırma tamamlandı")
+            except Exception as exc:
+                st.exception(exc)
+
+    if st.session_state.update_research:
+        research = st.session_state.update_research
+        st.markdown("### Yeni araştırma sonucu")
+        new_docs = research.get("new_documents") or []
+        if new_docs:
+            st.write("**İlk raporda bulunmayan yeni yakın dokümanlar:**")
+            st.dataframe([
+                {
+                    "Yayın no": d.get("number", ""),
+                    "Başlık": d.get("title", ""),
+                    "Tarih": d.get("date", ""),
+                    "Teknik ilgisi": d.get("technical_relevance", ""),
+                }
+                for d in new_docs
+            ], use_container_width=True, hide_index=True)
+        else:
+            st.caption("İlk rapordaki dokümanlardan daha yakın yeni bir doküman tespit edilmedi.")
+
+        st.code(research.get("totalpatent_query", ""), language=None)
+        st.write(f"**Önerilen nihai D1:** {(research.get('d1') or {}).get('number','-')}  |  **D2:** {(research.get('d2') or {}).get('number','-')}")
+        st.write(f"**Yenilik ön sonucu:** {research.get('novelty_result','-')}  |  **Buluş basamağı ön sonucu:** {research.get('inventive_step_result','-')}")
+        st.info(research.get("technical_opinion", ""))
+
+        recommended = "Buluş basamağı sağlanmıyor" if str(research.get("inventive_step_result", "")).strip() == "sağlanmaz" else "Buluş basamağı sağlanıyor"
+        update_decision = st.radio(
+            "Raporu hangi sonuçla hazırlayayım?",
+            ["Buluş basamağı sağlanıyor", "Buluş basamağı sağlanmıyor"],
+            index=1 if recommended == "Buluş basamağı sağlanmıyor" else 0,
+            horizontal=True,
+            key="upd_decision",
+        )
+        st.caption(f"Sistem önerisi: {recommended}")
+
+        if st.button("3. Ön Araştırma Raporunu oluştur", type="primary", use_container_width=True):
+            if not update_reference.strip():
+                st.error("DP referans numarasını girin.")
+            else:
+                try:
+                    progress = st.progress(0, text="Standart Tip 3 rapor metni hazırlanıyor...")
+                    report = ask_json(
+                        research_update_report_prompt(
+                            st.session_state.update_revised_text or "",
+                            st.session_state.update_prior_report_text or "",
+                            st.session_state.update_analysis or {},
+                            research,
+                            update_reference.strip(),
+                            update_cutoff.strftime("%d.%m.%Y"),
+                            update_decision,
+                        )
+                    )
+                    validate_research_report_language(report)
+                    progress.progress(55, text="D1/D2 özgün patent şekilleri temin ediliyor...")
+                    fallbacks = _report_pdf_fallback_figures(st.session_state.update_prior_report_asset)
+                    progress.progress(75, text="Bağlayıcı Ön Araştırma Raporu şablonu dolduruluyor...")
+                    data = build_research_docx(report, figure_fallbacks=fallbacks)
+                    progress.progress(100, text="Rapor hazır")
+                    effective_output = update_output_name.replace("XXXXXX", update_reference.strip())
+                    st.success("Güncelleme raporu standart Ön Araştırma Raporu formatında oluşturuldu.")
+                    st.download_button(
+                        "Word raporunu indir",
+                        data=data,
+                        file_name=safe_output_name(effective_output, "Ön Araştırma Raporu_rev.docx"),
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        type="primary",
+                        use_container_width=True,
+                    )
+                except Exception as exc:
+                    st.exception(exc)
+

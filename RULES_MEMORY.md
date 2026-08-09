@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-07.v6**
+Kural sürümü: **2026-08-09.v1**
 
 Bu dosya arayüzde kullanılan kuralların okunabilir özetidir. Uygulamanın çalıştırdığı tam metin `rules.py` içindedir.
 
@@ -135,3 +135,25 @@ Kullanıcı revizyonları onaylarsa kaynak tarifname `.docx` olmak zorundadır. 
 Track Changes değişiklikleri mümkün olan en küçük kelime/ifade düzeyinde yapılır; tüm istem paragrafı topluca silinip yeniden eklenmez. Kullanıcı revize istem setini son kez onaylamadan görüş Word dosyası üretilmez.
 
 Kullanıcı revizyon önerisini gördükten sonra açıkça **mevcut istemlerle revizyonsuz devam etmeyi** de seçebilir. Bu seçim de açık kullanıcı kararı olarak kayda alınır ve görüş mevcut istem seti üzerinden hazırlanır.
+
+## 13. Tip 3 rapor biçimi - 09.08.2026 kesinleştirmeleri
+
+- `On_Arastirma_Raporu_181612_template.docx` doğrudan doldurulan bağlayıcı şablondur; rapor gövdesi sıfırdan yeniden kurulmaz.
+- `2. DEĞERLENDİRME` bölümü, D1/D2 yerleşimi, karşılaştırma tabloları, buluş basamağı bölümü, sonuç, uyarılar ve ekler şablondaki sıra ve formatta kalır.
+- D1/D2 karşılaştırma tablosunda sağ hücre çıplak `+` veya `-` içermez. İşaretin ardından özelliğin dokümanda nerede bulunduğu `Özet`, `İstem`, `Şekil`, paragraf/sütun/sayfa veya ilgili açıklama bölümüyle belirtilir. D1 ve D2'nin sol teknik özellik listesi birebir aynıdır.
+- Patent şekilleri yapay zekâ ile üretilmez veya yeniden çizilmez. Yalnız özgün patent şekilleri resmi/public patent kaynağından ya da kullanıcı tarafından sunulan orijinal patent dosyasından alınır.
+- Ön araştırma raporu gövdesinde `BBF`, `ilk BBF`, `ikinci BBF`, `buluş bildirim formu` ifadeleri kullanılmaz. Normal raporda `araştırma konusu`, güncelleme raporunda gerektiğinde `ilk araştırma konusu` ve `revize araştırma konusu` kullanılır.
+- Rapor anlatımında `→`, `=>`, ok zinciri veya `özellik + özellik + özellik` gibi yapay zekâ çıktısı izlenimi veren kısa sembolik anlatım kullanılmaz.
+
+## 14. Araştırma güncelleme - Tip 3
+
+Arayüzde ayrı iş türüdür ve üç temel yükleme alanı vardır: **İlk BBF**, **Revize BBF**, **İlk Ön Araştırma Raporu**. DP referans numarası, çıktı dosya adı ve araştırma kesim tarihi ayrıca alınır.
+
+İlk aşamada ilk ve revize araştırma konusu karşılaştırılır. Yalnız kelime farkı değil, gerçek teknik sınırlama, yeni unsur/işlev, veri işleme ilişkisi, teknik etki ve teknik problem değişiklikleri çıkarılır. İlk rapordaki D1/D2 ve olumsuzluk gerekçeleriyle birlikte her farkın teknik katkı oluşturup oluşturmadığı ekranda gösterilir.
+
+İkinci aşamada revize ayırt edici özelliklere odaklı global patent araştırması yapılır. İlk rapordaki D1/D2 başlangıç noktasıdır; ilk raporda bulunmayan yeni yakın dokümanlar ekranda ayrıca gösterilir. Daha güçlü belge D1/D2 olabilir, diğerleri yardımcı doküman olarak kalır.
+
+Yeni araştırmadan sonra sistem kendi teknik kanaatini açıkça yazar. Word hemen oluşturulmaz; kullanıcı **Buluş basamağı sağlanıyor** veya **Buluş basamağı sağlanmıyor** sonucunu seçer. Yenilik sonucu ise kaynaklara göre dürüst şekilde otomatik belirlenir.
+
+Güncelleme Word çıktısı yeni bir rapor türü değildir. Aynı Tip 3 Ön Araştırma Raporu şablonu kullanılır; fark analizi arayüzde kalır, Word'e `Revizyon farkları`, `BBF farkları` gibi ek başlık taşınmaz. Yardımcı yeni doküman için şablonda olmayan ayrı D3/D4 bölümü açılmaz; gerekirse buluş basamağı paragrafında kullanılır.
+

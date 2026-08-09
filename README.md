@@ -1,10 +1,10 @@
-# Patent Atölyesi v5.3.1
+# Patent Atölyesi v5.4
 
-Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 07.08.2026 tarihli güncel tam sürümüdür.
+Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 09.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.3.1-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.4-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -28,7 +28,7 @@ GitHub web arayüzünde **Add file → Upload files** ile bütün dosyaları yü
 
 `render.yaml` varsayılan model değerini `gpt-5.6` olarak taşır. Hesabınızda farklı model adı kullanılıyorsa Render Environment ekranından değiştirin.
 
-## v5.3.1'de görüş akışı
+## Görüş akışı
 
 Görüş bölümü artık doğrudan Word üretmez.
 
@@ -46,7 +46,7 @@ Görüş bölümü artık doğrudan Word üretmez.
 
 Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün olan en küçük ifade/kelime düzeyinde uygulanır.
 
-## v5.3.1'de tarifname kuralları
+## Tarifname kuralları
 
 - `Tarifname_181176_template.docx` bağlayıcı şablondur.
 - Kaynaktaki bütün teknik bilgi, özellikle önceki teknik, teknik problem/çözüm, unsurlar, yöntem adımları, formüller, tablolar, deneysel sonuçlar, alternatifler, kullanım senaryoları ve teknik etkiler eksiksiz aktarılır.
@@ -70,12 +70,30 @@ Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün
 ## Tip 3 ön araştırma
 
 - Araştırma kesim tarihi kullanılır.
-- Tam 10 doküman belirlenir.
-- Tek satır `TotalPatent arama sorgusu: ... or ...` üretilir.
+- Tam 10 doğrulanmış doküman belirlenir ve tek satır `TotalPatent arama sorgusu: ... or ...` üretilir.
 - Kullanıcının bulduğu benzer dokümanlar nihai D1/D2 analizine eklenir.
 - `Buluş basamağı var / Buluş basamağı yok / Otomatik belirle` seçimi korunur.
-- D1/D2 özellik tabloları aynı özellik listesini kullanır ve yalnızca `+` / `-` işaretleri içerir.
-- `On_Arastirma_Raporu_181612_template.docx` bağlayıcı şablondur.
+- D1 ve D2 tablolarında sol teknik özellik listesi birebir aynıdır. Sağ hücre yalnız `+` / `-` değildir; işaretin ardından özelliğin dokümanda geçtiği somut yer (`Özet`, `İstem`, `Şekil`, paragraf/sütun vb.) yazılır.
+- D1/D2 şekilleri model tarafından çizilmez. Yalnız özgün patent şekli patent kaynağından indirilerek rapora eklenir; temin edilemezse yapay şekil üretmek yerine hata/uyarı verilir.
+- Rapor gövdesinde `BBF` ifadesi, ok zincirleri veya `özellik + özellik` türü yapay kısaltmalar kullanılmaz.
+- `On_Arastirma_Raporu_181612_template.docx` yalnız görünüm örneği değil, doğrudan doldurulan bağlayıcı Word şablonudur; gövdesi silinip yeniden kurulmaz.
+
+## Araştırma güncelleme - Tip 3
+
+Arayüzde yeni bir iş türü olarak **Araştırma güncelleme - Tip 3** bulunur. Kurallar kullanıcı ekranında uzun bir kural listesi olarak gösterilmez; `rules.py` arka planda bağlayıcıdır.
+
+Akış:
+
+1. `İlk BBF` yüklenir.
+2. `Revize BBF` yüklenir.
+3. `İlk Ön Araştırma Raporu` yüklenir.
+4. DP referans numarası, çıktı dosya adı ve araştırma kesim tarihi girilir.
+5. **Farkları ve teknik katkıyı analiz et** aşamasında ilk ve revize araştırma konusu arasındaki gerçek teknik farklar, teknik etkiler ve ilk rapordaki D1/D2 karşısındaki etkileri ekranda gösterilir. Bu analiz Word raporuna ayrı bölüm olarak taşınmaz.
+6. **Revize konu için yeni patent araştırmasını yap** aşamasında revize edilen ayırt edici özellikler ve ilk rapordaki D1/D2 başlangıç noktası alınarak global araştırma yapılır; toplam 10 doğrulanmış doküman değerlendirilir. İlk raporda olmayan yeni yakın dokümanlar arayüzde ayrıca gösterilir.
+7. Sistem yenilik ve buluş basamağı için kendi teknik kanaatini açıkça gösterir. Ardından kullanıcı `Buluş basamağı sağlanıyor` veya `Buluş basamağı sağlanmıyor` sonucunu seçer.
+8. **Ön Araştırma Raporunu oluştur** aşamasında çıktı yine standart `On_Arastirma_Raporu_181612_template.docx` formatında hazırlanır; `Revizyon farkları` gibi yeni bölüm eklenmez.
+9. Yeni bulunan belge D1/D2'den daha güçlü ise D1/D2 değişebilir. Yardımcı belge ise ayrı D3 başlığı açılmadan buluş basamağı değerlendirmesinde doğal paragraf olarak kullanılır.
+10. İlk rapordaki D1/D2 korunuyorsa özgün patent şekilleri tekrar kullanılır; yeni D1/D2 seçilmişse yeni dokümanın özgün patent şekli kullanılır.
 
 ## Bağlayıcı şablonlar
 
@@ -87,7 +105,7 @@ Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-07.v6`
+Kural sürümü: `2026-08-09.v1`
 
 ## Yerel çalıştırma
 
