@@ -137,12 +137,15 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
     figures = draft.get("figure_descriptions") or ["Şekil 1, buluşa konu sistemin temsili bir gösterimidir."]
     for x in figures:
         _add_text(doc, x)
+        doc.add_paragraph()
     _add_text(doc, "Çizimlerin mutlaka ölçeklendirilmesi gerekmemektedir ve buluşu anlamak için gerekli olmayan detaylar ihmal edilmiş olabilmektedir. Bundan başka, en azından büyük ölçüde özdeş olan veya en azından büyük ölçüde özdeş işlevleri olan elemanlar, aynı numara ile gösterilmektedir.")
 
     _add_heading(doc, "REFERANS NUMARALARI")
     doc.add_paragraph()
     for e in draft.get("elements") or []:
         _add_text(doc, f"{e['number']}. {e['name']}")
+        doc.add_paragraph()
+    if draft.get("elements") and draft.get("method_steps"):
         doc.add_paragraph()
     for s in draft.get("method_steps") or []:
         _add_text(doc, f"{s['number']}. {s['text']}")
@@ -179,7 +182,8 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
     if mc:
         _numbered_claim(doc, claim_no, mc.get("preamble", "") + " olup, özelliği;")
         for step in mc.get("steps") or []:
-            _add_bullet(doc, step)
+            step_text = str(step).rstrip().rstrip(".;,") + ","
+            _add_bullet(doc, step_text)
         _add_text(doc, mc.get("closing", "işlem adımlarını içermesidir."))
         claim_no += 1
         for dep in draft.get("dependent_method_claims") or []:

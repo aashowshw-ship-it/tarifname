@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4"
-RULESET_VERSION = "2026-08-09.v1"
+APP_VERSION = "v5.4.1"
+RULESET_VERSION = "2026-08-10.v1"
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI
@@ -28,8 +28,8 @@ B. BULUŞUN YAPISINI BELİRLEME
 C. REFERANS TABLOSU, YÖNTEM ADIMLARI VE TUTARLILIK
 16. BBF'deki referans tablosu eksiksiz çıkarılmalı ve her referans unsurunun detaylı açıklamada teknik karşılığı bulunmalıdır.
 17. BBF'deki unsur numaralandırmasını aynen koru. 1,2,3 ise aynı; 10,20,30 ise aynı. Kaynakta olmayan sisteme, yönteme veya genel kavrama yeni referans numarası verme.
-18. REFERANS NUMARALARI bölümünden önce unsur veya işlem adımı referansı kullanma.
-19. Referans listesinde önce sistem/cihaz unsurları, bir boş paragraf sonra yöntem işlem adımları yer alır.
+18. REFERANS NUMARALARI bölümünden önce unsur veya işlem adımı referansı kullanma. Özellikle BULUŞUN KISA AÇIKLAMASI bölümünde ana istem yapısını özetlerken (1), (2), (3) gibi referans işaretlerini kopyalama; unsur adlarını numarasız yaz.
+19. Referans listesinde önce sistem/cihaz unsurları yer alır. Kaynakta UW, UW_F, UW_PL, UW_R ve UW_M gibi sembolik referans işaretleri gerçekten teknik gösterim olarak kullanılıyorsa, sayısal unsur listesinden sonra bir boş paragraf bırakılarak "UW. Kullanılabilir ağırlık", "UW_F. İlave yakıt tahsisi" mantığında yazılır. Kaynakta gerçek unsur referans numarası olmayan 21-37 gibi şekil içi/geçici numaralar yeni referans numarası olarak uydurulmaz. Sembolik referanslardan sonra bir boş paragraf bırakılarak yöntem işlem adımları yazılır.
 20. Yöntem işlem adımlarının ilk kelimesi büyük harfle başlar. Metinler işlem isimleri şeklinde yazılır: "toplanması", "hesaplanması", "oluşturulması" gibi.
 21. "Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:" bölümündeki numaralı adımlar, REFERANS NUMARALARI bölümü ve yöntem istemlerinde aynı numara için kullanılan işlem metinleri anlam ve terminoloji bakımından uyumlu olmalıdır. Kullanıcı birebir eşleşme istiyorsa metinler birebir aynı tutulmalıdır.
 22. Ana istemde kapsayıcı bir adım numarasız verilip ayrıntılı numaralı paralel adımlar bağımlı isteme taşınabilir. Bu durumda referans tablosu ve detaylı açıklamadaki numaralar değiştirilmez.
@@ -38,7 +38,7 @@ C. REFERANS TABLOSU, YÖNTEM ADIMLARI VE TUTARLILIK
 
 D. İSTEM KURGUSU
 25. Ana sistem isteminde unsurlar BBF sırasıyla tanımlanmalı; bir unsur yalnızca daha önce tanımlanmış unsurlarla teknik ilişki kurmalıdır. Henüz tanımlanmamış sonraki unsur önceki unsurun içinde kullanılamaz.
-26. Ana istemde unsurlar bağımsız bir liste olarak kalmamalı; aralarında veri, sinyal, kontrol, işlem veya fiziksel bağlantı ilişkisi kurulmalıdır.
+26. Ana istemde unsurlar bağımsız bir liste olarak kalmamalı; aralarında veri, sinyal, kontrol, işlem veya fiziksel bağlantı ilişkisi kurulmalıdır. Teknik olarak ilişkili sonraki unsur, mümkün olduğunda kendisinden önce tanımlanan unsurun çıktısını/girdisini veya o unsurla bağlantısını açıkça belirtmelidir. Ancak kaynakta ilişki bulunmayan unsurlar sırf biçim için yapay biçimde birbirine bağlanmamalıdır.
 27. Ana yöntem istemi zorunlu işlem sırasını ve teknik taşıyıcıyı açıkça göstermelidir. İnsan eylemleri yerine elektronik işlem birimi, cihaz, sunucu, bulut veya teknik modül gibi taşıyıcılar kullanılmalıdır.
 28. Bağımlı istemler ana istemi tekrar etmemeli; yalnızca kaynakta dayanağı bulunan ve kapsamı gerçek anlamda daraltan teknik ayrıntıları eklemelidir.
 29. Aynı alt teknik akışın analiz ve çıktı adımları, teknik bütünlük bozulmayacaksa tek bağımlı istemde toplanabilir.
@@ -58,7 +58,7 @@ E. DİL, PARAGRAF VE BİÇİM
 41. TEKNİK ALAN bölümünün ilk cümlesi "Buluş, ... ile ilgilidir." yapısında kurulmalıdır. Teknik alan ya tek bir bütün paragraf halinde tamamlanmalı ve bu durumda aynı paragraf içinde ikinci kez "Buluş, özellikle ..." diye yeni cümle başlatılmamalı; ya da ek açıklama "Buluş, özellikle ..." ile verilecekse bu ifade mutlaka ayrı bir paragrafın başlangıcı olmalıdır. "Buluş özellikle" yerine "Buluş, özellikle" kullanılır.
 42. ÖNCEKİ TEKNİK bölümünde aynı teknik anlatımın devamı olan "Özellikle...", "Bununla birlikte...", "Bu nedenle...", "Ayrıca...", "Böylece..." gibi devam cümleleri sırf yeni cümle başladığı için ayrı paragraf yapılmaz; önceki paragrafın devamı olarak birleştirilir. Ancak patent literatüründeki her ayrı doküman kendi paragrafında kalır.
 43. BULUŞUN DETAYLI AÇIKLAMASI bölümünde referanslı sistem/cihaz unsurları tek tek ayrı paragraf yapılmaz. Unsurlar BBF sırası ve teknik bağlantıları korunarak tek ve sürekli bir unsur-açıklama paragrafında anlatılır. "Buluşun bir yapılanmasında...", farklı alternatif/gerçekleştirme, yöntem adımları veya çalışma prensibi gibi gerçekten farklı anlatımlar ayrı paragraf olabilir.
-44. "Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:" ifadesinden sonraki madde işaretli adımlar noktalamasız bırakılmaz. Birden fazla adım varsa ara maddeler virgülle, son madde noktayla biter; tek adım varsa noktayla biter.
+44. "Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:" ifadesinden sonraki madde işaretli işlem adımlarının her biri nokta ile biter. Yöntem bağımsız istemindeki madde işaretli işlem adımlarının ise her biri virgül ile biter ve listenin ardından ayrı satırda "işlem adımlarını içermesidir." yazılır.
 45. ŞEKİLLERİN KISA AÇIKLAMASI bölümündeki açıklamalar kısa ve işlevsel tutulur. Akış diyagramı açıklamasında gerekli değilse "1001-1004 numaralı" gibi adım numarası aralıkları tekrarlanmaz; "işlem adımlarını gösteren temsili akış diyagramıdır" türü ifade yeterlidir.
 46. `Tarifname_181176_template.docx` yalnız font ve başlık açısından değil; boş paragraf düzeni, paragraf aralıkları, 1,5 satır aralığı, madde işareti/otomatik numaralandırma yapısı, istemler arası boşluklar, sayfa geçişleri ve hizalamalar bakımından da bağlayıcıdır. Çıktı bu şablonun görsel ritmini birebir takip etmelidir.
 
@@ -76,6 +76,11 @@ F. SON KALİTE KONTROLÜ
 57. Önceki teknik bölümünde kaynakta müşterinin verdiği teknik arka plan, eksiklik, problem ve karşılaştırma bilgileri eksiksiz aktarılır; seçilen patent literatürü bu bilgilerin yerine geçmez ve yalnızca bunlara eklenir.
 58. Kısa açıklamadaki şekillere geçiş cümlesi “Mevcut buluş...” ile başlamaz; “Buluşun yapılanması...” yapısında yazılır. Çizim açıklama kapanışında da “mevcut buluş” kullanılmaz; “buluş” kullanılır.
 59. Otomatik kalite kontrolünde TEKNİK ALAN giriş kalıbı, önceki teknik devam paragrafları, literatürde İngilizce+Türkçe başlık, detaylı açıklamadaki unsur paragraf bütünlüğü, yöntem adımlarının noktalaması ve şablon boşluk yapısı ayrıca kontrol edilir.
+60. BULUŞUN KISA AÇIKLAMASI bölümündeki amaç cümleleri çıplak mastarla bitmez. "Buluşun ana amacı, ... karşılaştırmaktır.", "Buluşun diğer bir amacı, ... sağlamaktır." gibi tam yüklemli ve dilbilgisel olarak tamamlanmış cümleler kullanılır.
+61. Tarifnamenin açıklama bölümlerinde noktalı virgül gereksiz yere kullanılmaz. Normal teknik anlatımda virgül veya nokta tercih edilir. İstemlerin standart "olup, özelliği;" kalıbındaki noktalı virgül korunabilir.
+62. İstemlerde HPU_W, FW_min, UW, UW_F, FE, TE gibi semboller tek başına teknik unsur adı yerine kullanılmaz. Anlamın gerekli olduğu yerde önce teknik açılım yazılır ve sembol parantez içinde verilir; örneğin "kuru hibrit güç ünitesi ağırlığı (HPU_W)", "asgari görev yakıtı ağırlığı (FW_min)", "ilave yakıt tahsisi (UW_F)". Matematiksel ilişkilerde semboller aynen korunur.
+63. Yöntem işlem adımlarının teknik metni REFERANS NUMARALARI, BULUŞUN DETAYLI AÇIKLAMASI ve yöntem istemi arasında terminoloji bakımından aynı tutulur. Sadece bulunduğu bölüme göre numara konumu ve son noktalama değişebilir: referans listesinde "S101. ... .", detaylı açıklamada "... (S101).", bağımsız yöntem isteminde "... (S101),".
+64. Kaynakta bir sembolün açılımı veriliyorsa istemlerde ve kritik teknik açıklamalarda çıplak sembol kullanarak anlamı belirsiz bırakma; kullanıcı sonradan "bu değişken neydi" demeyecek şekilde açılımı metne taşı.
 """
 
 GORUS_RULES = r"""

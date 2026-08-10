@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-09.v1**
+Kural sürümü: **2026-08-10.v1**
 
 Bu dosya arayüzde kullanılan kuralların okunabilir özetidir. Uygulamanın çalıştırdığı tam metin `rules.py` içindedir.
 
@@ -22,6 +22,21 @@ Yeni tarifname oluşturma akışında teknik kaynak BBF ve açıkça teknik kayn
 - Çıktılar ve teknik etkiler
 
 Buluş yalnızca yöntem olarak daha doğru korunuyorsa sistem istemi oluşturulmaz. Yalnızca sistem olarak daha doğruysa yöntem istemi oluşturulmaz. Her ikisinin de açık dayanağı varsa sistem ve yöntem istemleri birlikte hazırlanır.
+
+
+## 2A. Tarifname dil, referans ve istem bağlantı kuralları
+
+BULUŞUN KISA AÇIKLAMASI bölümündeki amaçlar tam yüklemle biter. `... karşılaştırmaktır.`, `... sağlamaktır.` gibi kullanım esastır; çıplak mastar (`... karşılaştırmak.`) bırakılmaz.
+
+REFERANS NUMARALARI bölümünden önce `(1)`, `(2)`, `(1001)` gibi referans işaretleri kullanılmaz. Ana istem mantığı kısa açıklamada özetleniyorsa unsur adları numarasız yazılır. Kaynakta `UW`, `UW_F`, `UW_PL`, `UW_R`, `UW_M` gibi sembolik referanslar gerçekten kullanılıyorsa sayısal unsur listesinden sonra bir boş paragrafla `UW. Kullanılabilir ağırlık`, `UW_F. İlave yakıt tahsisi` biçiminde gösterilir. Kaynakta gerçek unsur referansı olmayan 21-37 gibi geçici şekil numaraları tarifnameye yeni referans numarası olarak taşınmaz.
+
+Ana sistem istemi bağımsız unsur listesi olarak yazılmaz. Teknik olarak ilişkili sonraki unsur, kaynakta dayanağı bulunduğu ölçüde önceki unsurun verisini, çıktısını, hesap sonucunu veya bağlantısını açıkça kullanır. Kaynakta bulunmayan yapay bağlantı kurulmaz.
+
+İstemlerde sembol tek başına anlam yerine geçirilmez. `kuru hibrit güç ünitesi ağırlığı (HPU_W)`, `asgari görev yakıtı ağırlığı (FW_min)`, `ilave yakıt tahsisi (UW_F)` gibi teknik açılım önce yazılır. Sembol matematiksel ilişkilerde aynen korunur.
+
+Detaylı açıklamadaki yöntem işlem adımlarının her biri nokta ile biter. Bağımsız yöntem istemindeki her madde ise virgülle biter ve listenin ardından `işlem adımlarını içermesidir.` yazılır. Aynı S101/S102/... adımının teknik metni referans listesi, detaylı açıklama ve yöntem isteminde senkron tutulur.
+
+Teknik açıklamada noktalı virgül gereksiz kullanılmaz. Virgül veya nokta tercih edilir. `olup, özelliği;` istem kalıbı bu kuralın istisnasıdır.
 
 ## 3. Paralel işlem adımları
 
