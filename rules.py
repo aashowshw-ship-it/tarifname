@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.1"
-RULESET_VERSION = "2026-08-10.v1"
+APP_VERSION = "v5.4.2"
+RULESET_VERSION = "2026-08-10.v2"
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI
@@ -81,6 +81,18 @@ F. SON KALİTE KONTROLÜ
 62. İstemlerde HPU_W, FW_min, UW, UW_F, FE, TE gibi semboller tek başına teknik unsur adı yerine kullanılmaz. Anlamın gerekli olduğu yerde önce teknik açılım yazılır ve sembol parantez içinde verilir; örneğin "kuru hibrit güç ünitesi ağırlığı (HPU_W)", "asgari görev yakıtı ağırlığı (FW_min)", "ilave yakıt tahsisi (UW_F)". Matematiksel ilişkilerde semboller aynen korunur.
 63. Yöntem işlem adımlarının teknik metni REFERANS NUMARALARI, BULUŞUN DETAYLI AÇIKLAMASI ve yöntem istemi arasında terminoloji bakımından aynı tutulur. Sadece bulunduğu bölüme göre numara konumu ve son noktalama değişebilir: referans listesinde "S101. ... .", detaylı açıklamada "... (S101).", bağımsız yöntem isteminde "... (S101),".
 64. Kaynakta bir sembolün açılımı veriliyorsa istemlerde ve kritik teknik açıklamalarda çıplak sembol kullanarak anlamı belirsiz bırakma; kullanıcı sonradan "bu değişken neydi" demeyecek şekilde açılımı metne taşı.
+G. TARİFNAME OLUŞTURMA - ŞEKİLLERİN OLUŞTURULMASI
+65. Şekil üretiminde ilk tercih müşterinin BBF, teknik ek veya ayrıca yüklediği şekil dosyasında verdiği özgün teknik şekildir. Müşterinin teknik kurgusu, kutu-ok ilişkileri, geometri ve teknik anlamı sırf daha estetik görünmesi için yeniden tasarlanmaz.
+66. Şekiller ayrı Word dosyasında sırasıyla “ŞEKİL 1”, “ŞEKİL 2”, “ŞEKİL 3” şeklinde devam eder. Şekil numarası başlığı ilgili görselin altında, ortalı ve kalın yer alır.
+67. Şekiller Word dosyasının her sayfasının üst kısmında “mevcut sayfa / toplam sayfa” biçiminde sayfa göstergesi bulunur; örneğin “1 / 3”. Toplam sayfa sayısı sabit değildir. Şekil sayısı, şekillerin boyutu ve okunabilirliği dikkate alınarak dinamik belirlenir. Bir sayfada bir veya birden fazla şekil bulunabilir.
+68. Şekiller dosyasında gereksiz açıklama paragrafı kullanılmaz. Temel çıktı, müşteri şekli ile altında “ŞEKİL N” başlığından oluşur. Görsel okunabilirliği korunmalı, görsel gereksiz sıkıştırılmamalı veya düşük çözünürlüğe dönüştürülmemelidir.
+69. Nihai şekiller hazırlanırken önce müşterinin şekilleri alınır, ardından şekillerde görünen teknik referans işaretleri REFERANS NUMARALARI bölümü ile karşılaştırılır. Nihai şekil içinde kullanılan hiçbir gerçek referans işareti karşılıksız bırakılamaz.
+70. Şekilde “1”, “2”, “3” gibi unsur referansları veya “S101”, “1001” gibi yöntem adımı referansları kullanılıyorsa bunların tamamı tarifnamedeki REFERANS NUMARALARI bölümünde tanımlı olmalı ve detaylı açıklama/istemlerle aynı teknik karşılığı taşımalıdır.
+71. Kaynakta UW, UW_F, UW_PL, UW_R, UW_M gibi semboller şekil üzerinde unsur/karar değişkeni referansı olarak kullanılıyorsa bunlar sayısal numaraya dönüştürülmez. REFERANS NUMARALARI bölümünde “UW. Kullanılabilir ağırlık”, “UW_F. İlave yakıt tahsisi” biçiminde tanımlanır. Detaylı açıklama ve istemlerde ilk uygun kullanım “ilave yakıt tahsisi (UW_F)” biçiminde teknik ad + parantez içinde sembol olarak yazılır.
+72. Müşteri şekillerindeki 21-37 gibi yalnız şeklin hazırlanması sırasında verilmiş, tarifnamenin gerçek unsur/referans sistemiyle uyumlu olmayan geçici sayılar yeni referans numarası olarak tarifnameye taşınmaz. Teknik anlam kaybı oluşturmadan güvenle kaldırılabiliyorsa şekilden kaldırılır; kaldırılamıyorsa nihai çıktıdan önce kullanıcıya uyumsuzluk bildirilir.
+73. Bir teknik unsur REFERANS NUMARALARI bölümünde şekille ilişkili olarak tanımlanmış fakat ilgili müşteri şekli üzerinde referans işareti eksik bırakılmışsa şekil nihai kabul edilmez. Teknik konumu kaynaktan açıkça belirlenebiliyorsa yalnız eksik referans işareti eklenir; konum belirsizse unsurun yeri uydurulmaz ve kullanıcıdan düzeltilmiş şekil istenir.
+74. Patent şekillerinde açıklama yazısı mümkün olduğunca azaltılır. Bununla birlikte müşteri tarafından sağlanan özgün teknik şeklin içindeki yazı, formül veya ilişki kaldırıldığında teknik anlam, hesaplama mantığı veya müşteri açıklamasının kapsamı kaybolacaksa şekil müşterinin sunduğu biçime yakın korunabilir. Bu, teknik içeriği korumak amacıyla bilinçli olarak alınan bir şekil-formalite riskidir; teknik içerik yalnız formalite amacıyla değiştirilmez.
+75. Şekil kalite kontrolü, nihai tarifname ile birlikte şu eşleşmeleri zorunlu olarak denetler: şekil ↔ REFERANS NUMARALARI, şekil ↔ detaylı açıklama, şekil ↔ istemler ve yöntem şekilleri için şekil ↔ yöntem adımları. Eksik, fazla, çelişkili veya farklı anlamda kullanılan referans varsa şekiller tamamlanmış sayılmaz.
 """
 
 GORUS_RULES = r"""

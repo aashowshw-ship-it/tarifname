@@ -26,6 +26,7 @@ JSON dışında hiçbir şey yazma.
   "has_method_basis": true,
   "method_basis_reason": "",
   "figures": ["Şekil 1, ... gösterimidir."],
+  "figure_reference_audit": [{"figure":"Şekil 1","reference_marks":["1","2"],"method_marks":[],"symbolic_reference_marks":[],"temporary_marks":[],"notes":""}],
   "uncertainties": [""]
 }}
 
@@ -83,7 +84,8 @@ NOTLAR:
 - Literatür paragraflarında İngilizce başlık ve Türkçe karşılığı birlikte yazılsın.
 - objectives alanındaki her amaç tam cümle yüklemiyle bitsin: “... karşılaştırmaktır.”, “... sağlamaktır.” gibi. “... karşılaştırmak.” veya “... sağlamak.” biçiminde çıplak mastar bırakma.
 - Açıklama bölümlerinde noktalı virgülü gereksiz kullanma; virgül veya nokta tercih et. İstemlerdeki standart “olup, özelliği;” kalıbı korunabilir.
-- İstemlerde HPU_W, FW_min, UW, UW_F, FE, TE gibi semboller anlamı açıklanmadan çıplak teknik unsur olarak kullanılmasın. Önce “kuru hibrit güç ünitesi ağırlığı (HPU_W)”, “asgari görev yakıtı ağırlığı (FW_min)”, “ilave yakıt tahsisi (UW_F)” gibi açılımı yaz, matematiksel ifadede sembolü koru.
+- İstemlerde HPU_W, FW_min, UW, UW_F, FE, TE gibi semboller anlamı açıklanmadan çıplak teknik unsur olarak kullanılmasın.
+- Şekillerde müşteri görselini esas al; şekil üzerindeki gerçek unsur/yöntem/sembolik referansları REFERANS NUMARALARI ile senkron tut. Geçici şekil numaralarını yeni unsur numarası olarak uydurma. Önce “kuru hibrit güç ünitesi ağırlığı (HPU_W)”, “asgari görev yakıtı ağırlığı (FW_min)”, “ilave yakıt tahsisi (UW_F)” gibi açılımı yaz, matematiksel ifadede sembolü koru.
 
 YAPILANDIRILMIŞ BBF VERİSİ:
 {json.dumps(extracted, ensure_ascii=False, indent=2)}

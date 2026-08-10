@@ -172,3 +172,17 @@ Yeni araştırmadan sonra sistem kendi teknik kanaatini açıkça yazar. Word he
 
 Güncelleme Word çıktısı yeni bir rapor türü değildir. Aynı Tip 3 Ön Araştırma Raporu şablonu kullanılır; fark analizi arayüzde kalır, Word'e `Revizyon farkları`, `BBF farkları` gibi ek başlık taşınmaz. Yardımcı yeni doküman için şablonda olmayan ayrı D3/D4 bölümü açılmaz; gerekirse buluş basamağı paragrafında kullanılır.
 
+
+
+## 15. Tarifname oluşturma - şekil oluşturma kesin kuralları (10.08.2026)
+
+- Şekillerde **müşterinin sağladığı özgün teknik görsel önceliklidir**. Teknik kurgu, kutu-ok ilişkileri ve anlam sırf estetik için yeniden tasarlanmaz.
+- Ayrı şekiller Word dosyasında görseller sırayla **ŞEKİL 1, ŞEKİL 2, ŞEKİL 3...** olarak adlandırılır; bu başlık ilgili görselin **altında**, ortalı ve kalın yer alır.
+- Her şekiller sayfasının üstünde **`mevcut sayfa / toplam sayfa`** göstergesi bulunur (örn. `1 / 3`). Toplam sayfa sayısı hiçbir zaman sabitlenmez; şekil adedi, boyutu ve okunabilirliğe göre dinamik oluşur. Bir sayfaya uygun büyüklükte birden fazla şekil yerleştirilebilir.
+- Nihai şekiller müşteriden alındıktan sonra şekillerdeki gerçek teknik referans işaretleri ile `REFERANS NUMARALARI` listesi çapraz kontrol edilir. Şekilde bulunan gerçek bir unsur/yöntem referansı tarifnamede karşılıksız bırakılamaz.
+- `1`, `2`, `3` ve `S101`, `1001` gibi işaretler şekil, referans listesi, detaylı açıklama ve ilgili istemlerde aynı teknik karşılığı taşır.
+- `UW`, `UW_F`, `UW_PL`, `UW_R`, `UW_M` gibi şekil üzerinde gerçek sembolik referans olarak kullanılan işaretler sayıya çevrilmez; referans listesinde `UW. Kullanılabilir ağırlık`, `UW_F. İlave yakıt tahsisi` mantığında gösterilir. Metin/istem içinde teknik ad önce, sembol parantez içinde kullanılır.
+- Kaynaktaki 21-37 gibi yalnız geçici şekil numarası olup gerçek tarifname referans sistemine ait olmayan işaretler yeni unsur numarası olarak uydurulmaz. Teknik anlam kaybetmeden kaldırılabiliyorsa kaldırılır.
+- Referans listesinde şekille ilişkili gerçek bir unsur bulunup şekil üzerinde işareti eksikse şekil tamamlanmış sayılmaz. Kaynaktan konumu açıksa yalnız eksik referans işareti eklenir; konum belirsizse uydurma yerleştirme yapılmaz.
+- Patent şekillerindeki açıklama yazıları mümkün olduğunca azaltılır. Ancak müşterinin özgün şekli içindeki yazı/formül kaldırıldığında teknik anlam veya hesaplama ilişkisi kaybolacaksa müşteri görseli korunabilir. Bu durum bilinçli bir şekil-formalite riski olarak kabul edilir; teknik içerik formalite uğruna değiştirilmez.
+- Şekil kalite kontrolünün zorunlu eşleşmeleri: **şekil ↔ REFERANS NUMARALARI ↔ detaylı açıklama ↔ istemler**, ayrıca yöntem şekillerinde **↔ yöntem adımları**.

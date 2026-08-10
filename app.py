@@ -304,25 +304,94 @@ def extract_embedded_images(asset: UploadedAsset) -> list[UploadedAsset]:
     return images
 
 
+def _append_word_field(run, field_name: str) -> None:
+    fld = OxmlElement("w:fldSimple")
+    fld.set(qn("w:instr"), field_name)
+    run._r.append(fld)
+
+
+def _add_figures_page_counter(section) -> None:
+    """Şekiller şablonundaki `1 / 3` mantığını dinamik PAGE / NUMPAGES alanlarıyla kurar."""
+    header = section.header
+    p = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # Header tekrar üretilirse eski içeriği temizle.
+    for child in list(p._element):
+        p._element.remove(child)
+    r1 = p.add_run()
+    _append_word_field(r1, "PAGE")
+    p.add_run(" / ")
+    r2 = p.add_run()
+    _append_word_field(r2, "NUMPAGES")
+    for run in p.runs:
+        run.font.name = "Arial"
+        run.font.size = Pt(10)
+        run.bold = True
+
+
+def _figure_dimensions_cm(data: bytes, max_width_cm: float = 16.5, max_height_cm: float = 20.5) -> tuple[float, float]:
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            w, h = im.size
+        if not w or not h:
+            raise ValueError
+        ratio = h / w
+        width = max_width_cm
+        height = width * ratio
+        if height > max_height_cm:
+            height = max_height_cm
+            width = height / ratio
+        return max(4.0, width), max(2.5, height)
+    except Exception:
+        return max_width_cm, 10.0
+
+
 def build_figures_docx(images: list[UploadedAsset]) -> bytes:
+    """Müşteri şekillerini değiştirmeden, dinamik sayfa düzeni ve ŞEKİL N başlıklarıyla Word'e yerleştirir."""
     if not images:
         raise ValueError("Şekiller Word dosyası için BBF içinde veya ayrıca yüklenen dosyalarda kullanılabilir görsel bulunamadı.")
+
     doc = Document()
     for section in doc.sections:
-        section.top_margin = Cm(2.0)
-        section.bottom_margin = Cm(2.0)
-        section.left_margin = Cm(2.0)
-        section.right_margin = Cm(2.0)
+        section.top_margin = Cm(1.5)
+        section.bottom_margin = Cm(1.5)
+        section.left_margin = Cm(1.7)
+        section.right_margin = Cm(1.7)
+        section.header_distance = Cm(0.65)
+        _add_figures_page_counter(section)
+
+    # Yaklaşık kullanılabilir dikey alan. Görsel büyüklüğüne göre 1 veya daha fazla şekil aynı sayfaya yerleşebilir.
+    usable_height_cm = 24.2
+    used_height_cm = 0.0
+
     for index, asset in enumerate(images, 1):
-        add_text(doc, f"ŞEKİL {index}", bold=True, center=True)
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        width_cm, height_cm = _figure_dimensions_cm(asset.data)
+        block_height = height_cm + 1.25  # şekil başlığı ve minimum aralık
+
+        if used_height_cm > 0 and used_height_cm + block_height > usable_height_cm:
+            doc.add_page_break()
+            used_height_cm = 0.0
+
+        p_img = doc.add_paragraph()
+        p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_img.paragraph_format.space_before = Pt(0)
+        p_img.paragraph_format.space_after = Pt(2)
         try:
-            p.add_run().add_picture(io.BytesIO(asset.data), width=Cm(16.0))
+            p_img.add_run().add_picture(io.BytesIO(asset.data), width=Cm(width_cm), height=Cm(height_cm))
         except Exception as exc:
             raise ValueError(f"{asset.name} şekiller dosyasına eklenemedi.") from exc
-        if index < len(images):
-            doc.add_page_break()
+
+        p_cap = doc.add_paragraph()
+        p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_cap.paragraph_format.space_before = Pt(0)
+        p_cap.paragraph_format.space_after = Pt(10)
+        r = p_cap.add_run(f"ŞEKİL {index}")
+        r.bold = True
+        r.font.name = "Arial"
+        r.font.size = Pt(11)
+
+        used_height_cm += block_height
+
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
@@ -546,6 +615,7 @@ JSON dışında hiçbir şey yazma.
  "alternatives":[""],
  "use_cases":[""],
  "figures":[""],
+ "figure_reference_audit":[{"figure":"Şekil 1","reference_marks":["1"],"method_marks":["S101"],"symbolic_reference_marks":["UW"],"temporary_marks":[],"notes":""}],
  "claim_core":[""],
  "parallel_step_groups":[{{"summary":"","step_numbers":["1007","1008"],"recommended_claim_location":"ana istem/tek bağımlı istem"}}],
  "stage_distinctions":[{{"step_numbers":["1001","1006"],"difference":""}}],
@@ -617,6 +687,7 @@ KRİTİK TALİMATLAR:
 - “Buluşun bir gerçekleştirilmesinde” ifadesini kullanma; gerekli yerde “Buluşun bir yapılanmasında” yaz. “Mevcut buluş” kullanma.
 - Önceki teknik bölümüne ham kaynakta verilen bütün teknik arka plan, eksiklik ve problem anlatımını aktar; literatür paragrafları bunların yerine geçmez.
 - ŞEKİLLERİN KISA AÇIKLAMASI kısa ve işlevsel olsun; gerekli değilse yöntem adımı numara aralığını şekil açıklamasında tekrarlama.
+- Müşteri şekillerini teknik kaynak olarak aynen esas al. Görseldeki gerçek referans işaretlerini sayısal unsur, yöntem adımı, sembolik referans ve geçici şekil numarası olarak ayır. Geçici şekil numarasını yeni unsur referansı yapma.
 
 JSON dışında hiçbir şey yazma.
 ÇIKTI ŞEMASI:
@@ -682,6 +753,8 @@ ZORUNLU KONTROL LİSTESİ:
 18. BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı unsurlar gereksiz yere ayrı ayrı paragraflara bölünmüş mü? Bölündüyse tek sürekli unsur paragrafında birleştir.
 19. Detaylı açıklamadaki yöntem madde listesinde ara maddeler virgül, son madde nokta ile bitiyor mu?
 20. Şekil açıklamaları kısa mı ve gerekli olmayan yöntem adımı numara aralıklarını tekrarlamıyor mu?
+21. Müşteri şekillerindeki gerçek unsur/yöntem/sembolik referanslar REFERANS NUMARALARI ile uyumlu mu? Geçici şekil numaraları yeni referans olarak uydurulmuş mu?
+22. Şekilde kullanılan UW, UW_F, UW_PL, UW_R, UW_M gibi sembolik referansların tarifnamede açık karşılığı var mı?
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
 {TARIFNAME_DRAFT_SCHEMA}
@@ -2240,9 +2313,16 @@ if work_type == "Tarifname oluşturma":
                 example_text, _ = combine_asset_text("ÖRNEK TARİFNAME - YALNIZCA KURGU", example_assets)
 
                 embedded_images = extract_embedded_images(bbf_asset)
-                model_images = [*technical_images, *embedded_images][:12]
+                provided_figure_assets: list[UploadedAsset] = []
+                if separate_figures:
+                    for uploaded in figure_files or []:
+                        fig_asset = UploadedAsset(uploaded.name, uploaded.getvalue(), uploaded.type)
+                        provided_figure_assets.extend(extract_embedded_images(fig_asset))
 
-                progress.progress(15, text="BBF içeriği, referans tablosu ve istem çekirdeği çıkarılıyor...")
+                # Nihai şekil dosyaları ayrıca yüklenmişse model bunları da görerek referans senkronizasyonunu denetler.
+                model_images = [*provided_figure_assets, *technical_images, *embedded_images][:12]
+
+                progress.progress(15, text="BBF içeriği, referans tablosu, şekiller ve istem çekirdeği çıkarılıyor...")
                 extracted = ask_json(
                     tarifname_extraction_prompt(source, technical_text, example_text),
                     images=model_images,
@@ -2317,10 +2397,8 @@ if work_type == "Tarifname oluşturma":
 
                 figure_data = None
                 if separate_figures:
-                    all_figure_assets: list[UploadedAsset] = []
-                    for uploaded in figure_files or []:
-                        asset = UploadedAsset(uploaded.name, uploaded.getvalue(), uploaded.type)
-                        all_figure_assets.extend(extract_embedded_images(asset))
+                    # Ayrıca yüklenen müşteri şekilleri birincil kaynaktır; yoksa BBF içindeki özgün görseller kullanılır.
+                    all_figure_assets: list[UploadedAsset] = list(provided_figure_assets)
                     if not all_figure_assets:
                         all_figure_assets = embedded_images
                     # Aynı görselin birden fazla kez eklenmesini engelle.
