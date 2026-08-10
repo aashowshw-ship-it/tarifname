@@ -71,6 +71,15 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
             if n and f"({n})" not in claim_text:
                 findings.append({"level": "Hata", "message": f"Yöntem isteminde ({n}) işlem referansı yok."})
 
+        claim_steps = list(method.get("steps") or [])
+        if len(claim_steps) == len(steps):
+            for idx, step in enumerate(steps):
+                n = str(step.get("number", ""))
+                expected_text = str(step.get("text", "")).strip().rstrip(".,;:")
+                actual = re.sub(rf"\s*\({re.escape(n)}\)\s*$", "", str(claim_steps[idx]).strip().rstrip(".,;:")).strip().rstrip(".,;:")
+                if n and expected_text != actual:
+                    findings.append({"level": "Hata", "message": f"({n}) yöntem adımı REFERANS NUMARALARI/detaylı açıklama ile bağımsız yöntem isteminde birebir aynı değil."})
+
     claim_texts = []
     sc = draft.get("system_claim") or {}
     claim_texts.extend(sc.get("elements") or [])
@@ -98,6 +107,10 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     for claim in draft.get("dependent_system_claims") or []:
         if re.search(r"(?:yapmasıdır|etmesidir|belirlemesidir)\.?$", claim.strip(), re.I):
             findings.append({"level": "Hata", "message": "Sistem alt istemi yanlış fiil sonuyla bitiyor."})
+
+    for claim in [*(draft.get("dependent_system_claims") or []), *(draft.get("dependent_method_claims") or [])]:
+        if re.search(r"önceki\s+istemlerden\s+herhangi\s+birine", str(claim), re.I):
+            findings.append({"level": "Hata", "message": "Bağımlı istemde ‘Önceki istemlerden herhangi birine’ kullanılmış; ek özelliğin dayandığı doğrudan istem numarası seçilmeli."})
 
     hardware_anchor_re = re.compile(r"elektronik cihaz|elektronik işlem birimi|işlemci|donanım|bilgisayar|mikrodenetleyici|kontrol birimi", re.I)
     software_terms_re = re.compile(r"modül|birim|algoritma|yazılım|veri işleme|hesaplama", re.I)

@@ -679,7 +679,7 @@ KRİTİK TALİMATLAR:
 - Bağımlı istemleri kaynakta geçen her ayrıntı için çoğaltma. Yalnız ana isteme gerçek teknik daraltma/geri çekilme konumu sağlayan seçilmiş özellikleri kullan; istem bağımlılığı ana donanımsal taşıyıcıyı zaten taşıyorsa alt istemde elektronik cihaz/yazılım ifadesini gereksiz yere tekrar etme.
 - Eğitim/genel aşama ile test aşamasındaki paralel akışları aynı mantıkla fakat ayrı teknik aşamalar olarak kur.
 - REFERANS NUMARALARI bölümünde önce sistem/cihaz modüllerini yaz. Kaynakta açık modül adları olup ayrı unsur numarası yoksa bunlara kaynak sırasıyla 1, 2, 3... ver. Yöntem işlem adımlarını ayrı aile olarak daima 1001, 1002, 1003... biçiminde numaralandır. Kaynaktaki 1, 2, 3... işlem satırlarını sistem unsur numarasıyla karıştırma. Ana istemde numarasız kapsayıcı ifade kullanılabilir; ayrıntılı yöntem adımları 1001... referanslarıyla korunur.
-- “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” bölümü için method_steps tam ve tutarlı olsun. method_steps numaraları 1001’den başlayarak kesintisiz ilerlesin. Detaylı açıklamadaki ara maddeler virgülle, son madde noktayla bitsin. Bağımsız yöntem istemindeki her işlem adımı virgülle bitsin.
+- “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” bölümü için method_steps tam ve tutarlı olsun. method_steps numaraları 1001’den başlayarak kesintisiz ilerlesin. REFERANS NUMARALARI, detaylı açıklamadaki yöntem listesi ve bağımsız yöntem isteminde aynı numaralı adımın teknik metni birebir aynı olsun. Detaylı açıklamadaki ara maddeler virgülle, son madde noktayla bitsin. Bağımsız yöntem istemindeki ara adımlar virgülle bitsin, son adım noktalamasız bitsin.
 - Yalnızca yöntem modunda system_claim null olmalıdır. Yalnızca sistem modunda method_claim null olmalıdır.
 - Her bağımlı istem ana isteme göre gerçek bir daraltma sağlamalıdır.
 - Patent literatürü yalnızca ÖNCEKİ TEKNİK bölümünde kullanılsın.
@@ -689,6 +689,7 @@ KRİTİK TALİMATLAR:
 - “Buluşun bir gerçekleştirilmesinde” ifadesini kullanma; gerekli yerde “Buluşun bir yapılanmasında” yaz. “Mevcut buluş” kullanma.
 - Önceki teknik bölümüne ham kaynakta verilen bütün teknik arka plan, eksiklik ve problem anlatımını aktar; literatür paragrafları bunların yerine geçmez.
 - ŞEKİLLERİN KISA AÇIKLAMASI kısa ve işlevsel olsun; gerekli değilse yöntem adımı numara aralığını şekil açıklamasında tekrarlama.
+- Bağımlı istemlerde “Önceki istemlerden herhangi birine” kalıbını varsayılan olarak kullanma; ek özellik hangi ana unsur veya işlem adımının ayrıntısıysa doğrudan onu tanımlayan gerekli isteme bağla. Gereksiz “İstem X veya Y’ye” zincirlerinden kaçın.
 - Müşteri şekillerini teknik kaynak olarak aynen esas al. Görseldeki gerçek referans işaretlerini sayısal unsur, yöntem adımı, sembolik referans ve geçici şekil numarası olarak ayır. Gömülü grafik/ısı haritası/diyagram üzerindeki teknik sonuçları tamlık kontrolünde dikkate al. Geçici şekil numarasını yeni unsur referansı yapma.
 
 JSON dışında hiçbir şey yazma.
@@ -948,13 +949,12 @@ def _normalize_method_step_numbers(draft: dict[str, Any]) -> None:
     for step, number in zip(steps, desired):
         step["number"] = number
     method_claim = draft.get("method_claim") or {}
-    claim_steps = list(method_claim.get("steps") or [])
-    if claim_steps:
+    if method_claim.get("steps") is not None:
         normalized: list[str] = []
-        for i, item in enumerate(claim_steps):
-            text = str(item or "").strip()
-            text = re.sub(r"\s*\(\s*(?:S?\d+)\s*\)\s*[,.;:]?\s*$", "", text, flags=re.IGNORECASE).strip()
-            number = desired[i] if i < len(desired) else str(1001 + i)
+        for i, step in enumerate(steps):
+            text = str(step.get("text", "") or "").strip()
+            text = re.sub(r"\s*\(\s*(?:S?\d+)\s*\)\s*[,.;:]?\s*$", "", text, flags=re.IGNORECASE).strip().rstrip(".,;:")
+            number = desired[i]
             normalized.append(f"{text} ({number})")
         method_claim["steps"] = normalized
         draft["method_claim"] = method_claim
@@ -1337,8 +1337,10 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
     method_claim = draft.get("method_claim")
     if method_claim:
         add_numbered_claim(doc, template, f"{method_claim.get('preamble','')} olup, özelliği;")
-        for item in method_claim.get("steps") or []:
-            step_text = str(item).rstrip(".,;:") + ","
+        claim_steps = list(method_claim.get("steps") or [])
+        for idx, item in enumerate(claim_steps):
+            base_step = str(item).rstrip(".,;:")
+            step_text = base_step if idx == len(claim_steps) - 1 else base_step + ","
             add_template_list_item(doc, template, 86, step_text)
         closing = add_text(doc, method_claim.get("closing", "işlem adımlarını içermesidir."))
         closing.paragraph_format.first_line_indent = Cm(0.5)
@@ -1347,8 +1349,8 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
             add_numbered_claim(doc, template, dependent)
             add_blank(doc)
 
-    doc.add_page_break()
-    add_heading(doc, "ÖZET", center=True)
+    summary_heading = add_heading(doc, "ÖZET", center=True)
+    summary_heading.paragraph_format.page_break_before = True
     add_blank(doc)
     add_text(doc, draft.get("title", ""), bold=True, center=True)
     add_blank(doc)

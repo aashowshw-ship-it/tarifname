@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-10.v4**
+Kural sürümü: **2026-08-10.v5**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -42,7 +42,7 @@ Ana sistem istemi bağımsız unsur listesi olarak yazılmaz. Teknik olarak ili�
 
 İstemlerde sembol tek başına anlam yerine geçirilmez. `kuru hibrit güç ünitesi ağırlığı (HPU_W)`, `asgari görev yakıtı ağırlığı (FW_min)`, `ilave yakıt tahsisi (UW_F)` gibi teknik açılım önce yazılır. Sembol matematiksel ilişkilerde aynen korunur.
 
-Detaylı açıklamadaki yöntem işlem adımlarında ara maddeler virgülle, son madde noktayla biter. Bağımsız yöntem istemindeki her madde virgülle biter ve listenin ardından `işlem adımlarını içermesidir.` yazılır. İşlem adımları noktalamasız bırakılmaz. Yöntem adımı numaraları, kullanıcı açıkça farklı bir sistem istemedikçe `1001, 1002, 1003...` ailesinde tutulur ve referans listesi, detaylı açıklama ile yöntem isteminde senkron olur.
+Detaylı açıklamadaki yöntem işlem adımlarında ara maddeler virgülle, son madde noktayla biter. Bağımsız yöntem istemindeki ara işlem adımları virgülle, son işlem adımı ise noktalamasız biter; ardından ayrı satırda `işlem adımlarını içermesidir.` yazılır. Yöntem adımı numaraları `1001, 1002, 1003...` ailesinde tutulur. Aynı numaralı yöntemin teknik metni REFERANS NUMARALARI, detaylı açıklamadaki yöntem listesi ve bağımsız yöntem isteminde birebir aynı olmalıdır; istemde değişen adım aynı anda diğer iki yerde de değiştirilir.
 
 Teknik açıklamada noktalı virgül gereksiz kullanılmaz. Virgül veya nokta tercih edilir. `olup, özelliği;` istem kalıbı bu kuralın istisnasıdır.
 
@@ -78,7 +78,7 @@ Ana istem buluşun zorunlu teknik çekirdeğini açık, sıralı ve gereksiz tek
 
 Buluş ağırlıklı olarak yazılım, algoritma, modül veya veri işleme birimlerinden oluşuyorsa bağımsız istem soyut yazılım seviyesinde bırakılmaz. Kaynakta özel bir donanım zorunlu değilse geniş bir donanımsal taşıyıcı tercih edilir. Özellikle `bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...`, `bir elektronik cihaz içerisinde çalışan yazılım tarafından ...` veya kaynakça uygun `elektronik işlem birimi tarafından ...` dili kullanılabilir. Sunucu, cep telefonu veya kişisel bilgisayar gibi daha dar taşıyıcılar ancak teknik kaynak gerçekten gerektiriyorsa yazılır. Özel donanım uydurulmaz. Aynı ilke yazılım ağırlıklı yöntem isteminde de uygulanır.
 
-Bağımlı istemler ana istemi tekrar etmez. Yalnızca BBF'de dayanağı bulunan ve kapsamı gerçek anlamda daraltan teknik ayrıntıları ekler. Kaynakta geçen her ayrıntı için ayrı bağımlı istem üretmek zorunlu değildir ve tercih edilmez. Yalnız koruma stratejisi bakımından anlamlı geri çekilme konumu sağlayan seçilmiş özellikler bağımlı isteme taşınır. Ana istemde elektronik cihaz/yazılım taşıyıcısı zaten kurulmuşsa alt istemlerde aynı taşıyıcı gereksiz yere tekrar edilmez.
+Bağımlı istemler ana istemi tekrar etmez. Yalnızca BBF'de dayanağı bulunan ve kapsamı gerçek anlamda daraltan teknik ayrıntıları ekler. `Önceki istemlerden herhangi birine uygun` kalıbı varsayılan değildir. Ek özellik ana istemde tanımlı bir modül veya işlem adımının ayrıntısıysa doğrudan ana isteme bağlanır. `İstem X veya Y’ye uygun` zinciri ancak yeni özellik gerçekten her iki bağımlılık yoluna da ihtiyaç duyuyorsa kullanılır; bağımlılık her zaman teknik olarak en doğrudan gerekli isteme kurulmalıdır. Kaynakta geçen her ayrıntı için ayrı bağımlı istem üretmek zorunlu değildir ve tercih edilmez. Yalnız koruma stratejisi bakımından anlamlı geri çekilme konumu sağlayan seçilmiş özellikler bağımlı isteme taşınır. Ana istemde elektronik cihaz/yazılım taşıyıcısı zaten kurulmuşsa alt istemlerde aynı taşıyıcı gereksiz yere tekrar edilmez.
 
 Formüller zorunlu çekirdek değilse ana istemi gereksiz daraltmamak için bağımlı istemlerde kullanılabilir.
 
@@ -131,7 +131,7 @@ Başvuru bilgi alanlarında **Başvuru No**, **Başvuru Sahibi** ve **Referans**
 - `REFERANS NUMARALARI` bölümünde unsur adları başlık biçiminde yazılmaz. Yalnızca ilk kelimenin ilk harfi büyük olur; SIM, IMEI, API gibi standart teknik kısaltmalar korunabilir. Aynı unsur adları cümle içinde cümle yapısına uygun küçük harfle kullanılır.
 - Detaylı açıklamada `Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:` ifadesinden sonra adımlar madde işaretli yazılır ve numara başta `1001.` biçiminde değil, adım metninin sonunda `(1001)` biçiminde verilir.
 - Bağımsız sistem istemindeki unsurlar ile bağımsız yöntem istemindeki işlem adımları ayrı ayrı madde işaretli yazılır.
-- Tarifname ve bölüm başlıkları kalındır. `İSTEMLER` yeni bir sayfadan, `ÖZET` ayrıca yeni bir sayfadan başlar.
+- Tarifname ve bölüm başlıkları kalındır. `İSTEMLER` yeni bir sayfadan, `ÖZET` ayrıca mutlaka yeni ve ayrı bir sayfadan başlar. İstem revizyonu/azaltması sırasında ÖZET sayfa geçişi kaybedilemez.
 - **“Buluşun bir gerçekleştirilmesinde” kullanılmaz; “Buluşun bir yapılanmasında” kullanılır.**
 - Önceki teknik bölümünde müşterinin kaynakta verdiği teknik arka plan, eksiklikler, problem anlatımı ve karşılaştırmalar eksiksiz korunur. Seçilen patent literatürü bunların yerine geçmez, yalnızca ayrı patent paragrafları olarak eklenir.
 - Tarifname oluşturma arayüzünde `Mevcut/revize tarifname` alanı bulunmaz. Mevcut tarifnameyi değiştirme işi ayrı `Tarifname düzenleme` akışıdır ve şimdilik bu pakete eklenmemiştir.
