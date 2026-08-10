@@ -23,6 +23,17 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
         str(draft.get("unumbered_system_definition", "")),
         *map(str, draft.get("unumbered_system_elements") or []),
     ])
+
+    tf_raw = str(draft.get("technical_field", "") or "").strip()
+    tf_parts = [x.strip() for x in re.split(r"\n\s*\n", tf_raw) if x.strip()]
+    if len(tf_parts) < 2:
+        findings.append({"level": "Hata", "message": "TEKNİK ALAN iki paragraf olmalı: ilk paragraf yalnız ‘Buluş, ... ile ilgilidir.’, ikinci paragraf ‘Buluş, özellikle ...’ ile başlamalı."})
+    else:
+        if not re.fullmatch(r"Buluş,\s+.+?ile ilgilidir\.", tf_parts[0], re.I | re.S):
+            findings.append({"level": "Hata", "message": "TEKNİK ALAN ilk paragrafı yalnız ‘Buluş, ... ile ilgilidir.’ giriş cümlesinden oluşmalı."})
+        if not re.match(r"^Buluş,\s*özellikle\b", tf_parts[1], re.I):
+            findings.append({"level": "Hata", "message": "TEKNİK ALAN ikinci paragrafı ‘Buluş, özellikle ...’ ile başlamalı."})
+
     if re.search(r"\(\s*(?:\d{1,3}|10\d{2})\s*\)", combined):
         findings.append({"level": "Hata", "message": "Referans numaralarından önceki bölümlerde parantezli numara bulundu."})
 
@@ -49,6 +60,10 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
 
     method = draft.get("method_claim")
     steps = draft.get("method_steps") or []
+    step_numbers = [str(step.get("number", "") or "").strip() for step in steps]
+    expected_step_numbers = [str(1001 + i) for i in range(len(step_numbers))]
+    if step_numbers and step_numbers != expected_step_numbers:
+        findings.append({"level": "Hata", "message": "Yöntem işlem adımları 1001'den başlayarak kesintisiz numaralandırılmalı."})
     if method:
         claim_text = " ".join(method.get("steps") or [])
         for step in steps:
@@ -73,6 +88,12 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
         for sym, phrase in symbol_requirements.items():
             if sym.lower() in low and phrase not in low:
                 findings.append({"level": "Uyarı", "message": f"İstemde {sym} sembolünün teknik açılımı görünmüyor; önce açılımı, sonra parantez içinde sembolü kullan."})
+
+
+    for table in draft.get("tables") or []:
+        headers = [str(x or "").casefold() for x in (table.get("headers") or [])]
+        if any("işlem adımı" in h for h in headers) and any("gerçekleştiren unsur" in h for h in headers):
+            findings.append({"level": "Hata", "message": "Sistem-yöntem ilişki tablosu tablo olarak bırakılmamalı; doğal teknik paragrafa dönüştürülmeli."})
 
     for claim in draft.get("dependent_system_claims") or []:
         if re.search(r"(?:yapmasıdır|etmesidir|belirlemesidir)\.?$", claim.strip(), re.I):

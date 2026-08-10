@@ -1,6 +1,8 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-10.v1**
+Kural sürümü: **2026-08-10.v3**
+
+**BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
 Bu dosya arayüzde kullanılan kuralların okunabilir özetidir. Uygulamanın çalıştırdığı tam metin `rules.py` içindedir.
 
@@ -30,11 +32,17 @@ BULUŞUN KISA AÇIKLAMASI bölümündeki amaçlar tam yüklemle biter. `... kar�
 
 REFERANS NUMARALARI bölümünden önce `(1)`, `(2)`, `(1001)` gibi referans işaretleri kullanılmaz. Ana istem mantığı kısa açıklamada özetleniyorsa unsur adları numarasız yazılır. Kaynakta `UW`, `UW_F`, `UW_PL`, `UW_R`, `UW_M` gibi sembolik referanslar gerçekten kullanılıyorsa sayısal unsur listesinden sonra bir boş paragrafla `UW. Kullanılabilir ağırlık`, `UW_F. İlave yakıt tahsisi` biçiminde gösterilir. Kaynakta gerçek unsur referansı olmayan 21-37 gibi geçici şekil numaraları tarifnameye yeni referans numarası olarak taşınmaz.
 
+Tarifname oluştururken kaynakta adlandırılmış sistem modülleri mevcut fakat bunlara ayrı referans numarası verilmemişse, modüller kaynak sırasına göre `1, 2, 3...` olarak numaralandırılır. Yöntem işlem adımları sistem modüllerinden ayrı referans ailesidir ve varsayılan olarak `1001, 1002, 1003...` biçiminde numaralandırılır. Kaynakta yöntem adımları `1, 2, 3...` veya `S101...` olarak verilmiş olsa bile, kullanıcı açıkça aksi yönde talimat vermedikçe tarifnamede `1001...` ailesine dönüştürülür. `REFERANS NUMARALARI` bölümünde önce sistem modülleri art arda, sonra tek bir boş paragraf, ardından yöntem işlem adımları art arda yazılır.
+
+Sistem ile yöntem arasındaki `İşlem Adımı / Gerçekleştiren Unsur / Açıklama` ilişkisi açıklama tablosu halinde tarifnameye taşınmaz. Bu ilişki doğal teknik paragraf halinde yazılır ve ilişkili modüllerin birbirinden aldığı veri/çıktı ile gerçekleştirdiği yöntem adımı açıkça bağlanır. Yalnız kaynaktaki gerçek sayısal veya deneysel veri tabloları gerektiğinde tablo olarak korunabilir.
+
+`ŞEKİLLERİN KISA AÇIKLAMASI` bölümünde `Şekil 1...`, `Şekil 2...`, `Şekil 3...` açıklamaları arasında boş paragraf kullanılmaz; şekil açıklamaları doğrudan alt alta sıralanır.
+
 Ana sistem istemi bağımsız unsur listesi olarak yazılmaz. Teknik olarak ilişkili sonraki unsur, kaynakta dayanağı bulunduğu ölçüde önceki unsurun verisini, çıktısını, hesap sonucunu veya bağlantısını açıkça kullanır. Kaynakta bulunmayan yapay bağlantı kurulmaz.
 
 İstemlerde sembol tek başına anlam yerine geçirilmez. `kuru hibrit güç ünitesi ağırlığı (HPU_W)`, `asgari görev yakıtı ağırlığı (FW_min)`, `ilave yakıt tahsisi (UW_F)` gibi teknik açılım önce yazılır. Sembol matematiksel ilişkilerde aynen korunur.
 
-Detaylı açıklamadaki yöntem işlem adımlarının her biri nokta ile biter. Bağımsız yöntem istemindeki her madde ise virgülle biter ve listenin ardından `işlem adımlarını içermesidir.` yazılır. Aynı S101/S102/... adımının teknik metni referans listesi, detaylı açıklama ve yöntem isteminde senkron tutulur.
+Detaylı açıklamadaki yöntem işlem adımlarında ara maddeler virgülle, son madde noktayla biter. Bağımsız yöntem istemindeki her madde virgülle biter ve listenin ardından `işlem adımlarını içermesidir.` yazılır. İşlem adımları noktalamasız bırakılmaz. Yöntem adımı numaraları, kullanıcı açıkça farklı bir sistem istemedikçe `1001, 1002, 1003...` ailesinde tutulur ve referans listesi, detaylı açıklama ile yöntem isteminde senkron olur.
 
 Teknik açıklamada noktalı virgül gereksiz kullanılmaz. Virgül veya nokta tercih edilir. `olup, özelliği;` istem kalıbı bu kuralın istisnasıdır.
 
@@ -126,7 +134,7 @@ Başvuru bilgi alanlarında **Başvuru No**, **Başvuru Sahibi** ve **Referans**
 - Önceki teknik bölümünde müşterinin kaynakta verdiği teknik arka plan, eksiklikler, problem anlatımı ve karşılaştırmalar eksiksiz korunur. Seçilen patent literatürü bunların yerine geçmez, yalnızca ayrı patent paragrafları olarak eklenir.
 - Tarifname oluşturma arayüzünde `Mevcut/revize tarifname` alanı bulunmaz. Mevcut tarifnameyi değiştirme işi ayrı `Tarifname düzenleme` akışıdır ve şimdilik bu pakete eklenmemiştir.
 - Şekiller seçimi tarifname akışında literatür araştırmasından önce gösterilir.
-- `TEKNİK ALAN` ilk cümlesi **“Buluş, ... ile ilgilidir.”** biçiminde yazılır. Teknik alan ya tek bir bütün paragraf halinde tamamlanır ve bu paragraf içinde ikinci kez **“Buluş, özellikle ...”** diye başlanmaz; ya da ek açıklama **“Buluş, özellikle ...”** ile verilecekse bu ifade mutlaka ayrı bir paragrafın başlangıcında yer alır.
+- `TEKNİK ALAN` **zorunlu olarak iki paragraf** halinde yazılır. İlk paragraf yalnızca tek giriş cümlesinden oluşur ve **“Buluş, ... ile ilgilidir.”** biçiminde biter. Sonra yeni paragraf açılır; ikinci paragraf mutlaka **“Buluş, özellikle ...”** ile başlar ve teknik alanı ayrıntılandırır. İkinci paragraf **“Sistem ve yöntem...”** gibi bir ifadeyle başlatılmaz.
 - `ÖNCEKİ TEKNİK`te aynı teknik anlatımın devamı olan **“Özellikle...”**, **“Bununla birlikte...”**, **“Bu nedenle...”** gibi cümleler sırf yeni cümle başladığı için ayrı paragraf yapılmaz.
 - Literatür araştırması sonucu eklenen her patent paragrafında **İngilizce başlık + Türkçe başlık karşılığı** birlikte verilir.
 - `BULUŞUN DETAYLI AÇIKLAMASI`nda referanslı unsurlar tek tek ayrı paragraflara bölünmez; unsur açıklamaları tek ve sürekli bir paragrafta birleştirilir. Ayrı yapılanma/alternatif, yöntem listesi ve çalışma prensibi ayrı paragraf olabilir.

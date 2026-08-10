@@ -591,7 +591,7 @@ def tarifname_extraction_prompt(
 ) -> str:
     return f"""{TARIFNAME_RULES}
 Aşağıdaki kaynakları yalnızca yapı ve kapsam envanteri çıkarmak için incele. Teknik metni yeniden icat etme,
-kısaltma nedeniyle önemli bilgi kaybettirme ve örnek tarifnamelerin teknik içeriğini kullanma.
+kısaltma nedeniyle önemli bilgi kaybettirme ve örnek tarifnamelerin teknik içeriğini kullanma. Gömülü şekil, grafik, diyagram, ısı haritası ve görsel teknik sonuçları da kaynak olarak incele; yalnız metin çıkarımına güvenme.
 
 KAYNAK HİYERARŞİSİ:
 1. BBF: temel teknik kaynak.
@@ -607,7 +607,7 @@ JSON dışında hiçbir şey yazma.
  "technical_problems":[""],
  "technical_solution":[""],
  "technical_effects":[""],
- "elements":[{{"number":"10","name":"","function":"","source":"BBF/ek teknik belge"}}],
+ "elements":[{{"number":"1","name":"","function":"","source":"BBF/ek teknik belge"}}],
  "method_steps":[{{"number":"1001","text":"","stage":"","essential":true}}],
  "formulas":[{{"label":"","expression":"","variables":[""],"role":"zorunlu/tercihli"}}],
  "tables":[{{"caption":"","headers":[""],"rows":[[""]]}}],
@@ -670,14 +670,14 @@ KRİTİK TALİMATLAR:
 - BBF'nin bütün teknik bilgilerini kullan. Uzun önceki teknik, formüller, tablolar, deneysel sonuçlar, alternatifler ve referans tablosu atlanamaz.
 - Yapılandırılmış envanter yalnızca yardımcıdır. Çelişki halinde ham BBF ve açık teknik müşteri belgeleri esas alınır.
 - Örnek tarifnamelerden yalnızca kurguyu öğren; teknik bilgi aktarma.
-- TEKNİK ALAN ilk cümlesi kesinlikle “Buluş, ... ile ilgilidir.” yapısında başlasın. Teknik alan ya tek bir bütün paragraf halinde tamamlanmalı ve bu paragraf içinde ikinci kez “Buluş, özellikle ...” diye başlanmamalı; ya da ek açıklama “Buluş, özellikle ...” ile verilecekse bu ifade ayrı bir paragrafta başlamalıdır. Ayrı paragraf gerekiyorsa technical_field içinde paragrafları \n\n ile ayır.
+- TEKNİK ALAN iki paragraf olmalıdır. İlk paragraf yalnız “Buluş, ... ile ilgilidir.” biçimindeki giriş cümlesinden oluşmalı ve burada bitmelidir. Daha ayrıntılı teknik kapsam ikinci paragrafta mutlaka “Buluş, özellikle ...” diye başlamalıdır. İkinci paragrafa “Sistem ve yöntem...” gibi çıplak bir ifadeyle başlama. technical_field içinde iki paragrafı \n\n ile ayır.
 - ÖNCEKİ TEKNİK'teki aynı anlatımın devamı olan “Özellikle...”, “Bununla birlikte...”, “Bu nedenle...” gibi cümleleri ayrı paragraf yapma. Patent literatürü dokümanları ise ayrı ayrı paragraf olsun.
 - Her patent literatürü paragrafında dokümanın doğrulanmış İngilizce başlığı ile Türkçe başlık karşılığı birlikte yazılsın.
-- BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı sistem/cihaz unsurlarını tek tek ayrı paragraf yapma; bütün unsur açıklamalarını teknik akış içinde tek sürekli paragrafta topla. Gerçekten ayrı bir yapılanma/alternatif/yöntem/çalışma prensibi ayrıca paragraf olabilir.
+- BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı sistem/cihaz unsurlarını tek tek ayrı paragraf yapma; bütün unsur açıklamalarını teknik akış içinde tek sürekli paragrafta topla. Sistem unsuru-yöntem adımı ilişkisini açıklamak için “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü tablo oluşturma. Bu ilişkiyi modül (1), sonraki modül (2) ve ilgili yöntem adımı (1001, 1002...) arasındaki veri/işlev bağlantısını gösteren doğal teknik paragraf olarak yaz. Yalnız ham kaynakta gerçekten sayısal/deneysel veri tablosu olan tabloları tables alanında koru. Gerçekten ayrı bir yapılanma/alternatif/yöntem/çalışma prensibi ayrıca paragraf olabilir.
 - Ana istemde zorunlu teknik çekirdeği kapsayıcı biçimde ver. Aynı işlemin birinci/ikinci/k'ıncı tekrarlarını ana istemde gereksiz yere ayrı satırlara bölme. Bu ayrıntıları, aynı alt akışa aitse tek bağımlı istemde topla.
 - Eğitim/genel aşama ile test aşamasındaki paralel akışları aynı mantıkla fakat ayrı teknik aşamalar olarak kur.
-- REFERANS NUMARALARI bölümündeki yöntem adımları tam liste olarak korunur. Ana istemde numarasız kapsayıcı ifade kullanılabilir; ayrıntılı numaralı adımlar bağımlı istemde verilebilir.
-- “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” bölümü için method_steps tam ve tutarlı olsun. Detaylı açıklamadaki ara maddeler virgülle, son madde noktayla bitsin.
+- REFERANS NUMARALARI bölümünde önce sistem/cihaz modüllerini yaz. Kaynakta açık modül adları olup ayrı unsur numarası yoksa bunlara kaynak sırasıyla 1, 2, 3... ver. Yöntem işlem adımlarını ayrı aile olarak daima 1001, 1002, 1003... biçiminde numaralandır. Kaynaktaki 1, 2, 3... işlem satırlarını sistem unsur numarasıyla karıştırma. Ana istemde numarasız kapsayıcı ifade kullanılabilir; ayrıntılı yöntem adımları 1001... referanslarıyla korunur.
+- “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” bölümü için method_steps tam ve tutarlı olsun. method_steps numaraları 1001’den başlayarak kesintisiz ilerlesin. Detaylı açıklamadaki ara maddeler virgülle, son madde noktayla bitsin. Bağımsız yöntem istemindeki her işlem adımı virgülle bitsin.
 - Yalnızca yöntem modunda system_claim null olmalıdır. Yalnızca sistem modunda method_claim null olmalıdır.
 - Her bağımlı istem ana isteme göre gerçek bir daraltma sağlamalıdır.
 - Patent literatürü yalnızca ÖNCEKİ TEKNİK bölümünde kullanılsın.
@@ -687,7 +687,7 @@ KRİTİK TALİMATLAR:
 - “Buluşun bir gerçekleştirilmesinde” ifadesini kullanma; gerekli yerde “Buluşun bir yapılanmasında” yaz. “Mevcut buluş” kullanma.
 - Önceki teknik bölümüne ham kaynakta verilen bütün teknik arka plan, eksiklik ve problem anlatımını aktar; literatür paragrafları bunların yerine geçmez.
 - ŞEKİLLERİN KISA AÇIKLAMASI kısa ve işlevsel olsun; gerekli değilse yöntem adımı numara aralığını şekil açıklamasında tekrarlama.
-- Müşteri şekillerini teknik kaynak olarak aynen esas al. Görseldeki gerçek referans işaretlerini sayısal unsur, yöntem adımı, sembolik referans ve geçici şekil numarası olarak ayır. Geçici şekil numarasını yeni unsur referansı yapma.
+- Müşteri şekillerini teknik kaynak olarak aynen esas al. Görseldeki gerçek referans işaretlerini sayısal unsur, yöntem adımı, sembolik referans ve geçici şekil numarası olarak ayır. Gömülü grafik/ısı haritası/diyagram üzerindeki teknik sonuçları tamlık kontrolünde dikkate al. Geçici şekil numarasını yeni unsur referansı yapma.
 
 JSON dışında hiçbir şey yazma.
 ÇIKTI ŞEMASI:
@@ -747,14 +747,18 @@ ZORUNLU KONTROL LİSTESİ:
 12. “Buluşun bir gerçekleştirilmesinde” veya “Mevcut buluş” kalıbı var mı? Varsa “Buluşun bir yapılanmasında” / “Buluş” diline dönüştür.
 13. REFERANS NUMARALARI unsur adları yalnızca ilk kelime büyük olacak biçimde mi? Cümle içindeki unsur adları küçük harfle mi başlıyor?
 14. Önceki teknik kaynakta verilen bütün müşteri teknik arka planını ve eksikliklerini içeriyor mu?
-15. TEKNİK ALAN ilk cümlesi “Buluş, ... ile ilgilidir.” yapısında mı; “Buluş, özellikle ...” kullanılmışsa aynı paragrafın devamı yerine ayrı paragraf olarak mı verilmiş?
+15. TEKNİK ALAN tam iki kademeli mi: ilk paragraf yalnız “Buluş, ... ile ilgilidir.” giriş cümlesi mi, ikinci paragraf ayrı olarak “Buluş, özellikle ...” ile mi başlıyor? İkinci paragraf “Sistem ve yöntem...” gibi çıplak bir ifadeyle başlamışsa düzelt.
 16. ÖNCEKİ TEKNİK'te “Özellikle...”, “Bununla birlikte...”, “Bu nedenle...” gibi aynı anlatımın devamları gereksiz yere ayrı paragraf yapılmış mı? Yapılmışsa birleştir.
 17. Her literatür paragrafında doğrulanmış İngilizce başlık ve Türkçe karşılığı birlikte var mı?
 18. BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı unsurlar gereksiz yere ayrı ayrı paragraflara bölünmüş mü? Bölündüyse tek sürekli unsur paragrafında birleştir.
-19. Detaylı açıklamadaki yöntem madde listesinde ara maddeler virgül, son madde nokta ile bitiyor mu?
+19. Detaylı açıklamadaki yöntem madde listesinde ara maddeler virgül, son madde nokta ile bitiyor mu ve yöntem adımları 1001, 1002... şeklinde kesintisiz mi ilerliyor? Bağımsız yöntem istemindeki her işlem adımı virgülle bitiyor mu?
 20. Şekil açıklamaları kısa mı ve gerekli olmayan yöntem adımı numara aralıklarını tekrarlamıyor mu?
 21. Müşteri şekillerindeki gerçek unsur/yöntem/sembolik referanslar REFERANS NUMARALARI ile uyumlu mu? Geçici şekil numaraları yeni referans olarak uydurulmuş mu?
 22. Şekilde kullanılan UW, UW_F, UW_PL, UW_R, UW_M gibi sembolik referansların tarifnamede açık karşılığı var mı?
+23. Sistem/cihaz modülleri açıkça adlandırılmış fakat kaynakta ayrı unsur numarası verilmemişse 1, 2, 3... olarak numaralandırılmış mı, yöntem satırlarındaki 1, 2, 3... ile karıştırılmamış mı?
+24. “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü açıklama tablosu oluşturulmuş mu? Varsa tabloyu kaldır ve aynı içeriği modül-referans-yöntem adımı ilişkilerini koruyan doğal teknik paragrafa dönüştür.
+25. Gömülü şekil, grafik, ısı haritası ve diyagramlarda bulunan teknik sonuçlar ile açıklayıcı etiketler tamlık kontrolünde değerlendirilmiş mi?
+26. ŞEKİLLERİN KISA AÇIKLAMASI içindeki Şekil 1, Şekil 2, Şekil 3... satırları aralarında boş paragraf gerektirmeyecek biçimde ardışık açıklamalar olarak verilmiş mi?
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
 {TARIFNAME_DRAFT_SCHEMA}
@@ -910,6 +914,96 @@ def _ensure_literature_titles(draft: dict[str, Any], literature: list[dict[str, 
     draft["literature_paragraphs"] = paragraphs
 
 
+
+def _normalize_technical_field_two_paragraphs(value: str) -> str:
+    """TEKNİK ALAN girişini iki zorunlu paragrafa ayır."""
+    raw = str(value or "").strip()
+    raw = re.sub(r"^Buluş\s+(?!,)", "Buluş, ", raw, count=1, flags=re.IGNORECASE)
+    parts = [x.strip() for x in re.split(r"\n\s*\n", raw) if x.strip()]
+    combined = " ".join(parts)
+    match = re.match(r"^(Buluş,\s+.+?ile ilgilidir\.)\s*(.*)$", combined, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return raw
+    first = match.group(1).strip()
+    rest = match.group(2).strip()
+    if not rest:
+        return first
+    rest = re.sub(r"^Buluş,\s*özellikle\s*", "", rest, count=1, flags=re.IGNORECASE).strip()
+    rest = re.sub(r"^Buluş\s+özellikle\s*", "", rest, count=1, flags=re.IGNORECASE).strip()
+    second = "Buluş, özellikle " + (rest[:1].lower() + rest[1:] if rest else "")
+    return first + "\n\n" + second
+
+
+def _normalize_method_step_numbers(draft: dict[str, Any]) -> None:
+    """Tarifname oluşturma yöntem referanslarını 1001, 1002... standardına getir."""
+    steps = draft.get("method_steps") or []
+    if not steps:
+        return
+    desired = [str(1001 + i) for i in range(len(steps))]
+    old = [str(step.get("number", "") or "").strip() for step in steps]
+    for step, number in zip(steps, desired):
+        step["number"] = number
+    method_claim = draft.get("method_claim") or {}
+    claim_steps = list(method_claim.get("steps") or [])
+    if claim_steps:
+        normalized: list[str] = []
+        for i, item in enumerate(claim_steps):
+            text = str(item or "").strip()
+            text = re.sub(r"\s*\(\s*(?:S?\d+)\s*\)\s*[,.;:]?\s*$", "", text, flags=re.IGNORECASE).strip()
+            number = desired[i] if i < len(desired) else str(1001 + i)
+            normalized.append(f"{text} ({number})")
+        method_claim["steps"] = normalized
+        draft["method_claim"] = method_claim
+
+
+def _assign_missing_element_numbers(draft: dict[str, Any]) -> None:
+    """Açık modüller var ama ayrı referans verilmemişse 1..N ata."""
+    elements = draft.get("elements") or []
+    if not elements:
+        return
+    numbers = [str(e.get("number", "") or "").strip() for e in elements]
+    if all(not n for n in numbers):
+        for i, element in enumerate(elements, 1):
+            element["number"] = str(i)
+
+
+def _convert_mapping_tables_to_prose(draft: dict[str, Any]) -> None:
+    """İşlem Adımı/Gerçekleştiren Unsur açıklama tablolarını teknik paragrafa çevir."""
+    kept: list[dict[str, Any]] = []
+    mapping_paragraphs: list[str] = []
+    elements = draft.get("elements") or []
+    steps = draft.get("method_steps") or []
+    for table in draft.get("tables") or []:
+        headers = [str(x or "").strip().casefold() for x in (table.get("headers") or [])]
+        is_mapping = any("işlem adımı" in h for h in headers) and any("gerçekleştiren unsur" in h for h in headers)
+        if not is_mapping:
+            kept.append(table)
+            continue
+        rows = table.get("rows") or []
+        sentences: list[str] = []
+        for idx, row in enumerate(rows):
+            row = list(row or [])
+            element = elements[idx] if idx < len(elements) else {}
+            step = steps[idx] if idx < len(steps) else {}
+            el_name = str(element.get("name", "") or (row[2] if len(row) > 2 else "ilgili modül")).strip()
+            el_num = str(element.get("number", "") or "").strip()
+            step_text = str(step.get("text", "") or (row[1] if len(row) > 1 else "ilgili işlem")).strip().rstrip(".,;:")
+            step_num = str(step.get("number", "") or "").strip()
+            explanation = str(row[3] if len(row) > 3 else "").strip().rstrip(".")
+            lead = f"{el_name}{f' ({el_num})' if el_num else ''}, {step_text[:1].lower() + step_text[1:]} işlem adımını{f' ({step_num})' if step_num else ''} gerçekleştirmektedir"
+            if explanation:
+                lead += f" ve bu kapsamda {explanation[:1].lower() + explanation[1:]}"
+            sentences.append(lead.rstrip(".") + ".")
+        if sentences:
+            mapping_paragraphs.append("Sistem ile yöntem arasındaki teknik ilişki aşağıdaki şekilde kurulmaktadır. " + " ".join(sentences))
+    draft["tables"] = kept
+    if mapping_paragraphs:
+        detailed = [str(x or "").strip() for x in (draft.get("detailed_paragraphs") or []) if str(x or "").strip()]
+        insert_at = 1 if detailed else 0
+        for paragraph in reversed(mapping_paragraphs):
+            detailed.insert(insert_at, paragraph)
+        draft["detailed_paragraphs"] = detailed
+
 def apply_tarifname_house_style(
     draft: dict[str, Any],
     claim_mode: str,
@@ -926,6 +1020,9 @@ def apply_tarifname_house_style(
     ]:
         draft = _replace_in_nested(draft, old, new)
     draft["title"] = _ensure_title_for_claim_mode(draft.get("title", ""), claim_mode)
+    _assign_missing_element_numbers(draft)
+    _normalize_method_step_numbers(draft)
+    _convert_mapping_tables_to_prose(draft)
     draft["prior_art_general_paragraphs"] = _merge_continuation_paragraphs(draft.get("prior_art_general_paragraphs") or [])
     _merge_initial_element_paragraphs(draft)
     _ensure_literature_titles(draft, literature)
@@ -933,12 +1030,7 @@ def apply_tarifname_house_style(
         re.sub(r"\b\d{4}\s*[-–]\s*\d{4}\s+numaralı\s+", "", str(x or ""), flags=re.IGNORECASE)
         for x in (draft.get("figure_descriptions") or [])
     ]
-    tf = str(draft.get("technical_field", "") or "").strip()
-    tf = re.sub(r"^Buluş\s+(?!,)", "Buluş, ", tf, count=1, flags=re.IGNORECASE)
-    # “Buluş, özellikle ...” ikinci bir açıklama olarak kullanılıyorsa aynı paragrafta bırakma.
-    # Teknik alan tek paragraf olacaksa bu tekrar hiç kullanılmamalıdır; kullanılmışsa ayrı paragrafa alınır.
-    tf = re.sub(r"(?<!^)\s+(Buluş,\s*özellikle\b)", r"\n\n\1", tf, flags=re.IGNORECASE)
-    draft["technical_field"] = tf
+    draft["technical_field"] = _normalize_technical_field_two_paragraphs(draft.get("technical_field", ""))
     for step in draft.get("method_steps") or []:
         step["text"] = re.sub(r"[.,;:]+$", "", str(step.get("text", "") or "").strip())
     return draft
@@ -957,8 +1049,12 @@ def validate_tarifname_draft(
     if re.search(r"\bBuluş özellikle\b", technical_field, flags=re.IGNORECASE):
         raise ValueError('TEKNİK ALAN içinde “Buluş özellikle” yerine “Buluş, özellikle” kullanılmalıdır.')
     tf_paragraphs = [x.strip() for x in re.split(r"\n\s*\n", technical_field_raw) if x.strip()]
-    if tf_paragraphs and re.search(r"(?<!^)\bBuluş,\s*özellikle\b", tf_paragraphs[0], flags=re.IGNORECASE):
-        raise ValueError('“Buluş, özellikle ...” ifadesi kullanılacaksa TEKNİK ALAN içinde ayrı bir paragrafta başlamalıdır.')
+    if len(tf_paragraphs) < 2:
+        raise ValueError('TEKNİK ALAN iki paragraf olmalıdır: ilk paragraf “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile başlamalıdır.')
+    if not re.fullmatch(r"Buluş,\s+.+?ile ilgilidir\.", tf_paragraphs[0], flags=re.IGNORECASE | re.DOTALL):
+        raise ValueError('TEKNİK ALAN ilk paragrafı yalnız “Buluş, ... ile ilgilidir.” giriş cümlesinden oluşmalıdır.')
+    if not re.match(r"^Buluş,\s*özellikle\b", tf_paragraphs[1], flags=re.IGNORECASE):
+        raise ValueError('TEKNİK ALAN ikinci paragrafı “Buluş, özellikle ...” ile başlamalıdır.')
 
     steps = draft.get("method_steps") or []
     numbers = [str(x.get("number", "")).strip() for x in steps]
@@ -966,6 +1062,20 @@ def validate_tarifname_draft(
         raise ValueError("REFERANS NUMARALARI bölümünde yinelenen yöntem adımı numarası bulundu.")
     if any(not n for n in numbers):
         raise ValueError("Numarası boş yöntem işlem adımı bulundu.")
+    expected_numbers = [str(1001 + i) for i in range(len(numbers))]
+    if numbers and numbers != expected_numbers:
+        raise ValueError("Yöntem işlem adımları 1001'den başlayarak kesintisiz numaralandırılmalıdır.")
+
+    element_numbers = [str(x.get("number", "") or "").strip() for x in (draft.get("elements") or [])]
+    if any(not n for n in element_numbers):
+        raise ValueError("Sistem/cihaz unsurlarından en az birinin referans numarası boş.")
+    if set(element_numbers) & set(numbers):
+        raise ValueError("Sistem unsur referansları ile yöntem işlem adımı referansları çakışıyor.")
+
+    for table in draft.get("tables") or []:
+        headers = [str(x or "").casefold() for x in (table.get("headers") or [])]
+        if any("işlem adımı" in h for h in headers) and any("gerçekleştiren unsur" in h for h in headers):
+            raise ValueError("Sistem-yöntem ilişki tablosu tarifname gövdesinde tablo olarak bırakılamaz; doğal teknik paragrafa dönüştürülmelidir.")
 
     normalized_to_numbers: dict[str, list[str]] = {}
     for step in steps:
@@ -1207,7 +1317,8 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
     if method_claim:
         add_numbered_claim(doc, template, f"{method_claim.get('preamble','')} olup, özelliği;")
         for item in method_claim.get("steps") or []:
-            add_template_list_item(doc, template, 86, str(item).rstrip(".,;:"))
+            step_text = str(item).rstrip(".,;:") + ","
+            add_template_list_item(doc, template, 86, step_text)
         closing = add_text(doc, method_claim.get("closing", "işlem adımlarını içermesidir."))
         closing.paragraph_format.first_line_indent = Cm(0.5)
         add_blank(doc)

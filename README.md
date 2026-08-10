@@ -1,10 +1,10 @@
-# Patent Atölyesi v5.4.2
+# Patent Atölyesi v5.4.3
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 10.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.4.2-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.4.3-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -49,7 +49,7 @@ Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün
 ## Tarifname kuralları
 
 - `Tarifname_181176_template.docx` bağlayıcı şablondur.
-- Kaynaktaki bütün teknik bilgi, özellikle önceki teknik, teknik problem/çözüm, unsurlar, yöntem adımları, formüller, tablolar, deneysel sonuçlar, alternatifler, kullanım senaryoları ve teknik etkiler eksiksiz aktarılır.
+- Kaynaktaki bütün teknik bilgi, özellikle önceki teknik, teknik problem/çözüm, unsurlar, yöntem adımları, formüller, tablolar, deneysel sonuçlar, alternatifler, kullanım senaryoları ve teknik etkiler eksiksiz aktarılır. Gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiket bilgileri ve bu görsellerden anlaşılan teknik sonuçlar da tamlık kontrolünün parçasıdır.
 - Kullanıcıya sunulan tarifname metninde `BBF` veya `buluş bildirim formu` gibi kaynak-form atıfları kullanılmaz.
 - Sistem ve yöntem istemleri birlikteyse başlık da uygun biçimde `... Sistemi ve Yöntemi` olur.
 - `REFERANS NUMARALARI` unsur adlarında yalnızca ilk kelimenin ilk harfi büyük yazılır; teknik kısaltmalar korunabilir.
@@ -60,14 +60,18 @@ Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün
 - Önceki teknik bölümündeki müşteri anlatımı eksiksiz korunur; patent literatürü bunun yerine geçmez.
 - Tarifname oluşturma arayüzünde `Mevcut/revize tarifname` alanı yoktur. Mevcut bir tarifnamenin değiştirilmesi ileride ayrı `Tarifname düzenleme` iş akışında ele alınacaktır; yeni tarifname oluşturma akışına karıştırılmaz.
 - Şekiller seçimi literatür araştırmasından önce gösterilir.
-- `TEKNİK ALAN` ilk cümlesi `Buluş, ... ile ilgilidir.` yapısında kurulur. Teknik alan tek paragraf halinde tamamlanabilir; ancak `Buluş, özellikle ...` biçiminde ikinci bir açıklama kullanılacaksa bu ifade ayrı paragrafta başlatılır.
+- `TEKNİK ALAN` **iki paragraf** halinde kurulur. İlk paragraf yalnızca tek giriş cümlesidir ve `Buluş, ... ile ilgilidir.` biçiminde biter. Ardından mutlaka yeni paragraf açılır; ikinci paragraf `Buluş, özellikle ...` ile başlar ve teknik alanın ayrıntısını verir. İkinci paragraf `Sistem ve yöntem...` gibi bir ifadeyle başlatılmaz.
 - `ÖNCEKİ TEKNİK` içinde aynı anlatımın devamı olan `Özellikle`, `Bununla birlikte`, `Bu nedenle` gibi cümleler gereksiz yere ayrı paragraf yapılmaz.
 - Patent literatürü paragraflarında doğrulanmış İngilizce başlık ve Türkçe karşılığı birlikte yazılır.
 - `BULUŞUN DETAYLI AÇIKLAMASI` içinde referanslı unsurlar tek tek ayrı paragraf yapılmaz; unsur açıklamaları tek sürekli paragrafta birleştirilir.
-- Detaylı açıklamadaki yöntem işlem adımlarının her biri nokta ile biter; bağımsız yöntem istemindeki madde işaretli işlem adımlarının her biri virgülle biter ve ardından `işlem adımlarını içermesidir.` yazılır.
+- Detaylı açıklamadaki yöntem işlem adımlarında ara maddeler virgülle, son madde noktayla biter. Bağımsız yöntem istemindeki madde işaretli işlem adımlarının **her biri virgülle** biter ve ardından `işlem adımlarını içermesidir.` yazılır; işlem adımları noktalamasız bırakılamaz.
 - `Tarifname_181176_template.docx` fontların yanı sıra boş satır, 1,5 satır aralığı, gerçek Word madde işaretleri/numaralandırması ve istemler arası boşluk bakımından da birebir bağlayıcıdır.
 - Amaç cümleleri `... karşılaştırmaktır.`, `... sağlamaktır.` gibi tam yüklemle biter; `... karşılaştırmak.` biçiminde bırakılmaz.
 - REFERANS NUMARALARI bölümünden önce `(1)`, `(2)` gibi referans işaretleri kullanılmaz; kısa açıklamadaki ana istem özeti numarasız yazılır.
+- Kaynakta adlandırılmış sistem modülleri bulunuyor ancak ayrı referans numarası verilmiyorsa, modüller kaynak sırasına göre `1, 2, 3...` olarak numaralandırılır. Yöntem işlem adımları ayrı bir referans ailesidir ve kullanıcı açıkça farklı bir sistem istemedikçe `1001, 1002, 1003...` olarak numaralandırılır; kaynakta işlem adımları `1, 2, 3...` veya `S101...` biçiminde verilmiş olsa dahi tarifname senkronizasyonunda `1001...` ailesine dönüştürülür.
+- `REFERANS NUMARALARI` bölümünde önce sistem modülleri art arda yazılır, ardından **tek bir boş paragraf** bırakılarak yöntem işlem adımları `1001...` ailesiyle art arda yazılır.
+- Sistem ile yöntem arasındaki `İşlem Adımı / Gerçekleştiren Unsur / Açıklama` ilişkisi tarifname gövdesinde açıklama tablosu olarak verilmez. Bu ilişki, modüllerin hangi işlem adımını hangi veri/çıktıyı kullanarak gerçekleştirdiğini açıklayan doğal teknik paragraf halinde yazılır. Yalnız kaynağın gerçek sayısal/deneysel veri tabloları gerektiğinde tablo olarak korunabilir.
+- `ŞEKİLLERİN KISA AÇIKLAMASI` bölümünde `Şekil 1...`, `Şekil 2...`, `Şekil 3...` açıklamaları aralarında boş paragraf olmadan doğrudan alt alta yazılır.
 - Kaynakta `UW`, `UW_F`, `UW_PL`, `UW_R`, `UW_M` gibi sembolik referanslar varsa sayısal unsur listesinden sonra bir boşlukla `UW. Kullanılabilir ağırlık` biçiminde yazılabilir; kaynakta gerçek referans olmayan `21-37` gibi geçici şekil numaraları uydurulmaz.
 - İstemlerde teknik olarak ilişkili unsurlar birbirinin girdisi/çıktısı veya bağlantısı üzerinden yazılır; bağımsız unsur listesi gibi bırakılmaz.
 - İstemlerde `HPU_W`, `FW_min`, `UW_F` gibi sembollerin teknik açılımı önce yazılır ve sembol parantez içinde gösterilir; formüllerde semboller korunur.
@@ -111,7 +115,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-09.v1`
+Kural sürümü: `2026-08-10.v3`
 
 ## Yerel çalıştırma
 

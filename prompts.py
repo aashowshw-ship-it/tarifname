@@ -19,7 +19,7 @@ JSON dışında hiçbir şey yazma.
   "technical_field": "",
   "prior_art": [""],
   "advantages": [""],
-  "elements": [{{"number":"10","name":"","function":""}}],
+  "elements": [{{"number":"1","name":"","function":""}}],
   "method_steps": [{{"number":"1001","text":""}}],
   "working_principle": [""],
   "keywords": [""],
@@ -71,21 +71,21 @@ JSON dışında hiçbir şey yazma.
 
 NOTLAR:
 - 'unumbered_system_definition' ve 'unumbered_system_elements' REFERANS NUMARALARI bölümünden önce kullanılacağı için (1), (2), (1001) veya benzeri referans işareti içermemeli, tamamen numarasız olmalıdır.
-- elements alanında kaynaktaki gerçek referans işareti aynen korunur. Kaynakta UW, UW_F, UW_PL, UW_R, UW_M gibi sembolik referanslar kullanılıyorsa number alanına bu sembol yazılabilir. Kaynakta gerçek unsur referansı olmayan 21-37 gibi şekil içi/geçici numaralar yeni referans numarası olarak üretilmez. Unsur adı teknik anlamı değiştirilmeden referans listesi için yalnızca ilk kelimenin baş harfi büyük olacak cümle düzenine çevrilir, standart teknik kısaltmalar korunur.
-- method_steps alanında numara ayrı, metin numarasızdır. Metin mastar isimle biter: toplanması, analiz edilmesi vb.
+- elements alanında kaynaktaki gerçek sistem/cihaz referans işareti varsa aynen korunur. Açık sistem modülleri bulunmasına rağmen ayrı unsur numarası yoksa kaynak sırasıyla 1, 2, 3... atanır. Kaynakta UW, UW_F, UW_PL, UW_R, UW_M gibi sembolik referanslar kullanılıyorsa number alanına bu sembol yazılabilir. Kaynakta gerçek unsur referansı olmayan 21-37 gibi şekil içi/geçici numaralar yeni referans numarası olarak üretilmez. Unsur adı teknik anlamı değiştirilmeden referans listesi için yalnızca ilk kelimenin baş harfi büyük olacak cümle düzenine çevrilir, standart teknik kısaltmalar korunur.
+- method_steps alanında numara ayrı, metin numarasızdır. Yöntem işlem adımları kaynakta 1, 2, 3... veya S101... olarak verilmiş olsa bile kullanıcı aksini açıkça istemedikçe 1001, 1002, 1003... şeklinde numaralandırılır. Metin mastar isimle biter: toplanması, analiz edilmesi vb.
 - method_claim varsa her adım metninin sonunda '(1001)' gibi numara yer alsın ve bağımsız yöntem istemindeki her madde virgül ile bitsin.
 - Sistem istemi elemanları bağımsız bir alışveriş listesi gibi yazılmasın. Teknik olarak ilişkili her sonraki unsur, mümkün olduğunda daha önce tanımlanan unsurun çıktısı/girdisi veya bağlantısı üzerinden kurulmalı; kaynakta olmayan yapay ilişki eklenmemelidir.
 - İstemlerde İngilizce kısaltmalar ilk kullanımda Türkçesiyle bir kez açıklansın; devamında Türkçe kullanılsın.
 - Kullanıcıya sunulan tarifname metninde BBF veya buluş bildirim formu ifadeleri kullanılmasın.
 - Sistem ve yöntem birlikteyse başlık “... Sistemi ve Yöntemi” biçiminde olsun.
 - “Buluşun bir gerçekleştirilmesinde” yerine “Buluşun bir yapılanmasında” kullanılsın.
-- TEKNİK ALAN ilk cümlesi “Buluş, ... ile ilgilidir.” olsun. Teknik alan ya tek bir bütün paragrafta tamamlanmalı ve bu paragraf içinde yeniden “Buluş, özellikle ...” diye başlanmamalı; ya da ek açıklama “Buluş, özellikle ...” ile verilecekse bu ifade yeni ve ayrı bir paragrafta başlamalıdır. Ayrı paragraf gerekiyorsa technical_field içinde iki paragrafı \n\n ile ayır.
-- Detaylı açıklamada referanslı unsurlar tek sürekli paragrafta anlatılsın.
+- TEKNİK ALAN iki paragraf olmalıdır. İlk paragraf yalnız “Buluş, ... ile ilgilidir.” giriş cümlesinden oluşup burada bitmelidir. İkinci paragraf mutlaka “Buluş, özellikle ...” ile başlamalı ve daha ayrıntılı teknik kapsamı vermelidir. “Sistem ve yöntem...” gibi çıplak bir ifadeyle ikinci paragrafa başlama. technical_field içinde iki paragrafı \n\n ile ayır.
+- Detaylı açıklamada referanslı unsurlar tek sürekli paragrafta anlatılsın. “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü sistem-yöntem ilişki tablosu oluşturma; bu içeriği modüller (1,2,3...) ile yöntem adımları (1001,1002...) arasındaki teknik bağı gösteren doğal paragraf olarak yaz. Yalnız gerçek sayısal/deneysel veri tabloları tablo olarak korunabilir.
 - Literatür paragraflarında İngilizce başlık ve Türkçe karşılığı birlikte yazılsın.
 - objectives alanındaki her amaç tam cümle yüklemiyle bitsin: “... karşılaştırmaktır.”, “... sağlamaktır.” gibi. “... karşılaştırmak.” veya “... sağlamak.” biçiminde çıplak mastar bırakma.
 - Açıklama bölümlerinde noktalı virgülü gereksiz kullanma; virgül veya nokta tercih et. İstemlerdeki standart “olup, özelliği;” kalıbı korunabilir.
 - İstemlerde HPU_W, FW_min, UW, UW_F, FE, TE gibi semboller anlamı açıklanmadan çıplak teknik unsur olarak kullanılmasın.
-- Şekillerde müşteri görselini esas al; şekil üzerindeki gerçek unsur/yöntem/sembolik referansları REFERANS NUMARALARI ile senkron tut. Geçici şekil numaralarını yeni unsur numarası olarak uydurma. Önce “kuru hibrit güç ünitesi ağırlığı (HPU_W)”, “asgari görev yakıtı ağırlığı (FW_min)”, “ilave yakıt tahsisi (UW_F)” gibi açılımı yaz, matematiksel ifadede sembolü koru.
+- Şekillerde müşteri görselini esas al; şekil üzerindeki gerçek unsur/yöntem/sembolik referansları REFERANS NUMARALARI ile senkron tut. Gömülü grafik, ısı haritası ve diyagramlardaki teknik sonuçları içerik tamlığı açısından incele. Geçici şekil numaralarını yeni unsur numarası olarak uydurma. Önce “kuru hibrit güç ünitesi ağırlığı (HPU_W)”, “asgari görev yakıtı ağırlığı (FW_min)”, “ilave yakıt tahsisi (UW_F)” gibi açılımı yaz, matematiksel ifadede sembolü koru.
 
 YAPILANDIRILMIŞ BBF VERİSİ:
 {json.dumps(extracted, ensure_ascii=False, indent=2)}
