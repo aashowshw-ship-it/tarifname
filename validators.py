@@ -99,6 +99,16 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
         if re.search(r"(?:yapmasıdır|etmesidir|belirlemesidir)\.?$", claim.strip(), re.I):
             findings.append({"level": "Hata", "message": "Sistem alt istemi yanlış fiil sonuyla bitiyor."})
 
+    hardware_anchor_re = re.compile(r"elektronik cihaz|elektronik işlem birimi|işlemci|donanım|bilgisayar|mikrodenetleyici|kontrol birimi", re.I)
+    software_terms_re = re.compile(r"modül|birim|algoritma|yazılım|veri işleme|hesaplama", re.I)
+    sc_text = " ".join([str(sc.get("preamble", "")), *map(str, sc.get("elements") or [])])
+    if sc_text and len(software_terms_re.findall(sc_text)) >= 2 and not hardware_anchor_re.search(sc_text):
+        findings.append({"level": "Hata", "message": "Yazılım/modül ağırlıklı bağımsız sistem istemi elektronik cihaz/işlemci gibi geniş bir donanımsal taşıyıcıya dayandırılmalı."})
+    if method:
+        mc_text = " ".join([str(method.get("preamble", "")), *map(str, method.get("steps") or [])])
+        if len(software_terms_re.findall(mc_text)) >= 2 and not hardware_anchor_re.search(mc_text):
+            findings.append({"level": "Hata", "message": "Yazılım/algoritma ağırlıklı bağımsız yöntem istemi elektronik cihaz/işlemci gibi geniş bir donanımsal taşıyıcıya dayandırılmalı."})
+
     if not findings:
         findings.append({"level": "Uygun", "message": "Otomatik kontrollerde belirgin hata bulunmadı."})
     return findings

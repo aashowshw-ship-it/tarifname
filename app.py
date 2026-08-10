@@ -675,6 +675,8 @@ KRİTİK TALİMATLAR:
 - Her patent literatürü paragrafında dokümanın doğrulanmış İngilizce başlığı ile Türkçe başlık karşılığı birlikte yazılsın.
 - BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı sistem/cihaz unsurlarını tek tek ayrı paragraf yapma; bütün unsur açıklamalarını teknik akış içinde tek sürekli paragrafta topla. Sistem unsuru-yöntem adımı ilişkisini açıklamak için “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü tablo oluşturma. Bu ilişkiyi modül (1), sonraki modül (2) ve ilgili yöntem adımı (1001, 1002...) arasındaki veri/işlev bağlantısını gösteren doğal teknik paragraf olarak yaz. Yalnız ham kaynakta gerçekten sayısal/deneysel veri tablosu olan tabloları tables alanında koru. Gerçekten ayrı bir yapılanma/alternatif/yöntem/çalışma prensibi ayrıca paragraf olabilir.
 - Ana istemde zorunlu teknik çekirdeği kapsayıcı biçimde ver. Aynı işlemin birinci/ikinci/k'ıncı tekrarlarını ana istemde gereksiz yere ayrı satırlara bölme. Bu ayrıntıları, aynı alt akışa aitse tek bağımlı istemde topla.
+- Buluş ağırlıklı olarak yazılım/algoritma/modül/birimlerden oluşuyorsa bağımsız istemleri soyut yazılım olarak bırakma. Kaynakta özel donanım zorunlu değilse geniş bir donanımsal taşıyıcı kullan: tercihen “bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...” veya eşdeğer “elektronik cihaz içerisinde çalışan yazılım tarafından ...” dili. Gereksiz yere sunucu, cep telefonu veya kişisel bilgisayar ile daraltma; özel donanım uydurma. Yöntem isteminde de uygun olduğunda işlemlerin bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla gerçekleştirildiğini belirt.
+- Bağımlı istemleri kaynakta geçen her ayrıntı için çoğaltma. Yalnız ana isteme gerçek teknik daraltma/geri çekilme konumu sağlayan seçilmiş özellikleri kullan; istem bağımlılığı ana donanımsal taşıyıcıyı zaten taşıyorsa alt istemde elektronik cihaz/yazılım ifadesini gereksiz yere tekrar etme.
 - Eğitim/genel aşama ile test aşamasındaki paralel akışları aynı mantıkla fakat ayrı teknik aşamalar olarak kur.
 - REFERANS NUMARALARI bölümünde önce sistem/cihaz modüllerini yaz. Kaynakta açık modül adları olup ayrı unsur numarası yoksa bunlara kaynak sırasıyla 1, 2, 3... ver. Yöntem işlem adımlarını ayrı aile olarak daima 1001, 1002, 1003... biçiminde numaralandır. Kaynaktaki 1, 2, 3... işlem satırlarını sistem unsur numarasıyla karıştırma. Ana istemde numarasız kapsayıcı ifade kullanılabilir; ayrıntılı yöntem adımları 1001... referanslarıyla korunur.
 - “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” bölümü için method_steps tam ve tutarlı olsun. method_steps numaraları 1001’den başlayarak kesintisiz ilerlesin. Detaylı açıklamadaki ara maddeler virgülle, son madde noktayla bitsin. Bağımsız yöntem istemindeki her işlem adımı virgülle bitsin.
@@ -759,6 +761,8 @@ ZORUNLU KONTROL LİSTESİ:
 24. “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü açıklama tablosu oluşturulmuş mu? Varsa tabloyu kaldır ve aynı içeriği modül-referans-yöntem adımı ilişkilerini koruyan doğal teknik paragrafa dönüştür.
 25. Gömülü şekil, grafik, ısı haritası ve diyagramlarda bulunan teknik sonuçlar ile açıklayıcı etiketler tamlık kontrolünde değerlendirilmiş mi?
 26. ŞEKİLLERİN KISA AÇIKLAMASI içindeki Şekil 1, Şekil 2, Şekil 3... satırları aralarında boş paragraf gerektirmeyecek biçimde ardışık açıklamalar olarak verilmiş mi?
+27. Buluş yazılım/algoritma ağırlıklıysa bağımsız sistem ve/veya yöntem istemi geniş bir donanımsal taşıyıcıya, tercihen elektronik cihaz üzerinde koşturulan yazılıma, açıkça dayandırılmış mı? Gereksiz sunucu/telefon/bilgisayar daraltması yapılmış mı?
+28. Bağımlı istemler kaynakta geçen her ayrıntıyı ayrı isteme dönüştürmek yerine yalnız stratejik ve gerçek daraltma sağlayan özelliklerle kontrollü tutulmuş mu?
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
 {TARIFNAME_DRAFT_SCHEMA}
@@ -1113,6 +1117,23 @@ def validate_tarifname_draft(
         raise ValueError("Seçilen istem yapısına rağmen bağımsız yöntem istemi üretilemedi.")
     if claim_mode in {"Yalnızca sistem", "Sistem ve yöntem"} and not draft.get("system_claim"):
         raise ValueError("Seçilen istem yapısına rağmen bağımsız sistem istemi üretilemedi.")
+
+    hardware_anchor_re = re.compile(r"elektronik cihaz|elektronik işlem birimi|işlemci|donanım|bilgisayar|mikrodenetleyici|kontrol birimi", re.IGNORECASE)
+    software_terms_re = re.compile(r"modül|birim|algoritma|yazılım|veri işleme|hesaplama", re.IGNORECASE)
+    if draft.get("system_claim"):
+        system_text = " ".join([
+            str((draft.get("system_claim") or {}).get("preamble", "")),
+            *map(str, (draft.get("system_claim") or {}).get("elements") or []),
+        ])
+        if len(software_terms_re.findall(system_text)) >= 2 and not hardware_anchor_re.search(system_text):
+            raise ValueError("Yazılım/modül ağırlıklı bağımsız sistem istemi geniş bir donanımsal taşıyıcıya dayandırılmalıdır; örneğin elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla.")
+    if draft.get("method_claim"):
+        method_text = " ".join([
+            str((draft.get("method_claim") or {}).get("preamble", "")),
+            *map(str, (draft.get("method_claim") or {}).get("steps") or []),
+        ])
+        if len(software_terms_re.findall(method_text)) >= 2 and not hardware_anchor_re.search(method_text):
+            raise ValueError("Yazılım/algoritma ağırlıklı bağımsız yöntem istemi elektronik cihaz/işlemci gibi geniş bir donanımsal taşıyıcıya dayandırılmalıdır.")
 
     user_facing_text = json.dumps(draft, ensure_ascii=False)
     if re.search(r"\bBBF\b|buluş bildirim formu", user_facing_text, flags=re.IGNORECASE):

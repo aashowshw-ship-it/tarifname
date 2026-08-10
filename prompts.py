@@ -44,6 +44,8 @@ def drafting_prompt(extracted: dict, claim_mode: str, selected_literature: list[
 Aşağıdaki BBF verilerinden Türk patent tarifnamesi oluştur. Kaynakta olmayan bilgi ekleme.
 İstem türü tercihi: {claim_mode}
 Her buluş için zorunlu teknik çekirdeği ayrıca analiz et; paralel tekrarları ana istemde kapsayıcı yaz, ayrıntılarını gerekirse tek bağımlı istemde topla.
+Buluş yazılım/algoritma/modül ağırlıklıysa bağımsız istemi soyut yazılım olarak bırakma; kaynakta özel donanım zorunlu değilse geniş donanımsal taşıyıcı olarak elektronik cihaz üzerinde koşturulan yazılım veya elektronik işlem birimi dili kullan. Gereksiz sunucu/cep telefonu/bilgisayar daraltması yapma ve özel donanım uydurma.
+Bağımlı istemleri her kaynak ayrıntısı için çoğaltma; yalnız gerçek teknik daraltma ve stratejik geri çekilme konumu sağlayan seçilmiş özellikleri kullan.
 Onaylanan literatür dokümanları: {json.dumps(literature, ensure_ascii=False)}
 
 JSON dışında hiçbir şey yazma.

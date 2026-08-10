@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.3"
-RULESET_VERSION = "2026-08-10.v3"
+APP_VERSION = "v5.4.4"
+RULESET_VERSION = "2026-08-10.v4"
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI
@@ -47,6 +47,8 @@ D. İSTEM KURGUSU
 32. Yöntem istemini "işlem adımlarını içermesidir" biçiminde bitir.
 33. İstem numaraları kalın yazılmalıdır.
 34. İstemler oluşturulduktan sonra ikinci bir istem kalite kontrolü yapılmalıdır: zorunlu çekirdek, kapsam, teknik taşıyıcı, unsur sırası, paralel adımların gruplanması, tekrar, dayanak, formül kullanımı ve dil.
+34A. Buluşun teknik çekirdeği ağırlıklı olarak yazılım, algoritma, modül, birim veya veri işleme adımlarından oluşuyorsa istemler soyut yazılım ifadeleri olarak bırakılmaz. Bağımsız sistem istemi mümkün olan en geniş ve kaynakta dayanağı bulunan donanımsal taşıyıcıya bağlanır; örneğin “bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...” veya “bir elektronik cihaz içerisinde çalışan yazılım tarafından ...” yapısı kullanılabilir. Bağımsız yöntem istemi de uygun olduğunda “bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla gerçekleştirilen bir yöntem” veya eşdeğer teknik taşıyıcı diliyle kurulmalıdır. Kaynak özellikle gerektirmedikçe cep telefonu, sunucu, kişisel bilgisayar gibi gereksiz dar donanım isimleri kullanılmaz; geniş “elektronik cihaz” veya kaynakça desteklenen “elektronik işlem birimi” tercih edilir. Özel donanım uydurulmaz.
+34B. Yazılımsal modül/birimlerin teknik işlevleri, bağımsız istemde elektronik cihaz üzerinde koşturulan yazılım ile donanımsal taşıyıcı arasında açık ilişki kuracak biçimde yazılır. Bağımlı istemler ana istemdeki bu donanımsal dayanağı tekrar etmek zorunda değildir; istem bağımlılığı yeterliyse yalnız seçilen ek teknik sınırlama yazılır. Her kaynak ayrıntısı için ayrı bağımlı istem oluşturulmaz. Bağımlı istem sayısı mümkün olduğunca kontrollü tutulur ve yalnız koruma stratejisi bakımından anlamlı, kaynakta açık dayanağı bulunan, ana isteme gerçek geri çekilme konumu sağlayan özellikler seçilir.
 
 E. DİL, PARAGRAF VE BİÇİM
 35. İngilizce teknik terimi ilk geçtiği yerde Türkçesini önce, İngilizcesini parantez içinde ver. Sonraki kullanımlarda yalnızca Türkçe karşılığını kullan. AI yerine yapay zekâ yaz.

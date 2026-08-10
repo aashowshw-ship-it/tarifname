@@ -1,10 +1,10 @@
-# Patent Atölyesi v5.4.3
+# Patent Atölyesi v5.4.4
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 10.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.4.3-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.4.4-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -74,6 +74,8 @@ Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün
 - `ŞEKİLLERİN KISA AÇIKLAMASI` bölümünde `Şekil 1...`, `Şekil 2...`, `Şekil 3...` açıklamaları aralarında boş paragraf olmadan doğrudan alt alta yazılır.
 - Kaynakta `UW`, `UW_F`, `UW_PL`, `UW_R`, `UW_M` gibi sembolik referanslar varsa sayısal unsur listesinden sonra bir boşlukla `UW. Kullanılabilir ağırlık` biçiminde yazılabilir; kaynakta gerçek referans olmayan `21-37` gibi geçici şekil numaraları uydurulmaz.
 - İstemlerde teknik olarak ilişkili unsurlar birbirinin girdisi/çıktısı veya bağlantısı üzerinden yazılır; bağımsız unsur listesi gibi bırakılmaz.
+- Buluş ağırlıklı olarak yazılım/algoritma/modül/birimlerden oluşuyorsa bağımsız sistem ve yöntem istemleri soyut yazılım diliyle bırakılmaz. Kaynakta özel donanım gerekmiyorsa geniş taşıyıcı olarak `bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...` veya eşdeğer elektronik cihaz/işlem birimi dili kullanılır; gereksiz sunucu, cep telefonu veya bilgisayar daraltması yapılmaz.
+- Bağımlı istemlerde her kaynak ayrıntısını ayrı isteme dönüştürmek zorunlu değildir. Yalnız gerçek teknik daraltma ve stratejik geri çekilme konumu sağlayan seçilmiş özellikler kullanılır; ana istemdeki elektronik cihaz/yazılım dayanağı alt istemlerde gereksiz yere tekrar edilmez.
 - İstemlerde `HPU_W`, `FW_min`, `UW_F` gibi sembollerin teknik açılımı önce yazılır ve sembol parantez içinde gösterilir; formüllerde semboller korunur.
 - Teknik açıklama metninde noktalı virgül gereksiz kullanılmaz; standart `olup, özelliği;` istem kalıbı istisnadır.
 
@@ -115,7 +117,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-10.v3`
+Kural sürümü: `2026-08-10.v4`
 
 ## Yerel çalıştırma
 

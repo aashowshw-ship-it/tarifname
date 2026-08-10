@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-10.v3**
+Kural sürümü: **2026-08-10.v4**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -76,7 +76,9 @@ Ana istemde kapsayıcı ve numarasız bir ifade kullanılabilir. Ayrıntılı nu
 
 Ana istem buluşun zorunlu teknik çekirdeğini açık, sıralı ve gereksiz tekrarsız kapsar. Unsurlar veri, sinyal, kontrol, işlem veya fiziksel bağlantı ilişkisi içinde kurulur.
 
-Bağımlı istemler ana istemi tekrar etmez. Yalnızca BBF'de dayanağı bulunan ve kapsamı gerçek anlamda daraltan teknik ayrıntıları ekler.
+Buluş ağırlıklı olarak yazılım, algoritma, modül veya veri işleme birimlerinden oluşuyorsa bağımsız istem soyut yazılım seviyesinde bırakılmaz. Kaynakta özel bir donanım zorunlu değilse geniş bir donanımsal taşıyıcı tercih edilir. Özellikle `bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...`, `bir elektronik cihaz içerisinde çalışan yazılım tarafından ...` veya kaynakça uygun `elektronik işlem birimi tarafından ...` dili kullanılabilir. Sunucu, cep telefonu veya kişisel bilgisayar gibi daha dar taşıyıcılar ancak teknik kaynak gerçekten gerektiriyorsa yazılır. Özel donanım uydurulmaz. Aynı ilke yazılım ağırlıklı yöntem isteminde de uygulanır.
+
+Bağımlı istemler ana istemi tekrar etmez. Yalnızca BBF'de dayanağı bulunan ve kapsamı gerçek anlamda daraltan teknik ayrıntıları ekler. Kaynakta geçen her ayrıntı için ayrı bağımlı istem üretmek zorunlu değildir ve tercih edilmez. Yalnız koruma stratejisi bakımından anlamlı geri çekilme konumu sağlayan seçilmiş özellikler bağımlı isteme taşınır. Ana istemde elektronik cihaz/yazılım taşıyıcısı zaten kurulmuşsa alt istemlerde aynı taşıyıcı gereksiz yere tekrar edilmez.
 
 Formüller zorunlu çekirdek değilse ana istemi gereksiz daraltmamak için bağımlı istemlerde kullanılabilir.
 
