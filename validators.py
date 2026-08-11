@@ -61,9 +61,10 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     method = draft.get("method_claim")
     steps = draft.get("method_steps") or []
     step_numbers = [str(step.get("number", "") or "").strip() for step in steps]
-    expected_step_numbers = [str(1001 + i) for i in range(len(step_numbers))]
-    if step_numbers and step_numbers != expected_step_numbers:
-        findings.append({"level": "Hata", "message": "Yöntem işlem adımları 1001'den başlayarak kesintisiz numaralandırılmalı."})
+    if any(not n for n in step_numbers):
+        findings.append({"level": "Hata", "message": "Yöntem işlem adımlarında boş referans var. Kaynakta referans yoksa 1001... varsayılanı atanmalı; müşteri referansı varsa aynen korunmalı."})
+    if len(step_numbers) != len(set(step_numbers)):
+        findings.append({"level": "Hata", "message": "Tekrarlanan yöntem işlem adımı referansı var."})
     if method:
         claim_text = " ".join(method.get("steps") or [])
         for step in steps:

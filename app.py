@@ -346,7 +346,7 @@ def _figure_dimensions_cm(data: bytes, max_width_cm: float = 16.5, max_height_cm
         return max_width_cm, 10.0
 
 
-def build_figures_docx(images: list[UploadedAsset]) -> bytes:
+def build_figures_docx(images: list[UploadedAsset], language: str = "Türkçe") -> bytes:
     """Müşteri şekillerini değiştirmeden, dinamik sayfa düzeni ve ŞEKİL N başlıklarıyla Word'e yerleştirir."""
     if not images:
         raise ValueError("Şekiller Word dosyası için BBF içinde veya ayrıca yüklenen dosyalarda kullanılabilir görsel bulunamadı.")
@@ -385,7 +385,7 @@ def build_figures_docx(images: list[UploadedAsset]) -> bytes:
         p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p_cap.paragraph_format.space_before = Pt(0)
         p_cap.paragraph_format.space_after = Pt(10)
-        r = p_cap.add_run(f"ŞEKİL {index}")
+        r = p_cap.add_run(f"{'FIGURE' if _english_spec(language) else 'ŞEKİL'} {index}")
         r.bold = True
         r.font.name = "Arial"
         r.font.size = Pt(11)
@@ -482,6 +482,24 @@ def copy_template_paragraph(doc: Document, template: Document, index: int):
         doc._element.body.insert(-1, deepcopy(template.paragraphs[index]._p))
 
 
+def copy_template_paragraph_with_text(doc: Document, template: Document, index: int, text: str):
+    """Şablon paragraf biçimini/runs formatını koruyup metni değiştir."""
+    if not (0 <= index < len(template.paragraphs)):
+        return
+    p_el = deepcopy(template.paragraphs[index]._p)
+    text_nodes = list(p_el.iter(qn("w:t")))
+    if text_nodes:
+        text_nodes[0].text = text
+        for node in text_nodes[1:]:
+            node.text = ""
+    doc._element.body.insert(-1, p_el)
+
+
+def _english_spec(language: str) -> bool:
+    text = str(language or "").strip().casefold().replace("\u0307", "")
+    return text in {"ingilizce", "english", "en"}
+
+
 def add_blank(doc: Document):
     p = doc.add_paragraph()
     p.paragraph_format.line_spacing = 1.5
@@ -557,8 +575,8 @@ TARIFNAME_DRAFT_SCHEMA = r"""
   "unumbered_invention_definition":"",
   "unumbered_invention_features":[""],
   "figure_descriptions":[""],
-  "elements":[{"number":"10","name":"","description":""}],
-  "method_steps":[{"number":"1001","text":""}],
+  "elements":[{"number":"<source reference or default 1>","name":"","description":""}],
+  "method_steps":[{"number":"<source reference or default 1001>","text":""}],
   "detailed_paragraphs":[""],
   "formulas":[{"label":"","expression":"","explanation":""}],
   "tables":[{"caption":"","headers":[""],"rows":[[""]]}],
@@ -588,8 +606,10 @@ def tarifname_extraction_prompt(
     source_text: str,
     technical_supplement_text: str = "",
     example_structure_text: str = "",
+    language: str = "Türkçe",
 ) -> str:
     return f"""{TARIFNAME_RULES}
+ÇIKTI TARİFNAME DİLİ: {language}. Kaynak hangi dilde olursa olsun teknik envanteri kaynak terimlerine sadık kalarak çıkar.
 Aşağıdaki kaynakları yalnızca yapı ve kapsam envanteri çıkarmak için incele. Teknik metni yeniden icat etme,
 kısaltma nedeniyle önemli bilgi kaybettirme ve örnek tarifnamelerin teknik içeriğini kullanma. Gömülü şekil, grafik, diyagram, ısı haritası ve görsel teknik sonuçları da kaynak olarak incele; yalnız metin çıkarımına güvenme.
 
@@ -607,8 +627,8 @@ JSON dışında hiçbir şey yazma.
  "technical_problems":[""],
  "technical_solution":[""],
  "technical_effects":[""],
- "elements":[{{"number":"1","name":"","function":"","source":"BBF/ek teknik belge"}}],
- "method_steps":[{{"number":"1001","text":"","stage":"","essential":true}}],
+ "elements":[{{"number":"<müşteri referansı; yoksa 1>","name":"","function":"","source":"BBF/ek teknik belge"}}],
+ "method_steps":[{{"number":"<müşteri referansı; yoksa 1001>","text":"","stage":"","essential":true}}],
  "formulas":[{{"label":"","expression":"","variables":[""],"role":"zorunlu/tercihli"}}],
  "tables":[{{"caption":"","headers":[""],"rows":[[""]]}}],
  "experimental_results":[""],
@@ -642,8 +662,9 @@ EK TEKNİK BELGELER/NOTLAR:
 ---
 """
 
-def tarifname_literature_prompt(extracted: dict[str, Any], count: int, jurisdiction: str) -> str:
+def tarifname_literature_prompt(extracted: dict[str, Any], count: int, jurisdiction: str, language: str = "Türkçe") -> str:
     return f"""Aşağıdaki buluş için tam olarak {count} teknik olarak yakın patent dokümanı araştır. Web araması kullan.
+Nihai tarifname dili: {language}. title_en alanında patentin doğrulanmış özgün İngilizce başlığını koru; title_tr alanını yalnız Türkçe çıktı için yardımcı çeviri olarak doldur.
 Doküman uydurma; yayın/başvuru numarasını, İngilizce başlığını, yayın tarihini ve kaynak bağlantısını doğrula.
 Tercih edilen ülke/veri tabanı: {jurisdiction or 'global'}.
 Her doküman için teknik konusu ile buluşta bulunmayan temel teknik farkı açıkla. Bu aşamada tarifname metni yazma.
@@ -661,35 +682,43 @@ def tarifname_drafting_prompt(
     source_text: str,
     technical_supplement_text: str,
     example_structure_text: str,
+    language: str = "Türkçe",
 ) -> str:
+    language_instruction = (
+        "Nihai tarifnamenin TAMAMI İngilizce olmalıdır. Başlıklar, teknik açıklama, istemler ve özet İngilizce yazılmalı; Türkçe patent kalıpları bırakılmamalıdır. TECHNICAL FIELD ilk paragrafı yalnız 'The invention relates to ... .' cümlesinden oluşmalı, ikinci paragraf ayrı olarak 'In particular, the invention relates to ... .' ile başlamalıdır. İngilizce bağımsız istemlerde 'comprising:'; bağımlı istemlerde 'The system according to claim X, wherein...' veya 'The method according to claim X, wherein...' yapısını kullan. Yazılım ağırlıklı buluşlarda 'an electronic device', 'a processing unit' veya 'software executed on an electronic device' gibi geniş donanımsal taşıyıcı kullan."
+        if _english_spec(language) else
+        "Nihai tarifnamenin TAMAMI Türkçe olmalıdır ve mevcut Türkçe tarifname kuralları aynen uygulanmalıdır."
+    )
     return f"""{TARIFNAME_RULES}
-Aşağıdaki kaynaklara dayanarak Türk patent tarifnamesinin TAM metnini oluştur.
+{language_instruction}
+Aşağıdaki kaynaklara dayanarak seçilen dilde patent tarifnamesinin TAM metnini oluştur.
 İstem yapısı: {claim_mode}
 
 KRİTİK TALİMATLAR:
 - BBF'nin bütün teknik bilgilerini kullan. Uzun önceki teknik, formüller, tablolar, deneysel sonuçlar, alternatifler ve referans tablosu atlanamaz.
 - Yapılandırılmış envanter yalnızca yardımcıdır. Çelişki halinde ham BBF ve açık teknik müşteri belgeleri esas alınır.
 - Örnek tarifnamelerden yalnızca kurguyu öğren; teknik bilgi aktarma.
-- TEKNİK ALAN iki paragraf olmalıdır. İlk paragraf yalnız “Buluş, ... ile ilgilidir.” biçimindeki giriş cümlesinden oluşmalı ve burada bitmelidir. Daha ayrıntılı teknik kapsam ikinci paragrafta mutlaka “Buluş, özellikle ...” diye başlamalıdır. İkinci paragrafa “Sistem ve yöntem...” gibi çıplak bir ifadeyle başlama. technical_field içinde iki paragrafı \n\n ile ayır.
+- technical_field iki paragraf olmalıdır ve paragraflar \n\n ile ayrılmalıdır. Türkçe çıktıda ilk paragraf yalnız “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile; İngilizce çıktıda ilk paragraf yalnız “The invention relates to ... .”, ikinci paragraf “In particular, the invention relates to ... .” ile başlamalıdır.
 - ÖNCEKİ TEKNİK'teki aynı anlatımın devamı olan “Özellikle...”, “Bununla birlikte...”, “Bu nedenle...” gibi cümleleri ayrı paragraf yapma. Patent literatürü dokümanları ise ayrı ayrı paragraf olsun.
-- Her patent literatürü paragrafında dokümanın doğrulanmış İngilizce başlığı ile Türkçe başlık karşılığı birlikte yazılsın.
+- Türkçe tarifnamede her patent literatürü paragrafında doğrulanmış İngilizce başlık ile Türkçe başlık karşılığı birlikte yazılsın. İngilizce tarifnamede özgün İngilizce patent başlığı kullanılsın; Türkçe başlık karşılığı nihai İngilizce metne eklenmesin.
 - BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı sistem/cihaz unsurlarını tek tek ayrı paragraf yapma; bütün unsur açıklamalarını teknik akış içinde tek sürekli paragrafta topla. Sistem unsuru-yöntem adımı ilişkisini açıklamak için “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü tablo oluşturma. Bu ilişkiyi modül (1), sonraki modül (2) ve ilgili yöntem adımı (1001, 1002...) arasındaki veri/işlev bağlantısını gösteren doğal teknik paragraf olarak yaz. Yalnız ham kaynakta gerçekten sayısal/deneysel veri tablosu olan tabloları tables alanında koru. Gerçekten ayrı bir yapılanma/alternatif/yöntem/çalışma prensibi ayrıca paragraf olabilir.
 - Ana istemde zorunlu teknik çekirdeği kapsayıcı biçimde ver. Aynı işlemin birinci/ikinci/k'ıncı tekrarlarını ana istemde gereksiz yere ayrı satırlara bölme. Bu ayrıntıları, aynı alt akışa aitse tek bağımlı istemde topla.
-- Buluş ağırlıklı olarak yazılım/algoritma/modül/birimlerden oluşuyorsa bağımsız istemleri soyut yazılım olarak bırakma. Kaynakta özel donanım zorunlu değilse geniş bir donanımsal taşıyıcı kullan: tercihen “bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...” veya eşdeğer “elektronik cihaz içerisinde çalışan yazılım tarafından ...” dili. Gereksiz yere sunucu, cep telefonu veya kişisel bilgisayar ile daraltma; özel donanım uydurma. Yöntem isteminde de uygun olduğunda işlemlerin bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla gerçekleştirildiğini belirt.
+- Buluş ağırlıklı olarak yazılım/algoritma/modül/birimlerden oluşuyorsa bağımsız istemleri soyut yazılım olarak bırakma. Kaynakta özel donanım zorunlu değilse geniş bir donanımsal taşıyıcı kullan. Türkçede “bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...”, İngilizcede “software executed on an electronic device ...” veya eşdeğer teknik taşıyıcı dili kullanılabilir. Gereksiz sunucu, cep telefonu/phone veya kişisel bilgisayar daraltması yapma; özel donanım uydurma.
 - Bağımlı istemleri kaynakta geçen her ayrıntı için çoğaltma. Yalnız ana isteme gerçek teknik daraltma/geri çekilme konumu sağlayan seçilmiş özellikleri kullan; istem bağımlılığı ana donanımsal taşıyıcıyı zaten taşıyorsa alt istemde elektronik cihaz/yazılım ifadesini gereksiz yere tekrar etme.
 - Eğitim/genel aşama ile test aşamasındaki paralel akışları aynı mantıkla fakat ayrı teknik aşamalar olarak kur.
-- REFERANS NUMARALARI bölümünde önce sistem/cihaz modüllerini yaz. Kaynakta açık modül adları olup ayrı unsur numarası yoksa bunlara kaynak sırasıyla 1, 2, 3... ver. Yöntem işlem adımlarını ayrı aile olarak daima 1001, 1002, 1003... biçiminde numaralandır. Kaynaktaki 1, 2, 3... işlem satırlarını sistem unsur numarasıyla karıştırma. Ana istemde numarasız kapsayıcı ifade kullanılabilir; ayrıntılı yöntem adımları 1001... referanslarıyla korunur.
-- “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” bölümü için method_steps tam ve tutarlı olsun. method_steps numaraları 1001’den başlayarak kesintisiz ilerlesin. REFERANS NUMARALARI, detaylı açıklamadaki yöntem listesi ve bağımsız yöntem isteminde aynı numaralı adımın teknik metni birebir aynı olsun. Detaylı açıklamadaki ara maddeler virgülle, son madde noktayla bitsin. Bağımsız yöntem istemindeki ara adımlar virgülle bitsin, son adım noktalamasız bitsin.
+- REFERANS NUMARALARI bölümünde müşteri tarafından sistem/cihaz unsurları veya yöntem işlem adımları için verilmiş açık referansları AYNEN koru; 10, 20..., S101..., M1... veya başka bir referans ailesini sırf standartlaştırmak için değiştirme. Sistem/cihaz modüllerinde hiç referans yoksa kaynak sırasıyla 1, 2, 3... ver. Yöntem işlem adımlarında hiç referans yoksa varsayılan 1001, 1002, 1003... ailesini kullan. Kısmen numaralandırılmış kaynakta mevcut müşteri işaretlerini koru, yalnız boş kalanlara çakışmayacak varsayılan referans ata.
+- “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” bölümü için method_steps tam ve tutarlı olsun. Kaynaktaki yöntem referansları varsa aynen korunsun; yalnız kaynakta hiç yöntem referansı yoksa 1001’den başlayan varsayılan sıra oluşturulsun. REFERANS NUMARALARI, detaylı açıklamadaki yöntem listesi ve bağımsız yöntem isteminde aynı referanslı adımın teknik metni birebir aynı olsun. Detaylı açıklamadaki ara maddeler virgülle, son madde noktayla bitsin. Bağımsız yöntem istemindeki ara adımlar virgülle bitsin, son adım noktalamasız bitsin.
 - Yalnızca yöntem modunda system_claim null olmalıdır. Yalnızca sistem modunda method_claim null olmalıdır.
 - Her bağımlı istem ana isteme göre gerçek bir daraltma sağlamalıdır.
 - Patent literatürü yalnızca ÖNCEKİ TEKNİK bölümünde kullanılsın.
 - Kullanıcıya sunulan tarifname metninde “BBF”, “buluş bildirim formu” veya kaynak dokümana atıf yapan benzer ifadeler kesinlikle bulunmasın; teknik bilgi doğrudan buluş anlatımı olarak yazılsın.
-- Sistem ve yöntem istemleri birlikte oluşturuluyorsa başlık da buna uygun biçimde “... Sistemi ve Yöntemi” olsun; yalnızca “... Sistemi” olarak bırakılmasın.
+- Sistem ve yöntem istemleri birlikte oluşturuluyorsa başlık seçilen dile uygun olarak “... Sistemi ve Yöntemi” veya “... System and Method” yapısını taşısın.
 - REFERANS NUMARALARI bölümünde unsur adlarında yalnızca ilk kelimenin ilk harfi büyük olsun; standart teknik kısaltmaları koru. Unsur adları cümle içinde geçtiğinde küçük harfle başlat.
-- “Buluşun bir gerçekleştirilmesinde” ifadesini kullanma; gerekli yerde “Buluşun bir yapılanmasında” yaz. “Mevcut buluş” kullanma.
+- Türkçe çıktıda “Buluşun bir gerçekleştirilmesinde” ifadesini kullanma; gerekli yerde “Buluşun bir yapılanmasında” yaz ve “Mevcut buluş” kullanma. İngilizce çıktıda doğal patent dili kullan.
 - Önceki teknik bölümüne ham kaynakta verilen bütün teknik arka plan, eksiklik ve problem anlatımını aktar; literatür paragrafları bunların yerine geçmez.
 - ŞEKİLLERİN KISA AÇIKLAMASI kısa ve işlevsel olsun; gerekli değilse yöntem adımı numara aralığını şekil açıklamasında tekrarlama.
-- Bağımlı istemlerde “Önceki istemlerden herhangi birine” kalıbını varsayılan olarak kullanma; ek özellik hangi ana unsur veya işlem adımının ayrıntısıysa doğrudan onu tanımlayan gerekli isteme bağla. Gereksiz “İstem X veya Y’ye” zincirlerinden kaçın.
+- Bağımlı istemlerde Türkçe çıktıda “Önceki istemlerden herhangi birine” kalıbını, İngilizce çıktıda belirsiz “any preceding claim” zincirlerini varsayılan olarak kullanma; ek özellik hangi ana unsur veya işlem adımının ayrıntısıysa doğrudan onu tanımlayan gerekli isteme bağla.
+- objectives alanında Türkçe çıktı için amaç gövdesi “... sağlamaktır.” gibi tam yüklemle bitsin. İngilizce çıktı için her objective baştan sona tam bir cümle olarak yazılsın, örneğin “The main objective of the invention is to ... .”
 - Müşteri şekillerini teknik kaynak olarak aynen esas al. Görseldeki gerçek referans işaretlerini sayısal unsur, yöntem adımı, sembolik referans ve geçici şekil numarası olarak ayır. Gömülü grafik/ısı haritası/diyagram üzerindeki teknik sonuçları tamlık kontrolünde dikkate al. Geçici şekil numarasını yeni unsur referansı yapma.
 
 JSON dışında hiçbir şey yazma.
@@ -730,8 +759,15 @@ def tarifname_quality_prompt(
     draft: dict[str, Any],
     claim_mode: str,
     literature: list[dict[str, Any]],
+    language: str = "Türkçe",
 ) -> str:
+    language_instruction = (
+        "Çıktı dili İngilizcedir. Tüm bölüm metinleri, istemler ve özet İngilizce kalmalı; TECHNICAL FIELD ve İngilizce claim kalıplarını kontrol et."
+        if _english_spec(language) else
+        "Çıktı dili Türkçedir. Türkçe tarifname ve istem kalıplarını kontrol et."
+    )
     return f"""{TARIFNAME_RULES}
+{language_instruction}
 Aşağıdaki tarifname taslağını kaynaklarla SATIR SATIR karşılaştır ve eksik/yanlış hususları düzelterek tam JSON'u yeniden üret.
 Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi geri eklenmelidir.
 
@@ -744,21 +780,21 @@ ZORUNLU KONTROL LİSTESİ:
 6. Aynı alt akışa ait paralel analizler ve çıktılar gerekiyorsa tek bağımlı istemde mi?
 7. Eğitim/genel ve test aşamaları paralel fakat ayrı olarak mı kurulmuş?
 8. Formüller, değişken açıklamaları, tablolar, deneysel sonuçlar, alternatifler ve teknik etkiler eksiksiz mi?
-9. Seçilen istem modu ({claim_mode}) ile başlık, açıklama ve istemler tutarlı mı? Sistem ve yöntem ise başlık “Sistemi ve Yöntemi” yapısını taşıyor mu?
+9. Seçilen istem modu ({claim_mode}) ile başlık, açıklama ve istemler tutarlı mı? Sistem ve yöntem ise başlık seçilen dile uygun biçimde “Sistemi ve Yöntemi” veya “System and Method” yapısını taşıyor mu?
 10. Bağımlı istemler gerçek daraltma sağlıyor mu?
 11. Kullanıcıya sunulan metinde “BBF” veya “buluş bildirim formu” gibi kaynak atfı kalmış mı? Kalmışsa doğrudan buluş anlatımına dönüştür.
 12. “Buluşun bir gerçekleştirilmesinde” veya “Mevcut buluş” kalıbı var mı? Varsa “Buluşun bir yapılanmasında” / “Buluş” diline dönüştür.
 13. REFERANS NUMARALARI unsur adları yalnızca ilk kelime büyük olacak biçimde mi? Cümle içindeki unsur adları küçük harfle mi başlıyor?
 14. Önceki teknik kaynakta verilen bütün müşteri teknik arka planını ve eksikliklerini içeriyor mu?
-15. TEKNİK ALAN tam iki kademeli mi: ilk paragraf yalnız “Buluş, ... ile ilgilidir.” giriş cümlesi mi, ikinci paragraf ayrı olarak “Buluş, özellikle ...” ile mi başlıyor? İkinci paragraf “Sistem ve yöntem...” gibi çıplak bir ifadeyle başlamışsa düzelt.
+15. Teknik alan seçilen dilde iki kademeli mi? Türkçede ilk paragraf yalnız “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile; İngilizcede ilk paragraf yalnız “The invention relates to ... .”, ikinci paragraf “In particular, the invention relates to ... .” ile başlamalıdır.
 16. ÖNCEKİ TEKNİK'te “Özellikle...”, “Bununla birlikte...”, “Bu nedenle...” gibi aynı anlatımın devamları gereksiz yere ayrı paragraf yapılmış mı? Yapılmışsa birleştir.
-17. Her literatür paragrafında doğrulanmış İngilizce başlık ve Türkçe karşılığı birlikte var mı?
+17. Patent literatürü başlıkları seçilen dile uygun mu? Türkçe çıktıda İngilizce özgün başlık + Türkçe karşılığı; İngilizce çıktıda özgün İngilizce başlık kullanılmalı.
 18. BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı unsurlar gereksiz yere ayrı ayrı paragraflara bölünmüş mü? Bölündüyse tek sürekli unsur paragrafında birleştir.
-19. Detaylı açıklamadaki yöntem madde listesinde ara maddeler virgül, son madde nokta ile bitiyor mu ve yöntem adımları 1001, 1002... şeklinde kesintisiz mi ilerliyor? Bağımsız yöntem istemindeki her işlem adımı virgülle bitiyor mu?
+19. Detaylı açıklamadaki yöntem madde listesinde ara maddeler virgül, son madde nokta ile bitiyor mu? Kaynakta yöntem referansları verilmişse aynen korunmuş mu; kaynakta hiç referans yoksa 1001, 1002... varsayılan sırası kullanılmış mı? Bağımsız yöntem istemindeki son işlem adımı noktalamasız mı?
 20. Şekil açıklamaları kısa mı ve gerekli olmayan yöntem adımı numara aralıklarını tekrarlamıyor mu?
 21. Müşteri şekillerindeki gerçek unsur/yöntem/sembolik referanslar REFERANS NUMARALARI ile uyumlu mu? Geçici şekil numaraları yeni referans olarak uydurulmuş mu?
 22. Şekilde kullanılan UW, UW_F, UW_PL, UW_R, UW_M gibi sembolik referansların tarifnamede açık karşılığı var mı?
-23. Sistem/cihaz modülleri açıkça adlandırılmış fakat kaynakta ayrı unsur numarası verilmemişse 1, 2, 3... olarak numaralandırılmış mı, yöntem satırlarındaki 1, 2, 3... ile karıştırılmamış mı?
+23. Müşterinin sistem/cihaz ve yöntem referans işaretleri aynen korunmuş mu? Kaynakta referans verilmeyen sistem/cihaz modülleri 1, 2, 3...; referans verilmeyen yöntem adımları 1001, 1002... varsayılanıyla tamamlanmış mı?
 24. “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü açıklama tablosu oluşturulmuş mu? Varsa tabloyu kaldır ve aynı içeriği modül-referans-yöntem adımı ilişkilerini koruyan doğal teknik paragrafa dönüştür.
 25. Gömülü şekil, grafik, ısı haritası ve diyagramlarda bulunan teknik sonuçlar ile açıklayıcı etiketler tamlık kontrolünde değerlendirilmiş mi?
 26. ŞEKİLLERİN KISA AÇIKLAMASI içindeki Şekil 1, Şekil 2, Şekil 3... satırları aralarında boş paragraf gerektirmeyecek biçimde ardışık açıklamalar olarak verilmiş mi?
@@ -810,10 +846,16 @@ def _replace_in_nested(value: Any, old: str, new: str) -> Any:
     return value
 
 
-def _ensure_title_for_claim_mode(title: str, claim_mode: str) -> str:
+def _ensure_title_for_claim_mode(title: str, claim_mode: str, language: str = "Türkçe") -> str:
     text = str(title or "").strip()
     if claim_mode != "Sistem ve yöntem" or not text:
         return text
+    if _english_spec(language):
+        if "method" in text.casefold():
+            return text
+        if re.search(r"\bsystem\b", text, flags=re.IGNORECASE):
+            return re.sub(r"\bsystem\b(?!.*\bsystem\b)", "System and Method", text, count=1, flags=re.IGNORECASE)
+        return text + " System and Method"
     if "yöntem" in text.lower():
         return text
     matches = list(re.finditer(r"\bsistemi\b", text, flags=re.IGNORECASE))
@@ -867,9 +909,12 @@ def _merge_initial_element_paragraphs(draft: dict[str, Any]) -> None:
             "sistemin çalışma",
             "buluşun çalışma",
             "yöntemin çalışma",
+            "in one embodiment",
+            "in an embodiment",
+            "the method performs",
+            "the operation of the system",
         ))
-        refs = set(re.findall(r"\((\d+)\)", para))
-        element_ref = bool(refs & element_numbers)
+        element_ref = any(f"({n})" in para for n in element_numbers)
         if not merged and not is_separate and element_ref:
             prefix_parts.append(para)
             continue
@@ -882,7 +927,7 @@ def _merge_initial_element_paragraphs(draft: dict[str, Any]) -> None:
     draft["detailed_paragraphs"] = merged
 
 
-def _ensure_literature_titles(draft: dict[str, Any], literature: list[dict[str, Any]] | None) -> None:
+def _ensure_literature_titles(draft: dict[str, Any], literature: list[dict[str, Any]] | None, language: str = "Türkçe") -> None:
     paragraphs = list(draft.get("literature_paragraphs") or [])
     for idx, doc_info in enumerate(literature or []):
         if idx >= len(paragraphs):
@@ -890,6 +935,12 @@ def _ensure_literature_titles(draft: dict[str, Any], literature: list[dict[str, 
         p = str(paragraphs[idx] or "").strip()
         en = str(doc_info.get("title_en", "") or "").strip()
         tr = str(doc_info.get("title_tr", "") or "").strip()
+        if _english_spec(language):
+            if not en or en in p:
+                continue
+            number = str(doc_info.get("application_number", "") or "").strip()
+            paragraphs[idx] = f"Patent literature includes {number + ' ' if number else ''}entitled ‘{en}’. " + p
+            continue
         if not en or not tr or (en in p and tr in p):
             continue
         if en in p:
@@ -920,9 +971,22 @@ def _ensure_literature_titles(draft: dict[str, Any], literature: list[dict[str, 
 
 
 
-def _normalize_technical_field_two_paragraphs(value: str) -> str:
-    """TEKNİK ALAN girişini iki zorunlu paragrafa ayır."""
+def _normalize_technical_field_two_paragraphs(value: str, language: str = "Türkçe") -> str:
+    """TEKNİK ALAN/TECHNICAL FIELD girişini iki zorunlu paragrafa ayır."""
     raw = str(value or "").strip()
+    parts = [x.strip() for x in re.split(r"\n\s*\n", raw) if x.strip()]
+    combined = " ".join(parts)
+    if _english_spec(language):
+        combined = re.sub(r"^The invention\s+(?!relates)", "The invention relates to ", combined, count=1, flags=re.IGNORECASE)
+        match = re.match(r"^(The invention relates to .+?\.)\s*(.*)$", combined, flags=re.IGNORECASE | re.DOTALL)
+        if not match:
+            return raw
+        first, rest = match.group(1).strip(), match.group(2).strip()
+        if not rest:
+            return first
+        rest = re.sub(r"^(?:In particular,\s*)?the invention relates to\s*", "", rest, count=1, flags=re.IGNORECASE).strip()
+        second = "In particular, the invention relates to " + (rest[:1].lower() + rest[1:] if rest else "")
+        return first + "\n\n" + second
     raw = re.sub(r"^Buluş\s+(?!,)", "Buluş, ", raw, count=1, flags=re.IGNORECASE)
     parts = [x.strip() for x in re.split(r"\n\s*\n", raw) if x.strip()]
     combined = " ".join(parts)
@@ -940,38 +1004,56 @@ def _normalize_technical_field_two_paragraphs(value: str) -> str:
 
 
 def _normalize_method_step_numbers(draft: dict[str, Any]) -> None:
-    """Tarifname oluşturma yöntem referanslarını 1001, 1002... standardına getir."""
+    """Müşteri yöntem referanslarını koru; yalnız eksik referansları 1001... varsayılanıyla tamamla."""
     steps = draft.get("method_steps") or []
     if not steps:
         return
-    desired = [str(1001 + i) for i in range(len(steps))]
-    old = [str(step.get("number", "") or "").strip() for step in steps]
-    for step, number in zip(steps, desired):
-        step["number"] = number
+    used = {str(step.get("number", "") or "").strip() for step in steps if str(step.get("number", "") or "").strip()}
+    next_default = 1001
+    for step in steps:
+        number = str(step.get("number", "") or "").strip()
+        if number:
+            step["number"] = number
+            continue
+        while str(next_default) in used:
+            next_default += 1
+        step["number"] = str(next_default)
+        used.add(str(next_default))
+        next_default += 1
+
     method_claim = draft.get("method_claim") or {}
     if method_claim.get("steps") is not None:
+        claim_steps = list(method_claim.get("steps") or [])
         normalized: list[str] = []
         for i, step in enumerate(steps):
-            text = str(step.get("text", "") or "").strip()
-            text = re.sub(r"\s*\(\s*(?:S?\d+)\s*\)\s*[,.;:]?\s*$", "", text, flags=re.IGNORECASE).strip().rstrip(".,;:")
-            number = desired[i]
-            normalized.append(f"{text} ({number})")
+            text = str(step.get("text", "") or "").strip().rstrip(".,;:")
+            number = str(step.get("number", "") or "").strip()
+            # method_steps metni numarasızdır; istemde aynı metin + kaynak referansı kullanılır.
+            normalized.append(f"{text} ({number})" if number else text)
         method_claim["steps"] = normalized
         draft["method_claim"] = method_claim
 
 
 def _assign_missing_element_numbers(draft: dict[str, Any]) -> None:
-    """Açık modüller var ama ayrı referans verilmemişse 1..N ata."""
+    """Müşteri unsur referanslarını koru; yalnız eksik olanlara 1..N varsayılanı ata."""
     elements = draft.get("elements") or []
     if not elements:
         return
-    numbers = [str(e.get("number", "") or "").strip() for e in elements]
-    if all(not n for n in numbers):
-        for i, element in enumerate(elements, 1):
-            element["number"] = str(i)
+    used = {str(e.get("number", "") or "").strip() for e in elements if str(e.get("number", "") or "").strip()}
+    next_default = 1
+    for element in elements:
+        number = str(element.get("number", "") or "").strip()
+        if number:
+            element["number"] = number
+            continue
+        while str(next_default) in used:
+            next_default += 1
+        element["number"] = str(next_default)
+        used.add(str(next_default))
+        next_default += 1
 
 
-def _convert_mapping_tables_to_prose(draft: dict[str, Any]) -> None:
+def _convert_mapping_tables_to_prose(draft: dict[str, Any], language: str = "Türkçe") -> None:
     """İşlem Adımı/Gerçekleştiren Unsur açıklama tablolarını teknik paragrafa çevir."""
     kept: list[dict[str, Any]] = []
     mapping_paragraphs: list[str] = []
@@ -979,7 +1061,7 @@ def _convert_mapping_tables_to_prose(draft: dict[str, Any]) -> None:
     steps = draft.get("method_steps") or []
     for table in draft.get("tables") or []:
         headers = [str(x or "").strip().casefold() for x in (table.get("headers") or [])]
-        is_mapping = any("işlem adımı" in h for h in headers) and any("gerçekleştiren unsur" in h for h in headers)
+        is_mapping = (any("işlem adımı" in h for h in headers) and any("gerçekleştiren unsur" in h for h in headers)) or (any("process step" in h for h in headers) and any("performing element" in h or "performing unit" in h for h in headers))
         if not is_mapping:
             kept.append(table)
             continue
@@ -994,12 +1076,18 @@ def _convert_mapping_tables_to_prose(draft: dict[str, Any]) -> None:
             step_text = str(step.get("text", "") or (row[1] if len(row) > 1 else "ilgili işlem")).strip().rstrip(".,;:")
             step_num = str(step.get("number", "") or "").strip()
             explanation = str(row[3] if len(row) > 3 else "").strip().rstrip(".")
-            lead = f"{el_name}{f' ({el_num})' if el_num else ''}, {step_text[:1].lower() + step_text[1:]} işlem adımını{f' ({step_num})' if step_num else ''} gerçekleştirmektedir"
-            if explanation:
-                lead += f" ve bu kapsamda {explanation[:1].lower() + explanation[1:]}"
+            if _english_spec(language):
+                lead = f"The {el_name}{f' ({el_num})' if el_num else ''} performs the process step of {step_text[:1].lower() + step_text[1:]}{f' ({step_num})' if step_num else ''}"
+                if explanation:
+                    lead += f" and, in this context, {explanation[:1].lower() + explanation[1:]}"
+            else:
+                lead = f"{el_name}{f' ({el_num})' if el_num else ''}, {step_text[:1].lower() + step_text[1:]} işlem adımını{f' ({step_num})' if step_num else ''} gerçekleştirmektedir"
+                if explanation:
+                    lead += f" ve bu kapsamda {explanation[:1].lower() + explanation[1:]}"
             sentences.append(lead.rstrip(".") + ".")
         if sentences:
-            mapping_paragraphs.append("Sistem ile yöntem arasındaki teknik ilişki aşağıdaki şekilde kurulmaktadır. " + " ".join(sentences))
+            prefix = "The technical relationship between the system and the method is established as follows. " if _english_spec(language) else "Sistem ile yöntem arasındaki teknik ilişki aşağıdaki şekilde kurulmaktadır. "
+            mapping_paragraphs.append(prefix + " ".join(sentences))
     draft["tables"] = kept
     if mapping_paragraphs:
         detailed = [str(x or "").strip() for x in (draft.get("detailed_paragraphs") or []) if str(x or "").strip()]
@@ -1012,29 +1100,31 @@ def apply_tarifname_house_style(
     draft: dict[str, Any],
     claim_mode: str,
     literature: list[dict[str, Any]] | None = None,
+    language: str = "Türkçe",
 ) -> dict[str, Any]:
     """Kullanıcının sabit terminoloji, paragraf ve başlık tercihlerini çıktıdan önce uygula."""
     draft = deepcopy(draft)
-    for old, new in [
-        ("Buluşun bir gerçekleştirilmesinde", "Buluşun bir yapılanmasında"),
-        ("buluşun bir gerçekleştirilmesinde", "buluşun bir yapılanmasında"),
-        ("Mevcut buluş", "Buluş"),
-        ("mevcut buluş", "buluş"),
-        ("Buluş özellikle", "Buluş, özellikle"),
-    ]:
-        draft = _replace_in_nested(draft, old, new)
-    draft["title"] = _ensure_title_for_claim_mode(draft.get("title", ""), claim_mode)
+    if not _english_spec(language):
+        for old, new in [
+            ("Buluşun bir gerçekleştirilmesinde", "Buluşun bir yapılanmasında"),
+            ("buluşun bir gerçekleştirilmesinde", "buluşun bir yapılanmasında"),
+            ("Mevcut buluş", "Buluş"),
+            ("mevcut buluş", "buluş"),
+            ("Buluş özellikle", "Buluş, özellikle"),
+        ]:
+            draft = _replace_in_nested(draft, old, new)
+    draft["title"] = _ensure_title_for_claim_mode(draft.get("title", ""), claim_mode, language)
     _assign_missing_element_numbers(draft)
     _normalize_method_step_numbers(draft)
-    _convert_mapping_tables_to_prose(draft)
+    _convert_mapping_tables_to_prose(draft, language)
     draft["prior_art_general_paragraphs"] = _merge_continuation_paragraphs(draft.get("prior_art_general_paragraphs") or [])
     _merge_initial_element_paragraphs(draft)
-    _ensure_literature_titles(draft, literature)
+    _ensure_literature_titles(draft, literature, language)
     draft["figure_descriptions"] = [
         re.sub(r"\b\d{4}\s*[-–]\s*\d{4}\s+numaralı\s+", "", str(x or ""), flags=re.IGNORECASE)
         for x in (draft.get("figure_descriptions") or [])
     ]
-    draft["technical_field"] = _normalize_technical_field_two_paragraphs(draft.get("technical_field", ""))
+    draft["technical_field"] = _normalize_technical_field_two_paragraphs(draft.get("technical_field", ""), language)
     for step in draft.get("method_steps") or []:
         step["text"] = re.sub(r"[.,;:]+$", "", str(step.get("text", "") or "").strip())
     return draft
@@ -1044,21 +1134,30 @@ def validate_tarifname_draft(
     draft: dict[str, Any],
     claim_mode: str,
     literature: list[dict[str, Any]] | None = None,
+    language: str = "Türkçe",
 ) -> list[str]:
     warnings: list[str] = []
     technical_field_raw = str(draft.get("technical_field", "") or "").strip()
-    technical_field = re.sub(r"\s+", " ", technical_field_raw).strip()
-    if technical_field and not re.match(r"^Buluş,\s+.+?ile ilgilidir\.", technical_field, flags=re.IGNORECASE):
-        raise ValueError('TEKNİK ALAN ilk cümlesi “Buluş, ... ile ilgilidir.” yapısında olmalıdır.')
-    if re.search(r"\bBuluş özellikle\b", technical_field, flags=re.IGNORECASE):
-        raise ValueError('TEKNİK ALAN içinde “Buluş özellikle” yerine “Buluş, özellikle” kullanılmalıdır.')
     tf_paragraphs = [x.strip() for x in re.split(r"\n\s*\n", technical_field_raw) if x.strip()]
-    if len(tf_paragraphs) < 2:
-        raise ValueError('TEKNİK ALAN iki paragraf olmalıdır: ilk paragraf “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile başlamalıdır.')
-    if not re.fullmatch(r"Buluş,\s+.+?ile ilgilidir\.", tf_paragraphs[0], flags=re.IGNORECASE | re.DOTALL):
-        raise ValueError('TEKNİK ALAN ilk paragrafı yalnız “Buluş, ... ile ilgilidir.” giriş cümlesinden oluşmalıdır.')
-    if not re.match(r"^Buluş,\s*özellikle\b", tf_paragraphs[1], flags=re.IGNORECASE):
-        raise ValueError('TEKNİK ALAN ikinci paragrafı “Buluş, özellikle ...” ile başlamalıdır.')
+    if _english_spec(language):
+        if len(tf_paragraphs) < 2:
+            raise ValueError('TECHNICAL FIELD must contain two paragraphs: “The invention relates to ... .” followed by “In particular, the invention relates to ... .”')
+        if not re.fullmatch(r"The invention relates to .+?\.", tf_paragraphs[0], flags=re.IGNORECASE | re.DOTALL):
+            raise ValueError('The first TECHNICAL FIELD paragraph must consist only of “The invention relates to ... .”')
+        if not re.match(r"^In particular,\s*the invention relates to\b", tf_paragraphs[1], flags=re.IGNORECASE):
+            raise ValueError('The second TECHNICAL FIELD paragraph must begin with “In particular, the invention relates to ...”.')
+    else:
+        technical_field = re.sub(r"\s+", " ", technical_field_raw).strip()
+        if technical_field and not re.match(r"^Buluş,\s+.+?ile ilgilidir\.", technical_field, flags=re.IGNORECASE):
+            raise ValueError('TEKNİK ALAN ilk cümlesi “Buluş, ... ile ilgilidir.” yapısında olmalıdır.')
+        if re.search(r"\bBuluş özellikle\b", technical_field, flags=re.IGNORECASE):
+            raise ValueError('TEKNİK ALAN içinde “Buluş özellikle” yerine “Buluş, özellikle” kullanılmalıdır.')
+        if len(tf_paragraphs) < 2:
+            raise ValueError('TEKNİK ALAN iki paragraf olmalıdır: ilk paragraf “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile başlamalıdır.')
+        if not re.fullmatch(r"Buluş,\s+.+?ile ilgilidir\.", tf_paragraphs[0], flags=re.IGNORECASE | re.DOTALL):
+            raise ValueError('TEKNİK ALAN ilk paragrafı yalnız “Buluş, ... ile ilgilidir.” giriş cümlesinden oluşmalıdır.')
+        if not re.match(r"^Buluş,\s*özellikle\b", tf_paragraphs[1], flags=re.IGNORECASE):
+            raise ValueError('TEKNİK ALAN ikinci paragrafı “Buluş, özellikle ...” ile başlamalıdır.')
 
     steps = draft.get("method_steps") or []
     numbers = [str(x.get("number", "")).strip() for x in steps]
@@ -1066,19 +1165,17 @@ def validate_tarifname_draft(
         raise ValueError("REFERANS NUMARALARI bölümünde yinelenen yöntem adımı numarası bulundu.")
     if any(not n for n in numbers):
         raise ValueError("Numarası boş yöntem işlem adımı bulundu.")
-    expected_numbers = [str(1001 + i) for i in range(len(numbers))]
-    if numbers and numbers != expected_numbers:
-        raise ValueError("Yöntem işlem adımları 1001'den başlayarak kesintisiz numaralandırılmalıdır.")
-
     element_numbers = [str(x.get("number", "") or "").strip() for x in (draft.get("elements") or [])]
     if any(not n for n in element_numbers):
         raise ValueError("Sistem/cihaz unsurlarından en az birinin referans numarası boş.")
-    if set(element_numbers) & set(numbers):
-        raise ValueError("Sistem unsur referansları ile yöntem işlem adımı referansları çakışıyor.")
+    overlap = sorted(set(element_numbers) & set(numbers))
+    if overlap:
+        warnings.append("Müşteri kaynaklı sistem unsuru ve yöntem adımı referansları çakışıyor: " + ", ".join(overlap) + ". Referanslar otomatik değiştirilmedi; teknik belirsizlik açısından kontrol edin.")
 
     for table in draft.get("tables") or []:
         headers = [str(x or "").casefold() for x in (table.get("headers") or [])]
-        if any("işlem adımı" in h for h in headers) and any("gerçekleştiren unsur" in h for h in headers):
+        is_mapping = (any("işlem adımı" in h for h in headers) and any("gerçekleştiren unsur" in h for h in headers)) or (any("process step" in h for h in headers) and any("performing element" in h or "performing unit" in h for h in headers))
+        if is_mapping:
             raise ValueError("Sistem-yöntem ilişki tablosu tarifname gövdesinde tablo olarak bırakılamaz; doğal teknik paragrafa dönüştürülmelidir.")
 
     normalized_to_numbers: dict[str, list[str]] = {}
@@ -1104,10 +1201,9 @@ def validate_tarifname_draft(
         },
         ensure_ascii=False,
     )
-    referenced = set(re.findall(r"\((1\d{3})\)", all_claim_text))
-    missing = sorted(referenced - set(numbers))
+    missing = [n for n in numbers if n and f"({n})" not in all_claim_text and draft.get("method_claim")]
     if missing:
-        raise ValueError("İstemlerde bulunup referans listesinde bulunmayan yöntem adımları: " + ", ".join(missing))
+        raise ValueError("REFERANS NUMARALARI bölümündeki yöntem adımlarından istemde bulunmayan referanslar: " + ", ".join(missing))
 
     if claim_mode == "Yalnızca yöntem" and draft.get("system_claim"):
         raise ValueError("Yalnızca yöntem seçildiği halde sistem istemi üretildi.")
@@ -1118,8 +1214,8 @@ def validate_tarifname_draft(
     if claim_mode in {"Yalnızca sistem", "Sistem ve yöntem"} and not draft.get("system_claim"):
         raise ValueError("Seçilen istem yapısına rağmen bağımsız sistem istemi üretilemedi.")
 
-    hardware_anchor_re = re.compile(r"elektronik cihaz|elektronik işlem birimi|işlemci|donanım|bilgisayar|mikrodenetleyici|kontrol birimi", re.IGNORECASE)
-    software_terms_re = re.compile(r"modül|birim|algoritma|yazılım|veri işleme|hesaplama", re.IGNORECASE)
+    hardware_anchor_re = re.compile(r"elektronik cihaz|elektronik işlem birimi|işlemci|donanım|bilgisayar|mikrodenetleyici|kontrol birimi|electronic device|processing unit|processor|hardware|computer|microcontroller|control unit", re.IGNORECASE)
+    software_terms_re = re.compile(r"modül|birim|algoritma|yazılım|veri işleme|hesaplama|module|unit|algorithm|software|data processing|calculation", re.IGNORECASE)
     if draft.get("system_claim"):
         system_text = " ".join([
             str((draft.get("system_claim") or {}).get("preamble", "")),
@@ -1136,20 +1232,22 @@ def validate_tarifname_draft(
             raise ValueError("Yazılım/algoritma ağırlıklı bağımsız yöntem istemi elektronik cihaz/işlemci gibi geniş bir donanımsal taşıyıcıya dayandırılmalıdır.")
 
     user_facing_text = json.dumps(draft, ensure_ascii=False)
-    if re.search(r"\bBBF\b|buluş bildirim formu", user_facing_text, flags=re.IGNORECASE):
-        raise ValueError("Tarifname taslağında kullanıcıya görünmemesi gereken BBF/kaynak form atfı bulundu.")
-    if re.search(r"\bmevcut buluş\b", user_facing_text, flags=re.IGNORECASE):
+    if re.search(r"\bBBF\b|buluş bildirim formu|invention disclosure form", user_facing_text, flags=re.IGNORECASE):
+        raise ValueError("Tarifname taslağında kullanıcıya görünmemesi gereken kaynak form atfı bulundu.")
+    if not _english_spec(language) and re.search(r"\bmevcut buluş\b", user_facing_text, flags=re.IGNORECASE):
         raise ValueError('Tarifname taslağında “mevcut buluş” ifadesi bulundu; “Buluş” dili kullanılmalıdır.')
-    if claim_mode == "Sistem ve yöntem" and "yöntem" not in str(draft.get("title", "")).lower():
-        raise ValueError("Sistem ve yöntem istem yapısında başlık yöntem ifadesini içermiyor.")
+    if claim_mode == "Sistem ve yöntem":
+        required = "method" if _english_spec(language) else "yöntem"
+        if required not in str(draft.get("title", "")).casefold():
+            raise ValueError("Sistem ve yöntem istem yapısında başlık yöntem/method ifadesini içermiyor.")
 
     literature_text = " ".join(str(x or "") for x in (draft.get("literature_paragraphs") or []))
     for doc_info in literature or []:
         en = str(doc_info.get("title_en", "") or "").strip()
         tr = str(doc_info.get("title_tr", "") or "").strip()
         if en and en not in literature_text:
-            raise ValueError(f"Literatür paragrafında İngilizce patent başlığı eksik: {en}")
-        if tr and tr not in literature_text:
+            raise ValueError(f"Literatür paragrafında patent başlığı eksik: {en}")
+        if not _english_spec(language) and tr and tr not in literature_text:
             raise ValueError(f"Literatür paragrafında Türkçe patent başlığı eksik: {tr}")
     return warnings
 
@@ -1175,10 +1273,22 @@ def _reference_sentence_case(name: str) -> str:
     return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", repl, text)
 
 
-def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
+def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> bytes:
     template = Document(str(TARIFNAME_TEMPLATE))
     doc = Document(str(TARIFNAME_TEMPLATE))
     clear_body(doc)
+    en = _english_spec(language)
+    labels = {
+        "spec": "SPECIFICATION" if en else "TARİFNAME",
+        "technical": "TECHNICAL FIELD" if en else "TEKNİK ALAN",
+        "prior": "PRIOR ART" if en else "ÖNCEKİ TEKNİK",
+        "short": "BRIEF DESCRIPTION OF THE INVENTION" if en else "BULUŞUN KISA AÇIKLAMASI",
+        "figures": "BRIEF DESCRIPTION OF THE FIGURES" if en else "ŞEKİLLERİN KISA AÇIKLAMASI",
+        "refs": "REFERENCE NUMERALS" if en else "REFERANS NUMARALARI",
+        "detail": "DETAILED DESCRIPTION OF THE INVENTION" if en else "BULUŞUN DETAYLI AÇIKLAMASI",
+        "claims": "CLAIMS" if en else "İSTEMLER",
+        "abstract": "ABSTRACT" if en else "ÖZET",
+    }
     for section in doc.sections:
         section.top_margin = Cm(3)
         section.bottom_margin = Cm(2)
@@ -1186,14 +1296,14 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
         section.right_margin = Cm(2)
 
     # Şablondaki boş paragraf ritmi birebir korunur.
-    add_heading(doc, "TARİFNAME", center=True)
+    add_heading(doc, labels["spec"], center=True)
     add_blank(doc)
     add_text(doc, draft.get("title", ""), bold=True, center=True)
     add_blank(doc)
-    copy_template_paragraph(doc, template, 4)
+    copy_template_paragraph_with_text(doc, template, 4, "For preparation of the search report, the information provided in the specification and claims should be sufficiently clear and detailed to enable a person skilled in the art to carry out the subject product/method. If questions have been raised to clarify any issue, please provide the requested information. If you consider that an important element, process step or feature has not been stated before the claims section, please indicate your comments without changing the text, using highlighted text, and return them by e-mail." if en else template.paragraphs[4].text)
     add_blank(doc)
 
-    add_heading(doc, "TEKNİK ALAN")
+    add_heading(doc, labels["technical"])
     add_blank(doc)
     technical_field_parts = [
         x.strip() for x in re.split(r"\n\s*\n", str(draft.get("technical_field", "") or "")) if x.strip()
@@ -1204,7 +1314,7 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
             add_blank(doc)
     add_blank(doc)
 
-    add_heading(doc, "ÖNCEKİ TEKNİK")
+    add_heading(doc, labels["prior"])
     add_blank(doc)
     prior = draft.get("prior_art_general_paragraphs") or []
     for paragraph in prior:
@@ -1214,16 +1324,20 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
     for paragraph in literature:
         add_text(doc, paragraph)
         add_blank(doc)
-    add_text(doc, "Sonuçta yukarıda bahsedilen ve mevcut teknik ışığında çözülemeyen sorunlar, ilgili teknik alanda bir yenilik yapmayı zorunlu kılmıştır.")
+    add_text(doc, "Consequently, the problems described above, which remain unresolved in view of the prior art, have created a need for an improvement in the relevant technical field." if en else "Sonuçta yukarıda bahsedilen ve mevcut teknik ışığında çözülemeyen sorunlar, ilgili teknik alanda bir yenilik yapmayı zorunlu kılmıştır.")
 
-    add_heading(doc, "BULUŞUN KISA AÇIKLAMASI")
+    add_heading(doc, labels["short"])
     add_blank(doc)
     add_text(doc, draft.get("short_description_intro", ""))
     add_blank(doc)
     for index, objective in enumerate(draft.get("objectives") or []):
-        prefix = "Buluşun ana amacı, " if index == 0 else "Buluşun diğer bir amacı, "
         objective = str(objective).strip()
-        add_text(doc, prefix + (objective[:1].lower() + objective[1:] if objective else ""))
+        if en:
+            # English objectives are drafted as complete sentences.
+            add_text(doc, objective)
+        else:
+            prefix = "Buluşun ana amacı, " if index == 0 else "Buluşun diğer bir amacı, "
+            add_text(doc, prefix + (objective[:1].lower() + objective[1:] if objective else ""))
         add_blank(doc)
     invention_definition = draft.get("unumbered_invention_definition") or draft.get("unumbered_system_definition")
     if invention_definition:
@@ -1232,20 +1346,23 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
     for item in invention_features:
         add_template_list_item(doc, template, 30, item)
     if invention_features:
-        add_text(doc, "işlem adımlarını içermesidir." if draft.get("method_claim") and not draft.get("system_claim") else "içermesidir.")
+        if en:
+            add_text(doc, "The invention comprises the foregoing technical features." if draft.get("system_claim") else "The method comprises the foregoing process steps.")
+        else:
+            add_text(doc, "işlem adımlarını içermesidir." if draft.get("method_claim") and not draft.get("system_claim") else "içermesidir.")
     add_blank(doc)
-    add_text(doc, "Buluşun yapılanması ve ek elemanlarla birlikte avantajlarının en iyi şekilde anlaşılabilmesi için aşağıda açıklaması yapılan şekiller ile birlikte değerlendirilmesi gerekmektedir.")
+    add_text(doc, "For a better understanding of the configuration and advantages of the invention together with its additional elements, the invention should be considered with reference to the figures described below." if en else "Buluşun yapılanması ve ek elemanlarla birlikte avantajlarının en iyi şekilde anlaşılabilmesi için aşağıda açıklaması yapılan şekiller ile birlikte değerlendirilmesi gerekmektedir.")
     add_blank(doc)
 
-    add_heading(doc, "ŞEKİLLERİN KISA AÇIKLAMASI")
+    add_heading(doc, labels["figures"])
     add_blank(doc)
-    for figure in draft.get("figure_descriptions") or ["Şekil 1, buluşa konu yapılanmanın temsili gösterimidir."]:
+    for figure in draft.get("figure_descriptions") or (["Figure 1 is a representative illustration of the configuration of the invention."] if en else ["Şekil 1, buluşa konu yapılanmanın temsili gösterimidir."]):
         add_text(doc, figure)
     add_blank(doc)
-    add_text(doc, "Çizimlerin mutlaka ölçeklendirilmesi gerekmemektedir ve buluşu anlamak için gerekli olmayan detaylar ihmal edilmiş olabilmektedir. Bundan başka, en azından önemli ölçüde özdeş elemanlar veya benzer fonksiyonlara sahip olan elemanlar aynı numara ile gösterilmektedir.")
+    add_text(doc, "The drawings are not necessarily to scale, and details that are not required for understanding the invention may be omitted. Elements that are substantially identical or perform substantially identical functions may be indicated by the same reference numeral or sign." if en else "Çizimlerin mutlaka ölçeklendirilmesi gerekmemektedir ve buluşu anlamak için gerekli olmayan detaylar ihmal edilmiş olabilmektedir. Bundan başka, en azından önemli ölçüde özdeş elemanlar veya benzer fonksiyonlara sahip olan elemanlar aynı numara ile gösterilmektedir.")
     add_blank(doc)
 
-    add_heading(doc, "REFERANS NUMARALARI")
+    add_heading(doc, labels["refs"])
     add_blank(doc)
     for element in draft.get("elements") or []:
         add_text(doc, f"{element.get('number','')}. {_reference_sentence_case(element.get('name',''))}")
@@ -1253,14 +1370,18 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
     if draft.get("elements") and method_steps:
         add_blank(doc)
     for step in method_steps:
-        text = re.sub(r"\s*\(\s*\d+\s*\)\s*", "", str(step.get("text", ""))).strip().rstrip(".,;:")
-        add_text(doc, f"{step.get('number','')}. {text}")
+        number = str(step.get("number", "") or "").strip()
+        text = str(step.get("text", "") or "").strip()
+        if number:
+            text = re.sub(rf"\s*\(\s*{re.escape(number)}\s*\)\s*$", "", text).strip()
+        text = text.rstrip(".,;:")
+        add_text(doc, f"{number}. {text}")
     add_blank(doc)
 
-    add_heading(doc, "BULUŞUN DETAYLI AÇIKLAMASI")
+    add_heading(doc, labels["detail"])
     add_blank(doc)
     title = str(draft.get("title", "buluş")).strip()
-    add_text(doc, f"Bu detaylı açıklamada, buluş konusu olan {title} sadece konunun daha iyi anlaşılmasına yönelik hiçbir sınırlayıcı etki oluşturmayacak örneklerle açıklanmaktadır.")
+    add_text(doc, f"In this detailed description, {title} is described by way of examples solely for a better understanding of the subject matter, without imposing any limiting effect." if en else f"Bu detaylı açıklamada, buluş konusu olan {title} sadece konunun daha iyi anlaşılmasına yönelik hiçbir sınırlayıcı etki oluşturmayacak örneklerle açıklanmaktadır.")
     add_blank(doc)
     detailed = [str(x or "").strip() for x in (draft.get("detailed_paragraphs") or []) if str(x or "").strip()]
     for idx, paragraph in enumerate(detailed):
@@ -1303,11 +1424,15 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
         add_blank(doc)
 
     if method_steps:
-        add_text(doc, "Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:")
+        add_text(doc, "The process steps performed by the method are as follows:" if en else "Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:")
         for idx, step in enumerate(method_steps):
-            text = re.sub(r"\s*\(\s*\d+\s*\)\s*", "", str(step.get("text", ""))).strip().rstrip(".,;:")
+            number = str(step.get("number", "") or "").strip()
+            text = str(step.get("text", "") or "").strip()
+            if number:
+                text = re.sub(rf"\s*\(\s*{re.escape(number)}\s*\)\s*$", "", text).strip()
+            text = text.rstrip(".,;:")
             punctuation = "." if idx == len(method_steps) - 1 else ","
-            add_template_list_item(doc, template, 30, f"{text} ({step.get('number','')}){punctuation}")
+            add_template_list_item(doc, template, 30, f"{text} ({number}){punctuation}")
         add_blank(doc)
     if draft.get("working_principle"):
         add_text(doc, draft.get("working_principle", ""))
@@ -1316,19 +1441,36 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
     # Şablonda istemler öncesinde iki boş paragraf vardır; page break yeni sayfayı garanti eder.
     add_blank(doc)
     doc.add_page_break()
-    add_heading(doc, "İSTEMLER", center=True)
+    add_heading(doc, labels["claims"], center=True)
     add_blank(doc)
-    for index in (79, 81, 83):
-        copy_template_paragraph(doc, template, index)
-        add_blank(doc)
+    if en:
+        english_claim_notes = {
+            79: "If you consider that an important and novel element and/or process step is missing from the claims, please indicate your comments without changing the text, using highlighted text, and return them by e-mail.",
+            81: "If the system can operate without one or more features recited in claim 1, or if a feature that must necessarily be present is not recited in claim 1, identifying that feature is important for determining the desired scope of protection.",
+            83: "A system that implements the invention without using even one feature recited in claim 1 may fall outside the scope of that claim. Please evaluate the claims in light of this information.",
+        }
+        for index in (79, 81, 83):
+            copy_template_paragraph_with_text(doc, template, index, english_claim_notes[index])
+            add_blank(doc)
+    else:
+        for index in (79, 81, 83):
+            copy_template_paragraph(doc, template, index)
+            add_blank(doc)
 
     system_claim = draft.get("system_claim")
     if system_claim:
-        add_numbered_claim(doc, template, f"{system_claim.get('preamble','')} olup, özelliği;")
-        for item in system_claim.get("elements") or []:
-            add_template_list_item(doc, template, 86, item)
-        closing = add_text(doc, system_claim.get("closing", "içermesidir."))
-        closing.paragraph_format.first_line_indent = Cm(0.5)
+        if en:
+            add_numbered_claim(doc, template, f"{system_claim.get('preamble','').rstrip(' ,;:')}, comprising:")
+            items = list(system_claim.get("elements") or [])
+            for idx, item in enumerate(items):
+                text = str(item).rstrip(".,;:") + ("." if idx == len(items) - 1 else ";")
+                add_template_list_item(doc, template, 86, text)
+        else:
+            add_numbered_claim(doc, template, f"{system_claim.get('preamble','')} olup, özelliği;")
+            for item in system_claim.get("elements") or []:
+                add_template_list_item(doc, template, 86, item)
+            closing = add_text(doc, system_claim.get("closing", "içermesidir."))
+            closing.paragraph_format.first_line_indent = Cm(0.5)
         add_blank(doc)
         for dependent in draft.get("dependent_system_claims") or []:
             add_numbered_claim(doc, template, dependent)
@@ -1336,20 +1478,27 @@ def build_tarifname_docx(draft: dict[str, Any]) -> bytes:
 
     method_claim = draft.get("method_claim")
     if method_claim:
-        add_numbered_claim(doc, template, f"{method_claim.get('preamble','')} olup, özelliği;")
+        if en:
+            add_numbered_claim(doc, template, f"{method_claim.get('preamble','').rstrip(' ,;:')}, comprising:")
+        else:
+            add_numbered_claim(doc, template, f"{method_claim.get('preamble','')} olup, özelliği;")
         claim_steps = list(method_claim.get("steps") or [])
         for idx, item in enumerate(claim_steps):
             base_step = str(item).rstrip(".,;:")
-            step_text = base_step if idx == len(claim_steps) - 1 else base_step + ","
+            if en:
+                step_text = base_step + ("." if idx == len(claim_steps) - 1 else ";")
+            else:
+                step_text = base_step if idx == len(claim_steps) - 1 else base_step + ","
             add_template_list_item(doc, template, 86, step_text)
-        closing = add_text(doc, method_claim.get("closing", "işlem adımlarını içermesidir."))
-        closing.paragraph_format.first_line_indent = Cm(0.5)
+        if not en:
+            closing = add_text(doc, method_claim.get("closing", "işlem adımlarını içermesidir."))
+            closing.paragraph_format.first_line_indent = Cm(0.5)
         add_blank(doc)
         for dependent in draft.get("dependent_method_claims") or []:
             add_numbered_claim(doc, template, dependent)
             add_blank(doc)
 
-    summary_heading = add_heading(doc, "ÖZET", center=True)
+    summary_heading = add_heading(doc, labels["abstract"], center=True)
     summary_heading.paragraph_format.page_break_before = True
     add_blank(doc)
     add_text(doc, draft.get("title", ""), bold=True, center=True)
@@ -2390,6 +2539,7 @@ if work_type == "Tarifname oluşturma":
             reference = st.text_input("DP referans numarası", value="")
             output_name = st.text_input("Çıktı dosyasının adı", value="Tarifname_XXXXXX.docx")
         with c2:
+            language_choice = st.selectbox("Tarifname dili", ["Türkçe", "İngilizce"], index=0)
             claim_choice = st.selectbox(
                 "İstem yapısı",
                 ["BBF'ye göre otomatik belirle", "Yalnızca sistem", "Yalnızca yöntem", "Sistem ve yöntem"],
@@ -2458,7 +2608,7 @@ if work_type == "Tarifname oluşturma":
 
                 progress.progress(15, text="BBF içeriği, referans tablosu, şekiller ve istem çekirdeği çıkarılıyor...")
                 extracted = ask_json(
-                    tarifname_extraction_prompt(source, technical_text, example_text),
+                    tarifname_extraction_prompt(source, technical_text, example_text, language_choice),
                     images=model_images,
                 )
 
@@ -2481,7 +2631,7 @@ if work_type == "Tarifname oluşturma":
                     progress.progress(38, text="Patent literatürü araştırılıyor...")
                     lit_docs = (
                         ask_json(
-                            tarifname_literature_prompt(extracted, int(lit_count), jurisdiction),
+                            tarifname_literature_prompt(extracted, int(lit_count), jurisdiction, language_choice),
                             web_search=True,
                         ).get("documents")
                         or []
@@ -2496,6 +2646,7 @@ if work_type == "Tarifname oluşturma":
                         source,
                         technical_text,
                         example_text,
+                        language_choice,
                     ),
                     images=model_images,
                 )
@@ -2509,6 +2660,7 @@ if work_type == "Tarifname oluşturma":
                         draft,
                         mode,
                         lit_docs,
+                        language_choice,
                     ),
                     images=model_images,
                 )
@@ -2521,13 +2673,13 @@ if work_type == "Tarifname oluşturma":
                     draft["system_claim"] = None
                     draft["dependent_system_claims"] = []
 
-                draft = apply_tarifname_house_style(draft, mode, lit_docs)
-                warnings = validate_tarifname_draft(draft, mode, lit_docs)
+                draft = apply_tarifname_house_style(draft, mode, lit_docs, language_choice)
+                warnings = validate_tarifname_draft(draft, mode, lit_docs, language_choice)
                 for warning in warnings:
                     st.warning(warning)
 
                 progress.progress(88, text="Word dosyası hazırlanıyor...")
-                data = build_tarifname_docx(draft)
+                data = build_tarifname_docx(draft, language_choice)
 
                 figure_data = None
                 if separate_figures:
@@ -2543,7 +2695,7 @@ if work_type == "Tarifname oluşturma":
                         if marker not in seen_images:
                             seen_images.add(marker)
                             deduplicated.append(asset)
-                    figure_data = build_figures_docx(deduplicated)
+                    figure_data = build_figures_docx(deduplicated, language_choice)
 
                 progress.progress(100, text="Hazır")
                 st.success("Tarifname oluşturuldu ve BBF tamlık kontrolü tamamlandı.")

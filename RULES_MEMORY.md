@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-10.v5**
+Kural sürümü: **2026-08-11.v2**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -32,7 +32,7 @@ BULUŞUN KISA AÇIKLAMASI bölümündeki amaçlar tam yüklemle biter. `... kar�
 
 REFERANS NUMARALARI bölümünden önce `(1)`, `(2)`, `(1001)` gibi referans işaretleri kullanılmaz. Ana istem mantığı kısa açıklamada özetleniyorsa unsur adları numarasız yazılır. Kaynakta `UW`, `UW_F`, `UW_PL`, `UW_R`, `UW_M` gibi sembolik referanslar gerçekten kullanılıyorsa sayısal unsur listesinden sonra bir boş paragrafla `UW. Kullanılabilir ağırlık`, `UW_F. İlave yakıt tahsisi` biçiminde gösterilir. Kaynakta gerçek unsur referansı olmayan 21-37 gibi geçici şekil numaraları tarifnameye yeni referans numarası olarak taşınmaz.
 
-Tarifname oluştururken kaynakta adlandırılmış sistem modülleri mevcut fakat bunlara ayrı referans numarası verilmemişse, modüller kaynak sırasına göre `1, 2, 3...` olarak numaralandırılır. Yöntem işlem adımları sistem modüllerinden ayrı referans ailesidir ve varsayılan olarak `1001, 1002, 1003...` biçiminde numaralandırılır. Kaynakta yöntem adımları `1, 2, 3...` veya `S101...` olarak verilmiş olsa bile, kullanıcı açıkça aksi yönde talimat vermedikçe tarifnamede `1001...` ailesine dönüştürülür. `REFERANS NUMARALARI` bölümünde önce sistem modülleri art arda, sonra tek bir boş paragraf, ardından yöntem işlem adımları art arda yazılır.
+Tarifname oluştururken müşterinin sistem/cihaz unsurları ve yöntem işlem adımları için verdiği referans işaretleri aynen korunur. Kaynakta `10, 20...`, `S101...`, `M1...` veya başka bir açık referans ailesi varsa sırf standartlaştırmak için değiştirilmez. Sistem modüllerine hiç referans verilmemişse kaynak sırasıyla `1, 2, 3...`; yöntem işlem adımlarına hiç referans verilmemişse `1001, 1002, 1003...` varsayılanı atanır. Kısmen numaralandırılmış kaynakta mevcut müşteri referansları korunur ve yalnız boş kalanlar çakışmayacak varsayılanlarla tamamlanır. `REFERANS NUMARALARI` bölümünde önce sistem modülleri art arda, sonra tek bir boş paragraf, ardından yöntem işlem adımları art arda yazılır.
 
 Sistem ile yöntem arasındaki `İşlem Adımı / Gerçekleştiren Unsur / Açıklama` ilişkisi açıklama tablosu halinde tarifnameye taşınmaz. Bu ilişki doğal teknik paragraf halinde yazılır ve ilişkili modüllerin birbirinden aldığı veri/çıktı ile gerçekleştirdiği yöntem adımı açıkça bağlanır. Yalnız kaynaktaki gerçek sayısal veya deneysel veri tabloları gerektiğinde tablo olarak korunabilir.
 
@@ -42,9 +42,13 @@ Ana sistem istemi bağımsız unsur listesi olarak yazılmaz. Teknik olarak ili�
 
 İstemlerde sembol tek başına anlam yerine geçirilmez. `kuru hibrit güç ünitesi ağırlığı (HPU_W)`, `asgari görev yakıtı ağırlığı (FW_min)`, `ilave yakıt tahsisi (UW_F)` gibi teknik açılım önce yazılır. Sembol matematiksel ilişkilerde aynen korunur.
 
-Detaylı açıklamadaki yöntem işlem adımlarında ara maddeler virgülle, son madde noktayla biter. Bağımsız yöntem istemindeki ara işlem adımları virgülle, son işlem adımı ise noktalamasız biter; ardından ayrı satırda `işlem adımlarını içermesidir.` yazılır. Yöntem adımı numaraları `1001, 1002, 1003...` ailesinde tutulur. Aynı numaralı yöntemin teknik metni REFERANS NUMARALARI, detaylı açıklamadaki yöntem listesi ve bağımsız yöntem isteminde birebir aynı olmalıdır; istemde değişen adım aynı anda diğer iki yerde de değiştirilir.
+Detaylı açıklamadaki yöntem işlem adımlarında ara maddeler virgülle, son madde noktayla biter. Türkçe bağımsız yöntem istemindeki ara işlem adımları virgülle, son işlem adımı ise noktalamasız biter; ardından ayrı satırda `işlem adımlarını içermesidir.` yazılır. Yöntem adımı referansları kaynakta verilmişse aynen korunur; kaynakta hiç referans yoksa `1001, 1002, 1003...` varsayılanı kullanılır. Aynı referanslı yöntem adımının teknik metni REFERANS NUMARALARI, detaylı açıklamadaki yöntem listesi ve bağımsız yöntem isteminde birebir aynı olmalıdır; istemde değişen adım aynı anda diğer iki yerde de değiştirilir.
 
 Teknik açıklamada noktalı virgül gereksiz kullanılmaz. Virgül veya nokta tercih edilir. `olup, özelliği;` istem kalıbı bu kuralın istisnasıdır.
+
+
+### Tarifname çıktı dili
+Tarifname oluşturma ekranında `Türkçe` veya `İngilizce` seçilebilir. Dil seçimi yalnız çıktı dilini değiştirir; BBF/ek belge tamlığı, kaynak sadakati, istem mimarisi, donanımsal taşıyıcı, bağımlı istem stratejisi, referans senkronizasyonu, şekil kuralları ve `Tarifname_181176_template.docx` biçimi aynen korunur. İngilizce çıktıda TECHNICAL FIELD ilk paragrafı yalnız `The invention relates to ... .`, ikinci paragrafı `In particular, the invention relates to ... .` yapısındadır; bağımsız istemlerde `comprising:` ve bağımlı istemlerde `The system according to claim X, wherein...` / `The method according to claim X, wherein...` kalıpları kullanılır.
 
 ## 3. Paralel işlem adımları
 
