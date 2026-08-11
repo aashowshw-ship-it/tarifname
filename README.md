@@ -1,10 +1,10 @@
-# Patent Atölyesi v5.4.7
+# Patent Atölyesi v5.4.8
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 10.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.4.7-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.4.8-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -120,7 +120,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-11.v2`
+Kural sürümü: `2026-08-11.v3`
 
 ## Yerel çalıştırma
 
@@ -138,6 +138,9 @@ $env:OPENAI_API_KEY="..."
 streamlit run app.py
 ```
 
+
+### İstem teknik mekanizma kontrolü
+Tarifname oluşturma sırasında bağımsız istemler yalnız hedeflenen fonksiyonu veya sonucu söylemekle bırakılmaz. Kaynakta dayanak bulunduğu ölçüde teknikte uzman kişinin “nasıl gerçekleştiriliyor?” sorusuna cevap verecek teknik unsur/taşıyıcı, girdi-veri ilişkisi, teknik işlem mekanizması ve çıktı ilişkisi istemde gösterilir. Yazılım ağırlıklı istemlerde elektronik cihaz/işlemci dayanağına ek olarak yazılımın bu taşıyıcı üzerinde hangi teknik işlem yoluyla sonucu ürettiği de kontrol edilir; buna karşılık tercihli uygulama ayrıntılarıyla ana istem gereksiz daraltılmaz.
 
 ### Şekiller - tarifname oluşturma
 Şekil çıktısı müşteri görsellerini esas alır. Görseller `ŞEKİL 1`, `ŞEKİL 2` şeklinde sıralanır, başlık görselin altında bulunur ve her sayfanın üstünde `sayfa / toplam sayfa` göstergesi kullanılır. Sayfa sayısı sabit değildir. Şekildeki gerçek referans işaretleri tarifnamedeki `REFERANS NUMARALARI` ile senkron olmak zorundadır. Ayrıntılı şekil kuralları `rules.py` içinde arka planda uygulanır.

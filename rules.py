@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.7"
-RULESET_VERSION = "2026-08-11.v2"
+APP_VERSION = "v5.4.8"
+RULESET_VERSION = "2026-08-11.v3"
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI
@@ -53,6 +53,7 @@ D. İSTEM KURGUSU
 
 34C. Bağımlı istemlerde “Önceki istemlerden herhangi birine uygun” veya gereksiz “İstem X veya Y’ye uygun” kalıpları varsayılan olarak kullanılmaz. Bağımlılık, ek teknik özelliğin dayandığı en doğrudan isteme kurulmalıdır. Örneğin graf analiz modülüne ilişkin bir ek özellik ana sistem isteminde graf analiz modülü zaten tanımlıysa “İstem 1’e uygun sistem olup, özelliği; ...” biçiminde yazılır. Bir bağımlı istem gerçekten önceki bağımlı istemde ilk kez getirilen teknik sınırlamaya ihtiyaç duyuyorsa ancak o zaman ilgili bağımlı isteme bağlanır. Zincir bağımlılık yalnız teknik ve hukuki gereklilik varsa kullanılır.
 34D. Bağımlı istem sayısı ve bağımlılık zinciri otomatik olarak artırılmaz. Her bağımlı istem, ana istemde bulunmayan anlamlı bir daraltıcı özellik veya yararlı geri çekilme pozisyonu sağlamalıdır. Ana istemdeki unsurun yalnız ayrıntısı açıklanıyorsa doğrudan ana isteme bağlanması tercih edilir.
+34E. İstemler yalnız “ne yapıldığı” veya ulaşılmak istenen sonucu söylemekle yetinmemelidir. Özellikle bağımsız istemlerde teknikte uzman kişinin “bu sonuç nasıl elde ediliyor?” sorusunun cevabı, kaynakta dayanağı bulunduğu ölçüde istemin içinde görülebilmelidir. Her zorunlu teknik özellik için uygun olduğunda işlemi gerçekleştiren teknik taşıyıcı/unsur, kullanılan girdi veya önceki unsurdan alınan veri, gerçekleştirilen teknik işlem/mekanizma ve ortaya çıkan teknik çıktı ya da sonraki unsurla ilişki açıkça kurulmalıdır. “tespit eden”, “dönüştüren”, “optimize eden”, “sınıflandıran”, “oluşturan” gibi yalnız sonuç bildiren fonksiyonel ifadeler, BBF teknik mekanizmayı açıklıyorsa tek başına bırakılmaz; örneğin hangi veri üzerinde, hangi hesaplama/eşleştirme/sorgulama/işleme yoluyla ve hangi unsur tarafından gerçekleştirildiği yazılır. Bu kural istemi gereksiz ayrıntıyla daraltmak için kullanılmaz: yalnız buluşun teknik katkısını ve çalışma mekanizmasını anlamak için gerekli, kaynakta açık dayanağı bulunan “nasıl” özellikleri ana isteme alınır; tercihli uygulama ayrıntıları uygun bağımlı istem veya detaylı açıklamada bırakılır. Yazılım ağırlıklı buluşlarda donanımsal taşıyıcı kuralına ek olarak, yazılımın elektronik cihaz/işlemci üzerinde hangi teknik işlemleri hangi veri ve teknik yapılar üzerinden gerçekleştirdiği de istemden anlaşılmalıdır.
 
 E. DİL, PARAGRAF VE BİÇİM
 35. Türkçe tarifnamede İngilizce teknik terimi ilk geçtiği yerde Türkçesini önce, İngilizcesini parantez içinde ver. Sonraki kullanımlarda yalnızca Türkçe karşılığını kullan. AI yerine yapay zekâ yaz. İngilizce tarifnamede bu Türkçeleştirme kuralı uygulanmaz; kaynakta kullanılan doğru İngilizce teknik terminoloji korunur.

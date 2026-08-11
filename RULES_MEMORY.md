@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-11.v2**
+Kural sürümü: **2026-08-11.v3**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -75,6 +75,12 @@ BBF referans tablosu eksiksiz çıkarılır. Her unsurun detaylı açıklamada k
 Aynı numara için kullanılan terminoloji ve işlev uyumlu olmalıdır. Kullanıcı birebir eşleşme istediğinde metinler birebir aynı tutulur.
 
 Ana istemde kapsayıcı ve numarasız bir ifade kullanılabilir. Ayrıntılı numaralı adımlar bağımlı isteme taşınabilir. Bu işlem referans tablosundaki numaraların değiştirilmesini gerektirmez.
+
+## 5A. İstemde “nasıl gerçekleştiriliyor?” açıklığı
+
+İstem, yalnız hedeflenen sonucu veya fonksiyonu söylemekle bırakılmaz. Özellikle bağımsız istemde, kaynakta açık teknik dayanak bulunduğu ölçüde teknikte uzman kişinin “bu sonuç nasıl elde ediliyor?” sorusunun cevabı görülebilmelidir. Bu nedenle zorunlu teknik özellikler yazılırken uygun olduğunda işlemi gerçekleştiren teknik unsur/taşıyıcı, kullanılan girdi veya önceki unsurdan alınan veri, uygulanan teknik işlem/mekanizma ve üretilen teknik çıktı ya da sonraki unsurla ilişki birlikte kurulur.
+
+“tespit eden”, “dönüştüren”, “optimize eden”, “sınıflandıran”, “oluşturan” gibi yalnız sonuç bildiren ifadeler, müşteri kaynağı teknik mekanizmayı açıklıyorsa tek başına bırakılmaz. Ancak bu kural ana isteme bütün uygulama ayrıntılarını doldurmak anlamına gelmez. Buluşun teknik katkısını ve çalışmasını anlamak için gerekli olan kaynak destekli “nasıl” özellikleri ana istemde, tercihli ayrıntılar ise bağımlı istemlerde veya detaylı açıklamada tutulur. Yazılım ağırlıklı buluşlarda elektronik cihaz/işlemci gibi donanımsal taşıyıcıya ek olarak yazılımın bu taşıyıcı üzerinde hangi veri ve teknik yapılar üzerinden hangi işlemi gerçekleştirdiği de istemden anlaşılmalıdır.
 
 ## 6. Ana ve bağımlı istem
 
