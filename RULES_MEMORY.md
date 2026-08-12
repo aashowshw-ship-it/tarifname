@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-11.v3**
+Kural sürümü: **2026-08-12.v2**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -95,16 +95,22 @@ Formüller zorunlu çekirdek değilse ana istemi gereksiz daraltmamak için bağ
 ## 7. Tip 3 ön araştırma
 
 - BBF'den teknik problem, unsurlar, işlevler, işlem adımları ve teknik etkiler çıkarılır.
-- Global araştırma yapılır.
-- Tam 10 doküman belirlenir.
-- Tek satır halinde `TotalPatent arama sorgusu: ... or ...` üretilir.
-- Kullanıcının benzer dokümanları sorulur ve nihai değerlendirmeye eklenir.
-- Yeniliği tek başına bozan belge varsa D1 tek başına kullanılabilir.
-- Aksi halde D1 ve tamamlayıcı D2 seçilir.
-- Kullanıcı `Buluş basamağı var / Buluş basamağı yok / Otomatik belirle` seçimi yapabilir.
-- D1 ve D2 tablolarındaki özellik listeleri aynı olmalıdır.
-- Yalnızca `+` veya `-` kullanılır.
-- Ön Araştırma Raporu_181612 şablonu korunur.
+- DP referansı alınır.
+- Global araştırmada tam 10 doğrulanmış doküman belirlenir; tek satır `TotalPatent arama sorgusu: ... or ...` verilir ve aynı aşamada önerilen D1/D2 açıkça gösterilir.
+- Bu üç çıktı verilmeden `Sizin araştırdığınız benzer dokümanlar var mı?` sorusuna geçilmez.
+- Kullanıcı kendi dokümanlarını yüklerse ilk 10 liste değiştirilmez. Kullanıcı dokümanları arasından yalnız en ilgili birkaç belge ayrı `10+ XX... or YY...` satırında gösterilir.
+- Kullanıcı dokümanlarının analizi sonrasında nihai D1/D2 belirlenir; `D1 değişti/değişmedi` ve `D2 değişti/değişmedi` açıkça yazılır, değiştiyse eski/yeni doküman numarası belirtilir.
+- Yeniliği tek başına bozan belge varsa D1 tek başına kullanılabilir; aksi halde D1 ve tamamlayıcı D2 seçilir.
+- Nihai D1/D2'den sonra sistem mutlaka kendi teknik kanaatini `Bence buluş basamağı var.` veya `Bence buluş basamağı yok.` şeklinde verir.
+- Ancak sistem kanaatinden sonra kullanıcıdan `Buluş basamağı var / Buluş basamağı yok / Otomatik belirle` sonucu seçmesi istenir. Kullanıcı seçmeden Word raporu üretilmez.
+- D1 ve D2 tablolarındaki özellik listeleri birebir aynı sıradadır. Sağ hücre `+` veya `-` ile başlar ve somut doküman dayanağı içerir; `±` kullanılmaz.
+- Yalnız özgün patent şekli kullanılır; model/AI şekli üretilmez.
+- `On_Arastirma_Raporu_181612_template.docx` bağlayıcıdır ve gövdesi yeniden kurulmaz.
+- `Anahtar Kelimeler` yalnız İngilizce yazılır; şablondaki 5x2 iç tablo ve hücre düzeni değiştirilmez, en fazla 10 ifade kullanılır.
+- `IPC Kodu` alanında kodlar kalın, açıklamalar normal yazıdır ve açıklamaların tamamı İngilizcedir. Türkçe IPC/CPC açıklaması kullanılmaz.
+- `Kapsam` hücresi tam olarak `Global (İlan edilmiş olan patent başvuruları)` olarak kalır; araştırma kesim tarihi bu sabit alana eklenmez.
+- D1/D2 `Özet` alanları patentin doğrulanmış özgün İngilizce Abstract metnidir. Model özeti, Türkçe çeviri veya yeniden yazılmış abstract kullanılmaz. Kullanıcının orijinal patent dosyasındaki İngilizce Abstract önceliklidir; bulunamazsa resmi patent kaynağı/Google Patents kullanılır. Özgün abstract doğrulanamıyorsa rapor tamamlanmış sayılmaz.
+- Şablon sadakati yalnız genel görünüm değildir: sabit hücre metinleri, paragraf sayıları, kalın/normal run ayrımı, anahtar kelime tablosu geometrisi ve dört ayrı uyarı paragrafı da korunur. Word çıktıdan önce otomatik şablon-biçim doğrulaması yapılır.
 
 ## 8. Son kalite kontrolü
 
@@ -179,6 +185,9 @@ Kullanıcı revizyon önerisini gördükten sonra açıkça **mevcut istemlerle 
 - Patent şekilleri yapay zekâ ile üretilmez veya yeniden çizilmez. Yalnız özgün patent şekilleri resmi/public patent kaynağından ya da kullanıcı tarafından sunulan orijinal patent dosyasından alınır.
 - Ön araştırma raporu gövdesinde `BBF`, `ilk BBF`, `ikinci BBF`, `buluş bildirim formu` ifadeleri kullanılmaz. Normal raporda `araştırma konusu`, güncelleme raporunda gerektiğinde `ilk araştırma konusu` ve `revize araştırma konusu` kullanılır.
 - Rapor anlatımında `→`, `=>`, ok zinciri veya `özellik + özellik + özellik` gibi yapay zekâ çıktısı izlenimi veren kısa sembolik anlatım kullanılmaz.
+- Anahtar kelimeler ve IPC/CPC açıklamaları İngilizce olmak zorundadır. Anahtar kelime alanı 5x2 şablon tablosunda kalır; IPC/CPC satırında kod kalın, İngilizce açıklama normal yazıdır.
+- D1/D2 `Özet` alanına ilgili patentin özgün İngilizce Abstract metni doğrudan aktarılır; Türkçe özet/çeviri veya model tarafından yeniden yazılmış metin kullanılmaz.
+- `Kapsam` sabit şablon metni değiştirilmez ve uyarı bölümü dört ayrı paragraf olarak korunur. Section, marj, tablo sayısı, sabit alan, IPC biçimi ve paragraf geometrisi çıktıdan önce otomatik denetlenir.
 
 ## 14. Araştırma güncelleme - Tip 3
 

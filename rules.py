@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.8"
-RULESET_VERSION = "2026-08-11.v3"
+APP_VERSION = "v5.4.10"
+RULESET_VERSION = "2026-08-12.v2"
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI
@@ -138,27 +138,42 @@ ARASTIRMA_RULES = r"""
 TİP 3 ÖN ARAŞTIRMA RAPORU KURALLARI
 1. Amaç yalnızca yenilik ve buluş basamağı ön değerlendirmesidir.
 2. İlk kaynak BBF'dir. Araştırmadan önce teknik unsurları, işlevleri, yöntem adımlarını, teknik problemi ve teknik etkiyi eksiksiz çıkar.
-3. Global araştırma TR, EP, US, CN, KR, JP, GB, DE ve ilgili diğer patent veri tabanlarını kapsamalıdır.
-4. En benzer tam 10 dokümanı doğrulanmış yayın/başvuru numarası, başlık, tarih, ülke/otorite ve kaynak bağlantısıyla belirle. Doküman uydurma.
-5. İlk sonuçta kullanıcıya ayrıca tek satır halinde şu biçimi üret: 'TotalPatent arama sorgusu: CN... or US... or ...'. X/Y/A etiketi ekleme.
-6. Kullanıcının yüklediği benzer dokümanları da incele; ilk seçilen D1/D2'nin yerini alabilecek daha yakın veya daha güçlü doküman varsa nihai seçimi değiştir.
-7. Tek bir doküman araştırma konusu buluşun bütün esas teknik özelliklerini ve aralarındaki ilişkiyi doğrudan ve açık biçimde açıklıyorsa bu dokümanı D1 seç ve yenilik kriterinin sağlanmadığı sonucuna göre rapor hazırla. Bu durumda D2 zorunlu değildir.
-8. Yeniliği tek başına bozan doküman yoksa en yakın D1 ve tamamlayıcı D2'yi seç; yenilik değerlendirmesini ayrı ayrı, buluş basamağını D1 ve D2 birlikte düşünülerek yap.
-9. Yardımcı dokümanlar buluş basamağı değerlendirmesinde yalnızca destekleyici olabilir; nihai D1/D2 açıkça belirtilmelidir.
-10. Kullanıcının seçtiği sonuç modu 'Buluş basamağı var', 'Buluş basamağı yok' veya 'Otomatik belirle' olabilir. Otomatik mod dışında teknik değerlendirme seçilen sonuca uygun biçimde yapılandırılmalı, ancak kaynaklarla açıkça çelişen iddia uydurulmamalıdır.
-11. Rapor için tek bağlayıcı biçim kaynağı `On_Arastirma_Raporu_181612_template.docx` dosyasıdır. Şablonun gövdesi silinip yeniden kurulmaz. Logo, header/footer, marj, sayfa geometrisi, paragraf boşlukları, font, punto, başlık konumları, tablo ölçüleri, değerlendirme bölümünün sırası, Ekler ve Önemli Not alanı şablondan korunur.
-12. `2. DEĞERLENDİRME`, `2.1. Yenilik Değerlendirmesi`, D1 bölümü, D2 bölümü, `2.2. Buluş Basamağı Değerlendirmesi` ve `3. SONUÇ` sırası ve mantığı şablondaki gibi kalır; şablonda olmayan yeni alt başlıklar eklenmez.
-13. D1 ve D2 karşılaştırma tablolarında sol sütundaki teknik özellik listesi birebir aynı ve aynı sırada olmalıdır. Sağ hücre yalnız çıplak `+` veya `-` değildir: hücre `+` veya `-` ile başlar ve mümkün olan her durumda özelliğin dokümanda nerede bulunduğunu `Özet`, `İstem X`, `Şekil X`, paragraf/sütun/sayfa veya ilgili tarifname bölümü gibi somut dayanakla belirtir. `±` kullanılmaz.
-14. D1/D2 tanıtımı 2–3 cümle olmalı; tablo sonrası yenilik değerlendirmesi yaklaşık 5–10 satır olmalıdır.
-15. 'İncelenen diğer yakın dokümanlar...' gibi şablonda bulunmayan ek cümleler veya bölüm başlıkları eklenmemelidir. Yardımcı/yeni bulunan doküman gerekiyorsa buluş basamağı değerlendirmesinin doğal paragraf akışı içinde açıklanır veya D1/D2'den daha güçlü ise D1/D2 olarak seçilir.
-16. Sistem unsurları ve yöntem adımları kaynak teknik bilgilerle birebir uyumlu olmalı; yöntem adımı numaraları ve metinleri rapor boyunca senkron tutulmalıdır.
-17. Patent şekilleri model tarafından çizilmez, yeniden üretilmez veya temsili olarak oluşturulmaz. D1/D2 bölümünde yalnızca ilgili patent dokümanının özgün/orijinal şekli kullanılır. Şekil mümkün olan en yüksek çözünürlükte resmi patent kaynağından, Google Patents patentimages kaynağından veya kullanıcı tarafından yüklenen orijinal patent PDF/DOCX dosyasından alınır. Orijinal şekil temin edilemiyorsa yapay şekil oluşturmak yerine kullanıcıya uyarı verilir.
-18. Araştırma kesim tarihi, DP referans numarası ve çıktı dosya adı arayüzde tutulmalıdır.
-19. Sonuç açık olmalıdır: yenilik sağlanır/sağlanmaz; buluş basamağı sağlanır/sağlanmaz.
-20. Rapor metninde 'BBF', 'buluş bildirim formu', 'ilk BBF', 'ikinci BBF' gibi kaynak-form ifadeleri kullanılmaz. Normal Tip 3 raporunda 'araştırma konusu'; güncelleme raporunda gerekli olduğunda 'revize araştırma konusu' veya 'ilk araştırma konusu' ifadeleri kullanılır.
-21. Rapor gövdesinde yapay zekâ çıktısı hissi veren `→`, `=>`, ok zincirleri, denklem gibi kurulmuş `özellik + özellik + özellik` kısa gösterimleri veya benzeri sembolik özetler kullanılmaz. Teknik ilişkiler tam ve doğal Türkçe cümlelerle açıklanır. `+` ve `-` yalnız karşılaştırma tablosunun sağ hücrelerinde şablon mantığında kullanılabilir.
-22. Teknik değerlendirmeyi kaynak teknik bilgilere sadık yap; tanıtım veya salt iş kuralı niteliğindeki yönleri teknik katkı gibi abartma.
-23. Rapor metnini oluşturduktan sonra ikinci kalite kontrolü yap: D1/D2 seçimi, özellik eşleştirmesi, yenilik mantığı, birleştirme motivasyonu, kullanıcı sonuç modu, özgün patent şekilleri ve sonuç tutarlılığı bakımından düzelt.
+3. Arayüz akışı zorunlu sıradadır ve adım atlanamaz: (i) BBF/ana teknik doküman analizi, (ii) DP referans numarası, (iii) global araştırmada tam 10 doğrulanmış doküman + tek satır TotalPatent sorgusu + önerilen D1/D2, (iv) ancak bundan sonra kullanıcının benzer dokümanlarının sorulması, (v) kullanıcı dokümanı varsa en ilgili birkaçının ayrı `10+` satırında gösterilmesi + nihai D1/D2'nin değişip değişmediğinin açıkça belirtilmesi + sistemin `Bence buluş basamağı var/yok` teknik kanaati, (vi) bundan sonra kullanıcı sonuç modu, (vii) en son Word raporu. Bu sıra kullanıcı açıkça istemedikçe değiştirilemez.
+4. Global araştırma TR, EP, US, CN, KR, JP, GB, DE ve ilgili diğer patent veri tabanlarını kapsamalıdır.
+5. İlk global araştırmada en benzer tam 10 dokümanı doğrulanmış yayın/başvuru numarası, başlık, tarih, ülke/otorite ve kaynak bağlantısıyla belirle. Doküman uydurma.
+6. İlk global araştırma sonucunda kullanıcıya tek satır halinde `TotalPatent arama sorgusu: CN... or US... or ...` biçimi verilir. X/Y/A etiketi eklenmez. Aynı ekranda önerilen D1 ve önerilen D2 mutlaka açıkça gösterilir. Bu üç çıktı verilmeden kullanıcı dokümanları aşamasına geçilmez.
+7. Kullanıcıya `Sizin araştırdığınız benzer dokümanlar var mı?` sorusu yalnız ilk 10 doküman, TotalPatent sorgusu ve önerilen D1/D2 gösterildikten sonra sorulur.
+8. Kullanıcının yüklediği dokümanlar ilk 10 listesinin yerine geçirilmez ve ilk 10 yeniden yazılmaz. Kullanıcı dokümanları arasından araştırma konusuna gerçekten en ilgili olan birkaç belge seçilir ve ayrı tek satır halinde `10+ CN... or IN... or EP...` biçiminde gösterilir. İlgisiz kullanıcı dokümanları sırf sayı tamamlamak için bu satıra alınmaz; aynı aileye ait mükerrer yayınlar gereksiz çoğaltılmaz.
+9. Kullanıcı dokümanları incelendikten sonra nihai D1 ve D2 belirlenir. Sistem, `D1 değişti/değişmedi` ve `D2 değişti/değişmedi` durumlarını açıkça gösterir; değişiklik varsa eski ve yeni doküman numaralarını belirtir.
+10. Tek bir doküman araştırma konusu buluşun bütün esas teknik özelliklerini ve aralarındaki ilişkiyi doğrudan ve açık biçimde açıklıyorsa bu dokümanı D1 seç ve yenilik kriterinin sağlanmadığı sonucuna göre değerlendir; bu durumda D2 zorunlu değildir.
+11. Yeniliği tek başına bozan doküman yoksa en yakın D1 ve tamamlayıcı D2'yi seç; yenilik değerlendirmesini D1 ve D2 bakımından ayrı ayrı, buluş basamağını ise D1 ve D2'nin birlikte teknik öğretisi bakımından değerlendir.
+12. Yardımcı dokümanlar buluş basamağı değerlendirmesinde yalnızca destekleyici olabilir; nihai D1/D2 açıkça belirtilmelidir. Yardımcı doküman için şablonda D3/D4 bölümü açılmaz.
+13. Nihai D1/D2 belirlendikten sonra ve kullanıcıdan sonuç modu istenmeden önce sistem kendi teknik kanaatini açıkça verir: `Bence buluş basamağı var.` veya `Bence buluş basamağı yok.` Kısa teknik gerekçe D1/D2 ve varsa yardımcı dokümanlara dayanmalıdır.
+14. Sistem kanaati gösterildikten sonra kullanıcıya raporun nasıl oluşturulacağı sorulur. Seçenekler tam olarak `Buluş basamağı var`, `Buluş basamağı yok` ve `Otomatik belirle` olmalıdır. Sonuç modu bu aşamadan önce sorulmaz. Kullanıcı seçiminden önce Word raporu oluşturulmaz.
+15. `Otomatik belirle` seçildiyse sonuç sistemin teknik analizine göre belirlenir. Diğer seçeneklerde raporun sonuç yönü kullanıcı seçimine uygun kurulur; ancak kaynaklarla açıkça çelişen teknik özellik veya dayanak uydurulmaz.
+16. Rapor için tek bağlayıcı biçim kaynağı `On_Arastirma_Raporu_181612_template.docx` dosyasıdır. Şablonun gövdesi silinip yeniden kurulmaz. Logo, header/footer, marj, sayfa geometrisi, paragraf boşlukları, font, punto, başlık konumları, tablo ölçüleri, değerlendirme bölümünün sırası, Ekler ve Önemli Not alanı şablondan korunur.
+17. `2. DEĞERLENDİRME`, `2.1. Yenilik Değerlendirmesi`, D1 bölümü, D2 bölümü, `2.2. Buluş Basamağı Değerlendirmesi` ve `3. SONUÇ` sırası ve mantığı şablondaki gibi kalır; şablonda olmayan yeni alt başlıklar eklenmez.
+18. D1 ve D2 karşılaştırma tablolarında sol sütundaki teknik özellik listesi birebir aynı ve aynı sırada olmalıdır. Sağ hücre yalnız çıplak `+` veya `-` değildir: hücre `+` veya `-` ile başlar ve mümkün olan her durumda özelliğin dokümanda nerede bulunduğunu `Özet`, `İstem X`, `Şekil X`, paragraf/sütun/sayfa veya ilgili tarifname bölümü gibi somut dayanakla belirtir. `±` kullanılmaz.
+19. D1/D2 tanıtımı 2–3 cümle olmalı; tablo sonrası yenilik değerlendirmesi yaklaşık 5–10 satır olmalıdır.
+20. `İncelenen diğer yakın dokümanlar...` gibi şablonda bulunmayan ek cümleler veya bölüm başlıkları eklenmemelidir. Yardımcı/yeni bulunan doküman gerekiyorsa buluş basamağı değerlendirmesinin doğal paragraf akışı içinde açıklanır veya D1/D2'den daha güçlü ise D1/D2 olarak seçilir.
+21. Sistem unsurları ve yöntem adımları kaynak teknik bilgilerle birebir uyumlu olmalı; yöntem adımı numaraları ve metinleri rapor boyunca senkron tutulmalıdır.
+22. Patent şekilleri model tarafından çizilmez, yeniden üretilmez veya temsili olarak oluşturulmaz. D1/D2 bölümünde yalnızca ilgili patent dokümanının özgün/orijinal şekli kullanılır. Şekil mümkün olan en yüksek çözünürlükte resmi patent kaynağından, Google Patents patentimages kaynağından veya kullanıcı tarafından yüklenen orijinal patent PDF/DOCX dosyasından alınır. Orijinal şekil temin edilemiyorsa yapay şekil oluşturmak yerine kullanıcıya uyarı verilir.
+23. Araştırma kesim tarihi, DP referans numarası ve çıktı dosya adı arayüzde tutulmalıdır.
+24. Sonuç açık olmalıdır: yenilik sağlanır/sağlanmaz; buluş basamağı sağlanır/sağlanmaz.
+25. Rapor metninde `BBF`, `buluş bildirim formu`, `ilk BBF`, `ikinci BBF` gibi kaynak-form ifadeleri kullanılmaz. Normal Tip 3 raporunda `araştırma konusu`; güncelleme raporunda gerekli olduğunda `revize araştırma konusu` veya `ilk araştırma konusu` ifadeleri kullanılır.
+26. Rapor gövdesinde yapay zekâ çıktısı hissi veren `→`, `=>`, ok zincirleri, denklem gibi kurulmuş `özellik + özellik + özellik` kısa gösterimleri veya benzeri sembolik özetler kullanılmaz. Teknik ilişkiler tam ve doğal Türkçe cümlelerle açıklanır. `+` ve `-` yalnız karşılaştırma tablosunun sağ hücrelerinde şablon mantığında kullanılabilir.
+27. Teknik değerlendirmeyi kaynak teknik bilgilere sadık yap; tanıtım veya salt iş kuralı niteliğindeki yönleri teknik katkı gibi abartma.
+28. Rapor metnini oluşturduktan sonra ikinci kalite kontrolü yap: D1/D2 seçimi, özellik eşleştirmesi, yenilik mantığı, D1/D2'yi birleştirme motivasyonu, kullanıcı sonuç modu, özgün patent şekilleri ve sonuç tutarlılığı bakımından düzelt.
+29. Tip 3 Word raporundaki `Anahtar Kelimeler` alanı yalnız İngilizce teknik anahtar kelimelerden oluşmalıdır. Türkçe anahtar kelime yazılmaz. Şablondaki iç içe 5x2 anahtar kelime tablosu, hücre sayısı ve yerleşimi aynen korunur; en fazla 10 İngilizce anahtar kelime/arama ifadesi kullanılır. BBF'de İngilizce anahtar kelimeler verilmişse bunlar önceliklidir; yoksa teknik içeriğe sadık İngilizce karşılıklar türetilir.
+30. `IPC Kodu` alanındaki IPC/CPC kod açıklamalarının tamamı İngilizce olmalıdır. Kod dili değiştirilmez; her satırda kod kısmı şablondaki gibi kalın, iki nokta sonrasındaki İngilizce sınıflandırma açıklaması normal yazı olmalıdır. Türkçe IPC/CPC açıklaması yazılmaz ve şablon kapasitesini bozacak yeni tablo/sütun oluşturulmaz.
+31. `Kapsam` satırı bağlayıcı şablondaki sabit `Global (İlan edilmiş olan patent başvuruları)` ifadesiyle korunur. Araştırma kesim tarihi bu sabit şablon metninin içine eklenerek kapsam hücresinin biçimi veya içeriği değiştirilmez; kesim tarihi arayüz/veri alanında tutulur.
+32. D1 ve D2 bölümlerindeki `Özet` metni model tarafından yazılmış Türkçe özet, çeviri veya yeniden anlatım değildir. İlgili patent dokümanının yayımlanmış ORİJİNAL İNGİLİZCE ABSTRACT metni doğrudan ve kelime anlamı değiştirilmeden aktarılır. `summary`/teknik benzerlik açıklaması ile `abstract` birbirine karıştırılmaz.
+33. D1/D2 özgün İngilizce abstract kaynak önceliği şöyledir: (i) kullanıcının yüklediği orijinal patent PDF/DOCX dosyasındaki İngilizce Abstract, (ii) resmi patent ofisi/PATENTSCOPE/Espacenet kaydı, (iii) doğrulanmış Google Patents kaydı. Kullanıcı dosyasında özgün İngilizce abstract mevcutsa web özetiyle değiştirilmez.
+34. Doğrulanmış özgün İngilizce abstract elde edilemiyorsa model yeni bir abstract uydurmaz, Türkçe metni İngilizceye çevirip özgün abstract gibi sunmaz. Bu durumda rapor oluşturulmadan önce eksik kaynak açıkça hata/uyarı olarak gösterilir veya özgün patent dokümanı istenir.
+35. D1/D2'nin 2-3 cümlelik tanıtım/değerlendirme metni Türkçe rapor anlatımı olarak kalabilir; ancak `D1-Özet` ve `D2-Özet` alanları yalnız patentin özgün İngilizce abstract metnidir.
+36. `On_Arastirma_Raporu_181612_template.docx` için şablona sadakat yalnız genel görünüm anlamına gelmez. Sabit hücre metinleri, satır/sütun ve iç tablo geometrisi, paragraf sayısı ve boşlukları, kalın/normal run ayrımı, başlıkların konumu, uyarı paragraflarının ayrı yapısı ve sabit alanların dili de korunmalıdır. Şablondaki metin alanı özel olarak dinamik tanımlanmamışsa model kendi isteğiyle yeniden formüle etmez.
+37. Word çıktısı oluşturulduktan sonra şablon-vs-çıktı biçim kalite kontrolü yapılır. En azından section/marj yapısı, ana tablo sayısı, anahtar kelime tablosunun 5x2 yapısı, `Kapsam` sabit metni, IPC kodlarının kalın-açıklamaların normal olması, D1/D2 abstractlarının İngilizce olması, uyarı hücresinin ayrı paragrafları ve şablonda olmayan başlık/tablo eklenmemesi doğrulanır. Hata varsa dosya kullanıcıya sunulmadan düzeltilir.
+38. Bu 29-37 numaralı rapor içeriği ve biçim kuralları normal Tip 3 raporunun yanı sıra `Araştırma güncelleme - Tip 3` Word çıktısında da aynen geçerlidir.
 """
 
 ARASTIRMA_GUNCELLEME_RULES = ARASTIRMA_RULES + r"""

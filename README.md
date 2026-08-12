@@ -1,10 +1,10 @@
-# Patent Atölyesi v5.4.8
+# Patent Atölyesi v5.4.10
 
-Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 10.08.2026 tarihli güncel tam sürümüdür.
+Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 12.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.4.8-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.4.10-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -84,14 +84,20 @@ Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün
 
 ## Tip 3 ön araştırma
 
-- Araştırma kesim tarihi kullanılır.
-- Tam 10 doğrulanmış doküman belirlenir ve tek satır `TotalPatent arama sorgusu: ... or ...` üretilir.
-- Kullanıcının bulduğu benzer dokümanlar nihai D1/D2 analizine eklenir.
-- `Buluş basamağı var / Buluş basamağı yok / Otomatik belirle` seçimi korunur.
+- Akış adım atlamadan yürür: BBF analizi → DP referansı → global tam 10 doküman + TotalPatent sorgusu + önerilen D1/D2 → kullanıcı benzer dokümanları → kullanıcı dokümanlarından yalnız en ilgili birkaç `10+` belge → D1/D2 değişim durumu → sistemin `Bence buluş basamağı var/yok` kanaati → kullanıcı sonuç modu → Word raporu.
+- İlk 10 doğrulanmış doküman sonradan kullanıcı belgesi geldi diye yeniden yazılmaz. Kullanıcı belgeleri ayrı `10+ XX... or YY...` satırında gösterilir.
+- Kullanıcı dokümanlarından sonra D1 ve D2'nin değişip değişmediği eski/yeni numaralarla açıkça belirtilir.
+- Sonuç seçimi, sistem kanaatinden önce gösterilmez. Seçenekler `Buluş basamağı var / Buluş basamağı yok / Otomatik belirle`dir.
 - D1 ve D2 tablolarında sol teknik özellik listesi birebir aynıdır. Sağ hücre yalnız `+` / `-` değildir; işaretin ardından özelliğin dokümanda geçtiği somut yer (`Özet`, `İstem`, `Şekil`, paragraf/sütun vb.) yazılır.
-- D1/D2 şekilleri model tarafından çizilmez. Yalnız özgün patent şekli patent kaynağından indirilerek rapora eklenir; temin edilemezse yapay şekil üretmek yerine hata/uyarı verilir.
+- D1/D2 şekilleri model tarafından çizilmez. Yalnız özgün patent şekli patent kaynağından veya kullanıcı patent dosyasından alınır; temin edilemezse yapay şekil üretmek yerine hata/uyarı verilir.
 - Rapor gövdesinde `BBF` ifadesi, ok zincirleri veya `özellik + özellik` türü yapay kısaltmalar kullanılmaz.
 - `On_Arastirma_Raporu_181612_template.docx` yalnız görünüm örneği değil, doğrudan doldurulan bağlayıcı Word şablonudur; gövdesi silinip yeniden kurulmaz.
+- `Anahtar Kelimeler` hücresi yalnız İngilizce teknik anahtar kelimeler içerir ve şablondaki 5x2 iç tablo aynen korunur; en fazla 10 ifade kullanılır.
+- `IPC Kodu` alanındaki sınıflandırma açıklamaları İngilizce yazılır. Her satırda IPC/CPC kodu şablondaki gibi **kalın**, açıklaması normal yazıdır.
+- `Kapsam` hücresi şablondaki sabit `Global (İlan edilmiş olan patent başvuruları)` metniyle korunur; araştırma kesim tarihi bu hücreye eklenmez.
+- D1/D2 `Özet` alanına model özeti veya Türkçe çeviri yazılmaz. İlgili patentin doğrulanmış **özgün İngilizce Abstract** metni doğrudan kullanılır; kullanıcı orijinal patent dosyası sağladıysa öncelik o dosyadadır.
+- Özgün İngilizce Abstract bulunamazsa model yeni abstract üretmez; dosya oluşturulmadan önce eksik kaynak uyarısı/hatası verilir.
+- Uyarı hücresi şablondaki dört ayrı paragraf yapısında kalır. Word üretiminden sonra section/marj, ana tablo sayısı, 5x2 keyword tablosu, sabit Kapsam metni, IPC bold/normal run yapısı, İngilizce D1/D2 abstract ve uyarı paragraf sayısı otomatik biçim kontrolünden geçirilir.
 
 ## Araştırma güncelleme - Tip 3
 
@@ -120,7 +126,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-11.v3`
+Kural sürümü: `2026-08-12.v2`
 
 ## Yerel çalıştırma
 
