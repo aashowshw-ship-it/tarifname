@@ -1,10 +1,10 @@
-# Patent Atölyesi v5.4.12
+# Patent Atölyesi v5.4.13
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 13.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `Patent_Atolyesi_v5.4.12_GitHub` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `Patent_Atolyesi_v5.4.13_GitHub` klasörünü ikinci bir alt klasör olarak yüklemeyin.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -139,7 +139,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-13.v2`
+Kural sürümü: `2026-08-13.v3`
 
 ## Yerel çalıştırma
 
@@ -168,3 +168,12 @@ Tarifname oluşturma sırasında bağımsız istemler yalnız hedeflenen fonksiy
 ## v5.4.12 — Tek tuş tarifname kalite kapısı
 
 Bu sürüm mevcut tarifname, görüş, Tip 3 ve araştırma güncelleme akışlarını korur. Tarifname oluşturma tarafına bağlayıcı kalite kapısı eklenmiştir. Ana istemde henüz tanımlanmamış referans kullanımı, belirsiz “Diğer parçalar” unsuru, ürün/yapılanma isteminde yöntem dili, gereksiz kapsam daraltma, bağımlı istem tekrarı ve örnek ölçülerin isteme taşınması kalite turunda özellikle denetlenir. Taslak yerel doğrulamadan geçmezse aynı tıklama içinde doğrulama hatası modele geri beslenerek en fazla iki ek otomatik düzeltme yapılır. Word üretiminden sonra şablon paragraf yapısı ve LibreOffice render smoke-test doğrulanır. v5.4.11 şekil referans/ok kuralları aynen korunmuştur.
+
+
+## v5.4.13 — BBF %100 teknik kapsam ve yazılım taşıyıcı kalite kapısı
+
+Bu sürümde tarifname oluşturma akışının en üst kuralı olan **BBF'deki tüm teknik bilgilerin uygun yerde eksiksiz kullanılması** yalnız prompt talimatı olmaktan çıkarılarak atomik kapsam kontrolüne bağlanmıştır. BBF ve ek teknik kaynaklar `technical_facts` maddelerine ayrılır; kişi/sicil/ödül/imza, form talimatları, boş idari alanlar ve yalnız araştırma anahtar kelimeleri teknik kapsam dışına alınır. Her zorunlu teknik fact nihai taslakta `source_coverage_map` ile bölüm ve kanıt metnine eşleştirilmeden Word üretimi yapılamaz.
+
+Yazılım/modül ağırlıklı buluşlarda artık yalnız “işlemci” veya “donanım” kelimesinin istemde bulunması yeterli değildir. Modül/yazılım ile kaynakta dayanaklı teknik taşıyıcı arasında `üzerinde çalışan/koşturulan`, `vasıtasıyla` veya eşdeğer açık yürütme ilişkisi aranır. Kaynak SIM/eSIM üzerindeki güvenli işlemci, bellek ve izole çalışma ortamı gibi özel bir taşıyıcı veriyorsa bu taşıyıcı genel elektronik cihaz ifadesiyle kaybedilmez.
+
+BULUŞUN DETAYLI AÇIKLAMASI giriş cümlesindeki buluş adı artık başlık Title Case biçiminde tekrar edilmez; cümle içinde normal küçük harf düzeni kullanılır ve SIM/eSIM/API/NFC gibi teknik kısaltmalar korunur. Arayüzde Word üretiminden önce `BBF teknik bilgi kapsam kontrolü` paneli her zorunlu fact'in tarifnamede hangi bölümde karşılandığını gösterir.

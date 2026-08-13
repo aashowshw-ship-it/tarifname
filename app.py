@@ -903,6 +903,7 @@ TARIFNAME_DRAFT_SCHEMA = r"""
   "method_claim":null,
   "dependent_method_claims":[""],
   "abstract":"",
+  "source_coverage_map":[{"fact_id":"T001","covered":true,"sections":["BULUŞUN DETAYLI AÇIKLAMASI"],"evidence":""}],
   "coverage_audit":{
     "prior_art_complete":true,
     "reference_table_complete":true,
@@ -922,6 +923,9 @@ TARIFNAME_DRAFT_SCHEMA = r"""
     "product_claim_language_valid":true,
     "abstract_single_paragraph_sentence":true,
     "source_attribution_removed":true,
+    "all_technical_facts_covered":true,
+    "software_carrier_valid":true,
+    "detail_intro_sentence_case":true,
     "notes":[""]
   }
 }
@@ -939,6 +943,12 @@ def tarifname_extraction_prompt(
 Aşağıdaki kaynakları yalnızca yapı ve kapsam envanteri çıkarmak için incele. Teknik metni yeniden icat etme,
 kısaltma nedeniyle önemli bilgi kaybettirme ve örnek tarifnamelerin teknik içeriğini kullanma. Gömülü şekil, grafik, diyagram, ısı haritası ve görsel teknik sonuçları da kaynak olarak incele; yalnız metin çıkarımına güvenme.
 
+EN ÜST TAMLIK KAPISI:
+- BBF ve ek teknik kaynaklardaki HER teknik bilgiyi atomik `technical_facts` maddelerine ayır. Bir cümlede iki ayrı teknik bilgi varsa iki ayrı madde yap.
+- Teknik avantajları ve ayırt edici yönleri de ayrı maddeler yap; örneğin fiyat-performans dengesi, gecikme, pil ömrü, cihaz/işletim sistemi/operatör bağımsızlığı gibi kaynakta açık sonuçları atlama.
+- İdari/form alanlarını `excluded_nontechnical_items` altında ayır; kişi/sicil/ödül/imza, boş idari alanlar ve yalnız araştırma anahtar kelimeleri tarifname technical_facts listesine girmez.
+- `coverage_checklist` genel başlık listesi değil, technical_facts maddelerinin tarifnamede korunacağı içerik gruplarını özetleyen yardımcı listedir.
+
 KAYNAK HİYERARŞİSİ:
 1. BBF: temel teknik kaynak.
 2. Ek teknik müşteri belgeleri: yalnızca açık teknik dayanak olarak kullanılabilir.
@@ -953,6 +963,8 @@ JSON dışında hiçbir şey yazma.
  "technical_problems":[""],
  "technical_solution":[""],
  "technical_effects":[""],
+ "technical_facts":[{{"id":"T001","category":"alan/problem/çözüm/unsur/işlev/akış/avantaj/alternatif/kullanım/ayırt_edici_yön/görsel","statement":"Kaynakta açıkça verilen tek bir atomik teknik bilgi","mandatory":true}}],
+ "excluded_nontechnical_items":["Form talimatı, kişi/sicil/ödül bilgisi, boş idari alan veya yalnız araştırma anahtar kelimesi gibi tarifnameye taşınmaması gereken içerik"],
  "elements":[{{"number":"<müşteri referansı; yoksa 1>","name":"","function":"","source":"BBF/ek teknik belge"}}],
  "method_steps":[{{"number":"<müşteri referansı; yoksa 1001>","text":"","stage":"","essential":true}}],
  "formulas":[{{"label":"","expression":"","variables":[""],"role":"zorunlu/tercihli"}}],
@@ -987,6 +999,53 @@ EK TEKNİK BELGELER/NOTLAR:
 {example_structure_text}
 ---
 """
+
+def tarifname_extraction_quality_prompt(
+    source_text: str,
+    technical_supplement_text: str,
+    extracted: dict[str, Any],
+    language: str = "Türkçe",
+) -> str:
+    return f"""{TARIFNAME_RULES}
+ÇIKTI TARİFNAME DİLİ: {language}.
+Bu aşamada TARİFNAME YAZMA. Ham BBF ve ek teknik belgeleri SIFIRDAN yeniden oku ve mevcut yapılandırılmış envanteri denetle.
+
+EN ÜST KURAL: BBF ve ek teknik kaynaklardaki her teknik bilgi atomik `technical_facts` listesinde bulunmalıdır. Mevcut envantere güvenme; kaynakta olup listede olmayan teknik alan, problem, çözüm, unsur, işlev, işlem akışı, avantaj, teknik etki, kullanım, alternatif, ayırt edici yön veya görsel/şema bilgisi varsa EKLE. Özellikle kaynakta açıkça geçen performans/enerji/gecikme/fiyat-performans sonuçları ile cihaz, işletim sistemi veya operatör altyapısı bağımsızlığı gibi ifadeleri atlama.
+Kişi/sicil/ödül/imza, form talimatları, boş idari alanlar ve yalnız araştırma anahtar kelimeleri `excluded_nontechnical_items` içinde kalmalıdır; bunları technical_facts yapma.
+Her technical fact tek bir atomik teknik anlam taşısın, `id` alanları T001, T002... biçiminde benzersiz ve sıralı olsun, mandatory teknik bilgiler `mandatory=true` olsun.
+Mevcut elements/method_steps/formulas/tables/alternatives/use_cases/figure audit alanlarını kaynakla karşılaştır ve eksik teknik içerik varsa tamamla; kaynakta olmayan bilgi ekleme.
+
+JSON dışında hiçbir şey yazma. Mevcut JSON yapısını koruyarak düzeltilmiş TAM envanteri döndür.
+
+HAM BBF:
+---
+{source_text}
+---
+
+EK TEKNİK BELGELER:
+---
+{technical_supplement_text}
+---
+
+MEVCUT ENVANTER:
+{json.dumps(extracted, ensure_ascii=False, indent=2)}
+"""
+
+
+def _validate_technical_fact_inventory(extracted: dict[str, Any]) -> None:
+    facts = extracted.get("technical_facts") or []
+    if not facts:
+        raise ValueError("BBF teknik bilgi envanteri boş; technical_facts oluşturulmadan tarifname hazırlanamaz.")
+    ids: list[str] = []
+    for fact in facts:
+        fid = str(fact.get("id", "") or "").strip()
+        statement = str(fact.get("statement", "") or "").strip()
+        if not fid or not statement:
+            raise ValueError("BBF technical_facts envanterinde kimliği veya teknik açıklaması boş madde bulundu.")
+        ids.append(fid)
+    if len(ids) != len(set(ids)):
+        raise ValueError("BBF technical_facts envanterinde tekrarlanan fact_id bulundu.")
+
 
 def tarifname_literature_prompt(extracted: dict[str, Any], count: int, jurisdiction: str, language: str = "Türkçe") -> str:
     return f"""Aşağıdaki buluş için tam olarak {count} teknik olarak yakın patent dokümanı araştır. Web araması kullan.
@@ -1039,9 +1098,11 @@ KRİTİK TALİMATLAR:
 - Her bağımlı istem ana isteme göre gerçek bir daraltma sağlamalıdır.
 - Patent literatürü yalnızca ÖNCEKİ TEKNİK bölümünde kullanılsın.
 - Kullanıcıya sunulan tarifname metninde “BBF”, “buluş bildirim formu” veya kaynak dokümana atıf yapan benzer ifadeler kesinlikle bulunmasın; teknik bilgi doğrudan buluş anlatımı olarak yazılsın.
+- YAPILANDIRILMIŞ ENVANTER içindeki `technical_facts` listesinin HER `mandatory=true` maddesi nihai tarifnamede uygun yerde korunmalıdır. Taslak JSON'daki `source_coverage_map` alanında her fact_id için `covered=true`, karşılık bulunduğu bölüm(ler) ve tarifname taslağında birebir geçen en az 20 karakterlik kısa kanıt alıntısı verilmelidir. Bir teknik fact isteme uygun değilse isteme zorla koyma; teknik alan/önceki teknik/kısa açıklama/detaylı açıklama/çalışma prensibi/alternatif/özet içinde uygun yere koy. Hiçbir mandatory fact karşılıksız bırakılamaz.
 - Sistem ve yöntem istemleri birlikte oluşturuluyorsa başlık seçilen dile uygun olarak “... Sistemi ve Yöntemi” veya “... System and Method” yapısını taşısın.
 - REFERANS NUMARALARI bölümünde unsur adlarında yalnızca ilk kelimenin ilk harfi büyük olsun; standart teknik kısaltmaları koru. Unsur adları cümle içinde geçtiğinde küçük harfle başlat.
 - Türkçe çıktıda “Buluşun bir gerçekleştirilmesinde” ifadesini kullanma; gerekli yerde “Buluşun bir yapılanmasında” yaz ve “Mevcut buluş” kullanma. İngilizce çıktıda doğal patent dili kullan.
+- BULUŞUN DETAYLI AÇIKLAMASI giriş cümlesinde buluş adını başlıktaki büyük harf düzeniyle tekrar etme. Türkçe cümle içinde normal küçük harf düzeni kullan; SIM, eSIM, NFC, API gibi teknik kısaltmaları aynen koru.
 - Önceki teknik bölümüne ham kaynakta verilen bütün teknik arka plan, eksiklik ve problem anlatımını aktar; literatür paragrafları bunların yerine geçmez.
 - ŞEKİLLERİN KISA AÇIKLAMASI kısa ve işlevsel olsun; gerekli değilse yöntem adımı numara aralığını şekil açıklamasında tekrarlama.
 - Bağımlı istemlerde Türkçe çıktıda “Önceki istemlerden herhangi birine” kalıbını, İngilizce çıktıda belirsiz “any preceding claim” zincirlerini varsayılan olarak kullanma; ek özellik hangi ana unsur veya işlem adımının ayrıntısıysa doğrudan onu tanımlayan gerekli isteme bağla.
@@ -1110,8 +1171,8 @@ def tarifname_quality_prompt(
     )
     return f"""{TARIFNAME_RULES}
 {language_instruction}
-Aşağıdaki tarifname taslağını kaynaklarla SATIR SATIR karşılaştır ve eksik/yanlış hususları düzelterek tam JSON'u yeniden üret.
-Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi geri eklenmelidir.
+Aşağıdaki tarifname taslağını kaynaklarla SATIR SATIR ve `technical_facts` bazında karşılaştır ve eksik/yanlış hususları düzelterek tam JSON'u yeniden üret.
+Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi geri eklenmelidir. `technical_facts` içindeki HER mandatory madde için `source_coverage_map` kaydı oluştur; bölüm ve kanıt metni boş bırakılamaz; evidence alanı tarifname taslağında birebir geçen en az 20 karakterlik bir alıntı olmalıdır. Genel “tam” beyanı yeterli değildir.
 
 ÖNCEKİ OTOMATİK DOĞRULAMA GERİ BİLDİRİMİ (varsa):
 {validation_feedback or "Yok"}
@@ -1168,6 +1229,9 @@ ZORUNLU KONTROL LİSTESİ:
 48. Türkçe özet tek paragraf ve tek cümle mi? Buluş adı özet bölümünde ayrı başlık olarak kalacak, abstract alanına ikinci paragraf/cümle eklenmeyecek.
 49. İstemlerde standart “olup, özelliği;” dışında noktalı virgül var mı? Varsa virgül veya noktayla düzelt.
 50. Son kalite kapısında şu soruların tamamı EVET mi: kaynak tamlığı, açık referans adları, unsur tanımlama sırası, uzman-nasıl testi, farklılaştırıcı çekirdek, gereksiz kapsam daraltma yokluğu, bağımlı istem tekrarının olmaması, geçerli bağımlılık, örnek ölçülerin istemden uzak tutulması, ürün istem dili, referans senkronizasyonu ve tek paragraf/tek cümle özet?
+51. YAPILANDIRILMIŞ ENVANTER içindeki her mandatory `technical_facts` maddesinin `source_coverage_map` içinde tek tek karşılığı var mı? Her kaydın `covered=true`, en az bir bölüm adı ve tarifname taslağında birebir geçen en az 20 karakterlik gerçek bir kanıt alıntısı var mı? Özellikle teknik avantajlar, ayırt edici yönler ve bağımsızlık/performans sonuçları “benzer anlam var” denilerek atlanmış mı?
+52. Yazılım/modül ağırlıklı buluşta yalnız “işlemci/donanım” kelimesi geçmesiyle yetinilmiş mi, yoksa modül/yazılımın kaynakta dayanaklı teknik taşıyıcı üzerinde çalıştığı/koşturulduğu açık ilişkiyle yazılmış mı? Kaynak özel taşıyıcı veriyorsa genel elektronik cihaz ifadesi özel taşıyıcıyı silmiş mi?
+53. BULUŞUN DETAYLI AÇIKLAMASI giriş cümlesinde buluş adı cümle içi normal yazımla mı kullanılmış? Başlıktaki Title Case düzeni cümle içine kopyalanmamış mı; SIM/eSIM gibi kısaltmalar korunmuş mu?
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
 {TARIFNAME_DRAFT_SCHEMA}
@@ -1571,6 +1635,7 @@ def validate_tarifname_draft(
     claim_mode: str,
     literature: list[dict[str, Any]] | None = None,
     language: str = "Türkçe",
+    extracted: dict[str, Any] | None = None,
 ) -> list[str]:
     warnings: list[str] = []
     technical_field_raw = str(draft.get("technical_field", "") or "").strip()
@@ -1667,6 +1732,41 @@ def validate_tarifname_draft(
         if len(software_terms_re.findall(method_text)) >= 2 and not hardware_anchor_re.search(method_text):
             raise ValueError("Yazılım/algoritma ağırlıklı bağımsız yöntem istemi elektronik cihaz/işlemci gibi geniş bir donanımsal taşıyıcıya dayandırılmalıdır.")
 
+    execution_relation_re = re.compile(r"üzerinde\s+(?:çalışan|koşturulan|yürütülen)|içerisinde\s+(?:çalışan|koşturulan|yürütülen)|vasıtasıyla|tarafından\s+(?:çalıştırılan|yürütülen)|executed\s+on|running\s+on|executed\s+by", re.IGNORECASE)
+    if draft.get("system_claim"):
+        system_text = " ".join([str((draft.get("system_claim") or {}).get("preamble", "")), *map(str, (draft.get("system_claim") or {}).get("elements") or [])])
+        if len(software_terms_re.findall(system_text)) >= 2 and not execution_relation_re.search(system_text):
+            raise ValueError("Yazılım/modül ağırlıklı bağımsız sistem isteminde teknik taşıyıcı ile yazılım/modül arasında açık çalışma/koşturma ilişkisi bulunmalıdır; yalnız işlemci/donanım kelimesi yeterli değildir.")
+
+    # BBF atomik teknik bilgi kapsam kapısı.
+    if extracted is not None:
+        mandatory_facts = [f for f in (extracted.get("technical_facts") or []) if f.get("mandatory", True)]
+        coverage = draft.get("source_coverage_map") or []
+        coverage_by_id = {str(x.get("fact_id", "") or "").strip(): x for x in coverage if str(x.get("fact_id", "") or "").strip()}
+        missing_ids: list[str] = []
+        draft_content_for_evidence = {
+            key: value for key, value in draft.items()
+            if key not in {"source_coverage_map", "coverage_audit"}
+        }
+        searchable = re.sub(r"\s+", " ", json.dumps(draft_content_for_evidence, ensure_ascii=False)).casefold()
+        invalid_evidence: list[str] = []
+        for fact in mandatory_facts:
+            fid = str(fact.get("id", "") or "").strip()
+            if not fid:
+                raise ValueError("Kaynak teknik bilgi envanterinde kimliği boş technical_facts maddesi bulundu.")
+            row = coverage_by_id.get(fid)
+            evidence = str((row or {}).get("evidence", "") or "").strip()
+            if not row or row.get("covered") is not True or not (row.get("sections") or []) or not evidence:
+                missing_ids.append(fid)
+                continue
+            evidence_norm = re.sub(r"\s+", " ", evidence).casefold()
+            if len(evidence_norm) < 20 or evidence_norm not in searchable:
+                invalid_evidence.append(fid)
+        if missing_ids:
+            raise ValueError("BBF tamlık kapısı başarısız: mandatory technical_facts maddelerinin tarifnamede kanıtlı karşılığı yok: " + ", ".join(missing_ids))
+        if invalid_evidence:
+            raise ValueError("BBF tamlık kapısı başarısız: source_coverage_map kanıtı nihai tarifname metninde birebir doğrulanamayan fact_id: " + ", ".join(invalid_evidence))
+
     # Tek-tuş istem kalite kapısı: ürün/sistem/yapılanma dili, unsur sırası, belirsiz referans ve özet.
     if not _english_spec(language):
         generic_names = {"diğer parçalar", "diğer parça", "diğer elemanlar", "çeşitli parçalar", "çeşitli elemanlar"}
@@ -1711,6 +1811,7 @@ def validate_tarifname_draft(
         "core_difference_present", "scope_not_overlimited", "dependent_claims_non_redundant",
         "dependent_claim_dependencies_valid", "example_dimensions_not_claim_limited",
         "product_claim_language_valid", "abstract_single_paragraph_sentence", "source_attribution_removed",
+        "all_technical_facts_covered", "software_carrier_valid", "detail_intro_sentence_case",
     ]
     failed_flags = [key for key in mandatory_audit_flags if audit.get(key) is not True]
     if failed_flags:
@@ -1735,6 +1836,19 @@ def validate_tarifname_draft(
         if not _english_spec(language) and tr and tr not in literature_text:
             raise ValueError(f"Literatür paragrafında Türkçe patent başlığı eksik: {tr}")
     return warnings
+
+
+def _inline_invention_title(title: str) -> str:
+    """Buluş başlığını cümle içinde normal küçük harf düzenine çevir; teknik kısaltmaları koru."""
+    text = str(title or "").strip()
+
+    def repl(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if (len(token) > 1 and token.isupper()) or any(ch.isupper() for ch in token[1:]):
+            return token
+        return token.lower()
+
+    return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşüÂâÎîÛû]+", repl, text)
 
 
 def _reference_sentence_case(name: str) -> str:
@@ -1964,7 +2078,8 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
     add_heading(doc, labels["detail"])
     add_blank(doc)
     title = str(draft.get("title", "buluş")).strip()
-    add_text(doc, f"In this detailed description, {title} is described by way of examples solely for a better understanding of the subject matter, without imposing any limiting effect." if en else f"Bu detaylı açıklamada, buluş konusu olan {title} sadece konunun daha iyi anlaşılmasına yönelik hiçbir sınırlayıcı etki oluşturmayacak örneklerle açıklanmaktadır.")
+    inline_title = title if en else _inline_invention_title(title)
+    add_text(doc, f"In this detailed description, {title} is described by way of examples solely for a better understanding of the subject matter, without imposing any limiting effect." if en else f"Bu detaylı açıklamada, buluş konusu olan {inline_title} sadece konunun daha iyi anlaşılmasına yönelik hiçbir sınırlayıcı etki oluşturmayacak örneklerle açıklanmaktadır.")
     add_blank(doc)
     detailed = [str(x or "").strip() for x in (draft.get("detailed_paragraphs") or []) if str(x or "").strip()]
     for idx, paragraph in enumerate(detailed):
@@ -3390,6 +3505,13 @@ if work_type == "Tarifname oluşturma":
                     images=model_images,
                 )
 
+                progress.progress(22, text="BBF teknik bilgi envanteri ikinci kez, madde madde doğrulanıyor...")
+                extracted = ask_json(
+                    tarifname_extraction_quality_prompt(source, technical_text, extracted, language_choice),
+                    images=model_images,
+                )
+                _validate_technical_fact_inventory(extracted)
+
                 progress.progress(28, text="İstem yapısı belirleniyor...")
                 mode = claim_choice
                 if mode == "BBF'ye göre otomatik belirle":
@@ -3456,7 +3578,7 @@ if work_type == "Tarifname oluşturma":
 
                     draft = apply_tarifname_house_style(draft, mode, lit_docs, language_choice)
                     try:
-                        warnings = validate_tarifname_draft(draft, mode, lit_docs, language_choice)
+                        warnings = validate_tarifname_draft(draft, mode, lit_docs, language_choice, extracted)
                         break
                     except ValueError as validation_exc:
                         validation_feedback = str(validation_exc)
@@ -3472,6 +3594,16 @@ if work_type == "Tarifname oluşturma":
 
                 for warning in warnings:
                     st.warning(warning)
+
+                technical_facts = [f for f in (extracted.get("technical_facts") or []) if f.get("mandatory", True)]
+                coverage_rows = draft.get("source_coverage_map") or []
+                with st.expander(f"BBF teknik bilgi kapsam kontrolü ({len(technical_facts)}/{len(technical_facts)} zorunlu teknik bilgi eşleştirildi)", expanded=False):
+                    by_id = {str(r.get("fact_id", "")): r for r in coverage_rows}
+                    for fact in technical_facts:
+                        fid = str(fact.get("id", ""))
+                        row = by_id.get(fid, {})
+                        sections = ", ".join(map(str, row.get("sections") or []))
+                        st.write(f"✅ {fid}: {fact.get('statement','')} — {sections}")
 
                 progress.progress(88, text="Word dosyası hazırlanıyor ve şablon yapısı doğrulanıyor...")
                 data = build_tarifname_docx(draft, language_choice)

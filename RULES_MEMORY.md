@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-13.v2**
+Kural sürümü: **2026-08-13.v3**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -252,3 +252,14 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 24. Üretim akışı taslak → AI kalite turu → yerel kalite kapısı şeklindedir. Yerel kalite kapısı hata verirse aynı kullanıcı tıklaması içinde hata modele geri beslenir ve en fazla iki ek otomatik düzeltme turu yapılır.
 25. Doğrulama geçmeden Word oluşturulmaz. Word üretildikten sonra başlık, şekil açıklaması boşlukları, referans geçişi, istem otomatik numaralandırması, ÖZET page-break'i ve kalın özet başlığı programatik olarak doğrulanır. LibreOffice ile PDF render smoke-test geçmeden dosya sunulmaz.
 26. Şekil referans/ok kuralları v5.4.11'deki haliyle aynen korunur; bu sürüm şekil kuralını değiştirmez.
+
+
+## 2026-08-13.v3 — BBF Atomik Tamlık Kapısı ve Yazılım Taşıyıcı Doğrulaması (Bağlayıcı)
+
+- Tarifname oluşturmanın birinci ve en üst kalite kuralı BBF ve ek teknik kaynaklardaki **tüm teknik bilgilerin uygun yerde eksiksiz korunmasıdır**. Bu kural istem kapsamından bağımsızdır; isteme taşınmayan teknik bilgi teknik alan, önceki teknik, kısa açıklama, detaylı açıklama, çalışma prensibi, alternatif yapılanma veya özet içinde korunmalıdır.
+- Kaynaklar atomik `technical_facts` maddelerine ayrılır. Teknik avantaj, teknik etki, kullanım koşulu, ayırt edici yön, bağımsızlık sonucu, performans sonucu ve görsel/akış bilgisi ayrı fact olarak tutulur.
+- Kişi adı, sicil, ödül payı, imza, form talimatı, boş idari alan, proje/idari alan ve yalnız patent araştırması anahtar kelimeleri teknik fact değildir; ancak bu alan içinde gerçek teknik açıklama bulunursa o açıklama teknik fact olarak alınır.
+- Nihai taslakta her mandatory technical fact için `source_coverage_map` kaydı zorunludur: fact_id + covered=true + en az bir bölüm + tarifnameden gerçek kanıt metni. Eksik tek fact varsa Word oluşturulmaz ve otomatik düzeltme turu çalışır.
+- Yazılım/modül ağırlıklı istemlerde yalnız donanım/işlemci kelimesi yeterli değildir. Yazılım/modülün elektronik cihaz, işlem birimi veya kaynakta verilen özel donanım üzerinde çalıştığı/koşturulduğu açık teknik ilişkiyle yazılmalıdır. Kaynak özel taşıyıcı veriyorsa (örn. SIM/eSIM üzerindeki güvenli işlemci, bellek ve izole çalışma ortamı) bu taşıyıcı korunur.
+- BULUŞUN DETAYLI AÇIKLAMASI giriş cümlesinde buluş başlığı cümle içinde normal küçük harf düzeninde yazılır; başlık biçimi cümle içine kopyalanmaz. SIM, eSIM, API, NFC gibi teknik kısaltmalar korunur.
+- Arayüzde Word üretimi öncesi BBF teknik bilgi kapsam paneli gösterilir. Panel yalnız bilgi amaçlı değil, validator tarafından geçirilmiş coverage map'i gösterir.

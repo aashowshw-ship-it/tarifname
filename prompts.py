@@ -10,7 +10,7 @@ CORE_RULES = TARIFNAME_RULES
 def extraction_prompt(source_text: str) -> str:
     return f"""{CORE_RULES}
 
-Aşağıdaki BBF'yi yalnızca yapılandırılmış veri çıkarmak için incele. Teknik metni yeniden icat etme.
+Aşağıdaki BBF'yi yalnızca yapılandırılmış veri çıkarmak için incele. Teknik metni yeniden icat etme. BBF'deki HER teknik bilgiyi atomik `technical_facts` maddelerine ayır; teknik avantajlar ve ayırt edici sonuçlar da ayrı maddeler olmalıdır. Kişi/sicil/ödül/imza, form talimatı, boş idari alan ve yalnız araştırma anahtar kelimelerini `excluded_nontechnical_items` altında ayır.
 JSON dışında hiçbir şey yazma.
 
 ÇIKTI ŞEMASI:
@@ -19,6 +19,8 @@ JSON dışında hiçbir şey yazma.
   "technical_field": "",
   "prior_art": [""],
   "advantages": [""],
+  "technical_facts": [{{"id":"T001","category":"alan/problem/çözüm/unsur/işlev/akış/avantaj/alternatif/kullanım/ayırt_edici_yön/görsel","statement":"","mandatory":true}}],
+  "excluded_nontechnical_items": [""],
   "elements": [{{"number":"1","name":"","function":""}}],
   "method_steps": [{{"number":"1001","text":""}}],
   "working_principle": [""],
@@ -41,10 +43,10 @@ def drafting_prompt(extracted: dict, claim_mode: str, selected_literature: list[
     literature = selected_literature or []
     return f"""{CORE_RULES}
 
-Aşağıdaki BBF verilerinden Türk patent tarifnamesi oluştur. Kaynakta olmayan bilgi ekleme.
+Aşağıdaki BBF verilerinden Türk patent tarifnamesi oluştur. Kaynakta olmayan bilgi ekleme. `technical_facts` içindeki HER mandatory teknik bilgi tarifnamede uygun bölümde korunmalı ve `source_coverage_map` ile fact_id bazında kanıtlanmalıdır; isteme uygun olmayan bilgi isteme zorla taşınmamalıdır.
 İstem türü tercihi: {claim_mode}
 Her buluş için zorunlu teknik çekirdeği ayrıca analiz et; paralel tekrarları ana istemde kapsayıcı yaz, ayrıntılarını gerekirse tek bağımlı istemde topla.
-Buluş yazılım/algoritma/modül ağırlıklıysa bağımsız istemi soyut yazılım olarak bırakma; kaynakta özel donanım zorunlu değilse geniş donanımsal taşıyıcı olarak elektronik cihaz üzerinde koşturulan yazılım veya elektronik işlem birimi dili kullan. Gereksiz sunucu/cep telefonu/bilgisayar daraltması yapma ve özel donanım uydurma.
+Buluş yazılım/algoritma/modül ağırlıklıysa bağımsız istemi soyut yazılım olarak bırakma; kaynakta özel donanım zorunlu değilse geniş donanımsal taşıyıcı olarak elektronik cihaz üzerinde koşturulan yazılım veya elektronik işlem birimi dili kullan. Kaynak özel bir taşıyıcı veriyorsa bu taşıyıcıyı kaybetme. Yalnız “işlemci/donanım” kelimesi yeterli değildir; modül/yazılımın teknik taşıyıcı üzerinde çalıştığı/koşturulduğu açık ilişki kurulmalıdır. Gereksiz sunucu/cep telefonu/bilgisayar daraltması yapma ve özel donanım uydurma.
 Bağımsız istemleri yalnız sonuç/fonksiyon cümleleriyle bırakma. Tekniğin uzmanının “nasıl gerçekleştiriliyor?” sorusuna cevap verecek şekilde, kaynakta dayanağı bulunan ölçüde işlemi yapan teknik unsur/taşıyıcıyı, kullanılan girdiyi veya önceki unsurdan alınan veriyi, teknik işlem/mekanizmayı ve elde edilen çıktının sonraki unsurla ilişkisini istemde açıkla. Ancak tercihli ayrıntılarla ana istemi gereksiz daraltma.
 Bağımlı istemleri her kaynak ayrıntısı için çoğaltma; yalnız gerçek teknik daraltma ve stratejik geri çekilme konumu sağlayan seçilmiş özellikleri kullan.
 Onaylanan literatür dokümanları: {json.dumps(literature, ensure_ascii=False)}
@@ -69,6 +71,7 @@ JSON dışında hiçbir şey yazma.
   "method_claim":null,
   "dependent_method_claims":[""],
   "abstract":"",
+  "source_coverage_map":[{{"fact_id":"T001","covered":true,"sections":["BULUŞUN DETAYLI AÇIKLAMASI"],"evidence":""}}],
   "quality_notes":[""]
 }}
 
@@ -84,6 +87,7 @@ NOTLAR:
 - “Buluşun bir gerçekleştirilmesinde” yerine “Buluşun bir yapılanmasında” kullanılsın.
 - TEKNİK ALAN iki paragraf olmalıdır. İlk paragraf yalnız “Buluş, ... ile ilgilidir.” giriş cümlesinden oluşup burada bitmelidir. İkinci paragraf mutlaka “Buluş, özellikle ...” ile başlamalı ve daha ayrıntılı teknik kapsamı vermelidir. “Sistem ve yöntem...” gibi çıplak bir ifadeyle ikinci paragrafa başlama. technical_field içinde iki paragrafı \n\n ile ayır.
 - Bağımlı istemlerde “Önceki istemlerden herhangi birine” kalıbını varsayılan olarak kullanma. Ek özellik hangi unsur/işlem adımına dayanıyorsa doğrudan o unsuru ilk tanımlayan en yakın ve gerekli isteme bağla; ana istemde tanımlı bir modülün ayrıntısı için doğrudan ana isteme bağlanmayı tercih et. Gereksiz “İstem X veya Y’ye” zincirleri kurma.
+- BULUŞUN DETAYLI AÇIKLAMASI giriş cümlesinde buluş adı başlıktaki Title Case biçimiyle değil cümle içi normal küçük harf düzeninde yazılsın; SIM/eSIM/API gibi teknik kısaltmalar korunsun.
 - Detaylı açıklamada referanslı unsurlar tek sürekli paragrafta anlatılsın. “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü sistem-yöntem ilişki tablosu oluşturma; bu içeriği müşterinin verdiği sistem ve yöntem referansları arasındaki teknik bağı gösteren doğal paragraf olarak yaz. Kaynakta referans yoksa sistem için 1,2,3... ve yöntem için 1001,1002... varsayılanları kullanılabilir. Yalnız gerçek sayısal/deneysel veri tabloları tablo olarak korunabilir.
 - Literatür paragraflarında İngilizce başlık ve Türkçe karşılığı birlikte yazılsın.
 - objectives alanındaki her amaç tam cümle yüklemiyle bitsin: “... karşılaştırmaktır.”, “... sağlamaktır.” gibi. “... karşılaştırmak.” veya “... sağlamak.” biçiminde çıplak mastar bırakma.

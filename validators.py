@@ -133,6 +133,16 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
         if len(software_terms_re.findall(mc_text)) >= 2 and not hardware_anchor_re.search(mc_text):
             findings.append({"level": "Hata", "message": "Yazılım/algoritma ağırlıklı bağımsız yöntem istemi elektronik cihaz/işlemci gibi geniş bir donanımsal taşıyıcıya dayandırılmalı."})
 
+    execution_relation_re = re.compile(r"üzerinde\s+(?:çalışan|koşturulan|yürütülen)|içerisinde\s+(?:çalışan|koşturulan|yürütülen)|vasıtasıyla|tarafından\s+(?:çalıştırılan|yürütülen)", re.I)
+    if sc_text and len(software_terms_re.findall(sc_text)) >= 2 and not execution_relation_re.search(sc_text):
+        findings.append({"level": "Hata", "message": "Yazılım/modül ağırlıklı bağımsız sistem isteminde teknik taşıyıcı ile modül/yazılım arasında açık çalışma/koşturma ilişkisi kurulmalı; yalnız işlemci/donanım kelimesi yeterli değildir."})
+
+    coverage_map = draft.get("source_coverage_map")
+    if coverage_map is not None:
+        for row in coverage_map:
+            if row.get("covered") is not True or not (row.get("sections") or []) or not str(row.get("evidence", "") or "").strip():
+                findings.append({"level": "Hata", "message": f"BBF teknik bilgi kapsam kaydı eksik/kanıtsız: {row.get('fact_id','?')}"})
+
     if not findings:
         findings.append({"level": "Uygun", "message": "Otomatik kontrollerde belirgin hata bulunmadı."})
     return findings
