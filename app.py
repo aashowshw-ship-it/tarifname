@@ -950,7 +950,7 @@ JSON dışında hiçbir şey yazma.
  "alternatives":[""],
  "use_cases":[""],
  "figures":[""],
- "figure_reference_audit":[{"figure":"Şekil 1","reference_marks":["1"],"method_marks":["S101"],"symbolic_reference_marks":["UW"],"temporary_marks":[],"possible_wrong_targets":["9 numaralı ok travers yerine başka bir parçaya yöneliyor olabilir"],"missing_reference_candidates":[""],"notes":""}],
+ "figure_reference_audit":[{{"figure":"Şekil 1","reference_marks":["1"],"method_marks":["S101"],"symbolic_reference_marks":["UW"],"temporary_marks":[],"possible_wrong_targets":["9 numaralı ok travers yerine başka bir parçaya yöneliyor olabilir"],"missing_reference_candidates":[""],"notes":""}}],
  "claim_core":[""],
  "parallel_step_groups":[{{"summary":"","step_numbers":["1007","1008"],"recommended_claim_location":"ana istem/tek bağımlı istem"}}],
  "stage_distinctions":[{{"step_numbers":["1001","1006"],"difference":""}}],

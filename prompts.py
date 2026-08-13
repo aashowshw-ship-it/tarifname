@@ -26,7 +26,7 @@ JSON dışında hiçbir şey yazma.
   "has_method_basis": true,
   "method_basis_reason": "",
   "figures": ["Şekil 1, ... gösterimidir."],
-  "figure_reference_audit": [{"figure":"Şekil 1","reference_marks":["1","2"],"method_marks":[],"symbolic_reference_marks":[],"temporary_marks":[],"notes":""}],
+  "figure_reference_audit": [{{"figure":"Şekil 1","reference_marks":["1","2"],"method_marks":[],"symbolic_reference_marks":[],"temporary_marks":[],"notes":""}}],
   "uncertainties": [""]
 }}
 
