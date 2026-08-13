@@ -13,6 +13,97 @@ def _normalize_semantics(text: str) -> set[str]:
     return {w for w in txt.split() if len(w) > 2 and w not in stop}
 
 
+
+def _system_claim_entry_texts(entry: Any, include_group_lead: bool = True) -> list[str]:
+    if isinstance(entry, dict):
+        out: list[str] = []
+        lead = str(entry.get("lead", "") or "").strip()
+        if include_group_lead and lead:
+            out.append(lead)
+        out.extend(str(x or "").strip() for x in (entry.get("subelements") or []) if str(x or "").strip())
+        return out
+    text = str(entry or "").strip()
+    return [text] if text else []
+
+
+def _system_claim_all_texts(system_claim: dict[str, Any] | None) -> list[str]:
+    out: list[str] = []
+    for entry in (system_claim or {}).get("elements") or []:
+        out.extend(_system_claim_entry_texts(entry))
+    return out
+
+
+def _reference_name_pattern(name: str) -> re.Pattern:
+    """Match the reference-list element name immediately before a (N), allowing Turkish inflection."""
+    tokens = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9]+", str(name or ""))
+    parts = []
+    for token in tokens:
+        stem = token if len(token) <= 4 else token[:max(4, len(token) - 2)]
+        parts.append(re.escape(stem) + r"\w*")
+    return re.compile(r"\s+".join(parts) + r"\s*$", re.I)
+
+
+def _reference_identity_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    element_map = {str(x.get("number", "")).strip(): str(x.get("name", "")).strip() for x in (draft.get("elements") or []) if str(x.get("number", "")).strip()}
+    texts = [
+        *map(str, draft.get("detailed_paragraphs") or []),
+        *_system_claim_all_texts(draft.get("system_claim") or {}),
+        *map(str, draft.get("dependent_system_claims") or []),
+        *map(str, (draft.get("method_claim") or {}).get("steps") or []),
+        *map(str, draft.get("dependent_method_claims") or []),
+    ]
+    for text in texts:
+        for m in re.finditer(r"\(([^()]+)\)", text):
+            n = m.group(1).strip()
+            if n not in element_map:
+                continue
+            before = text[max(0, m.start() - 140):m.start()].rstrip()
+            if not _reference_name_pattern(element_map[n]).search(before):
+                out.append({"level": "Hata", "message": f"Referans ({n}) REFERANS NUMARALARI listesindeki '{element_map[n]}' unsur adı/çekimli biçimi yerine kısaltma veya farklı adla kullanılmış."})
+    return out
+
+
+def _main_claim_first_definition_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    elements = draft.get("elements") or []
+    order = {str(x.get("number", "")).strip(): i for i, x in enumerate(elements) if str(x.get("number", "")).strip()}
+    seen: set[str] = set()
+    last_order = -1
+
+    def check(text: str, label: str) -> None:
+        nonlocal last_order
+        refs = [x.strip() for x in re.findall(r"\(([^()]+)\)", str(text)) if x.strip() in order]
+        new_refs: list[str] = []
+        for ref in refs:
+            if ref not in seen and ref not in new_refs:
+                new_refs.append(ref)
+        if len(new_refs) > 1:
+            out.append({"level": "Hata", "message": f"Ana sistem istemi {label} henüz tanımlanmamış birden fazla referanslı unsuru aynı anda kullanıyor ({', '.join(new_refs)}). Her düz/alt madde tek yeni referanslı unsur tanımlamalı."})
+            return
+        if new_refs:
+            ref = new_refs[0]
+            if order[ref] < last_order:
+                out.append({"level": "Hata", "message": f"Ana sistem isteminde ({ref}) unsuru kaynak/teknik tanım sırasının gerisinde ilk kez tanımlanıyor."})
+            else:
+                last_order = order[ref]
+                seen.add(ref)
+
+    for idx, entry in enumerate((draft.get("system_claim") or {}).get("elements") or [], start=1):
+        if isinstance(entry, dict):
+            lead = str(entry.get("lead", "") or "")
+            if any(x in order for x in re.findall(r"\(([^()]+)\)", lead)):
+                out.append({"level":"Hata","message":f"Ana istem {idx}. ortak taşıyıcı üst maddesi referans numarası taşıyamaz; referanslı modüller alt maddelerde ayrı tanımlanmalıdır."})
+            subs = [str(x or "") for x in (entry.get("subelements") or []) if str(x or "").strip()]
+            if len(subs) < 2:
+                out.append({"level":"Hata","message":"Ortak taşıyıcı istem grubu en az iki ayrı alt unsur içermelidir."})
+            for j, sub in enumerate(subs, start=1):
+                check(sub, f"{idx}.{j}. alt maddesi")
+        else:
+            check(str(entry), f"{idx}. maddesi")
+    return out
+
+
 def _semantic_repeat_findings(base_text: str, dependents: list[str], label: str) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     previous = [_normalize_semantics(base_text)]
@@ -114,7 +205,7 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
 
     claim_texts = []
     sc = draft.get("system_claim") or {}
-    claim_texts.extend(sc.get("elements") or [])
+    claim_texts.extend(_system_claim_all_texts(sc))
     claim_texts.extend(draft.get("dependent_system_claims") or [])
     if method:
         claim_texts.extend(method.get("steps") or [])
@@ -136,6 +227,17 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
         if any("işlem adımı" in h for h in headers) and any("gerçekleştiren unsur" in h for h in headers):
             findings.append({"level": "Hata", "message": "Sistem-yöntem ilişki tablosu tablo olarak bırakılmamalı; doğal teknik paragrafa dönüştürülmeli."})
 
+    for entry in (sc.get("elements") or []):
+        if isinstance(entry, dict):
+            lead = str(entry.get("lead", "") or "").strip()
+            if not re.search(r"\bve\s*;$", lead, re.I):
+                findings.append({"level":"Hata","message":"Ortak taşıyıcı üst maddesi Türkçe istemde ‘... ve;’ biçiminde alt maddeleri başlatmalıdır."})
+            if re.search(r"\([^()]+\)", lead):
+                findings.append({"level":"Hata","message":"Ortak taşıyıcı üst maddesi referans numarası taşıyamaz."})
+            for sub in entry.get("subelements") or []:
+                if ";" in str(sub):
+                    findings.append({"level":"Hata","message":"Ortak taşıyıcı alt maddelerinde noktalı virgül kullanılmamalıdır."})
+
     for claim in draft.get("dependent_system_claims") or []:
         if re.search(r"(?:yapmasıdır|etmesidir|belirlemesidir|oluşturulmasıdır|bağlanmasıdır|sağlanmasıdır|gerçekleştirilmesidir|yapılmasıdır|edilmesidir)\.?$", claim.strip(), re.I):
             findings.append({"level": "Hata", "message": "Yöntem dışındaki alt istem yanlış eylem/işlem sonuyla bitiyor; ‘olmasıdır.’ veya ‘içermesidir.’ kullanılmalı."})
@@ -146,9 +248,19 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
         if re.search(r"önceki\s+istemlerden\s+herhangi\s+birine", str(claim), re.I):
             findings.append({"level": "Hata", "message": "Bağımlı istemde ‘Önceki istemlerden herhangi birine’ kullanılmış; ek özelliğin dayandığı doğrudan istem numarası seçilmeli."})
 
+    findings.extend(_reference_identity_findings(draft))
+    findings.extend(_main_claim_first_definition_findings(draft))
+
+    for claim in draft.get("dependent_system_claims") or []:
+        if re.search(r"sistemin[,\s].*?(?:çalışmaya|kullanılmaya) uygun bir sistem olmasıdır\.?$", str(claim), re.I):
+            findings.append({"level": "Hata", "message": "Bağımlı sistem istemi yalnız çalışma/kullanım ortamına uygunlukla tanımlanmış; ortam özelliği somut teknik unsurun niteliği/bağlantısı olarak yazılmalı."})
+    for claim in draft.get("dependent_method_claims") or []:
+        if re.search(r"yöntemin .*?(?:ortamda|şebekede|yapıda).*?gerçekleştirilmesidir\.?$", str(claim), re.I):
+            findings.append({"level": "Hata", "message": "Bağımlı yöntem istemi yalnız gerçekleştirme ortamını söylüyor; ortam gerçek bir işlem adımı, girdi veya teknik taşıyıcı ile ilişkilendirilmeli."})
+
     hardware_anchor_re = re.compile(r"elektronik cihaz|elektronik işlem birimi|işlemci|donanım|bilgisayar|mikrodenetleyici|kontrol birimi", re.I)
     software_terms_re = re.compile(r"modül|birim|algoritma|yazılım|veri işleme|hesaplama", re.I)
-    sc_text = " ".join([str(sc.get("preamble", "")), *map(str, sc.get("elements") or [])])
+    sc_text = " ".join([str(sc.get("preamble", "")), *_system_claim_all_texts(sc)])
     if sc_text and len(software_terms_re.findall(sc_text)) >= 2 and not hardware_anchor_re.search(sc_text):
         findings.append({"level": "Hata", "message": "Yazılım/modül ağırlıklı bağımsız sistem istemi elektronik cihaz/işlemci gibi geniş bir donanımsal taşıyıcıya dayandırılmalı."})
     if method:
@@ -160,7 +272,7 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     if sc_text and len(software_terms_re.findall(sc_text)) >= 2 and not execution_relation_re.search(sc_text):
         findings.append({"level": "Hata", "message": "Yazılım/modül ağırlıklı bağımsız sistem isteminde teknik taşıyıcı ile modül/yazılım arasında açık çalışma/koşturma ilişkisi kurulmalı; yalnız işlemci/donanım kelimesi yeterli değildir."})
 
-    system_base = " ".join([str(sc.get("preamble", "")), *map(str, sc.get("elements") or [])])
+    system_base = " ".join([str(sc.get("preamble", "")), *_system_claim_all_texts(sc)])
     findings.extend(_semantic_repeat_findings(system_base, [str(x or "") for x in (draft.get("dependent_system_claims") or [])], "Sistem"))
     if method:
         method_base = " ".join([str(method.get("preamble", "")), *map(str, method.get("steps") or [])])

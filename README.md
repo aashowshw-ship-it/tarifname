@@ -1,10 +1,10 @@
-# Patent Atölyesi v5.4.15
+# Patent Atölyesi v5.4.17
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 13.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `Patent_Atolyesi_v5.4.15_GitHub` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `Patent_Atolyesi_v5.4.17_GitHub` klasörünü ikinci bir alt klasör olarak yüklemeyin.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -139,7 +139,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-13.v5`
+Kural sürümü: `2026-08-13.v7`
 
 ## Yerel çalıştırma
 
@@ -191,3 +191,28 @@ Ayrıca yerel semantik tekrar kalite kapısı sistem alt istemleriyle sınırlı
 - Aynı yöntem adımının teknik kelime dizisi üç yerde senkron tutulur; referans listesindeki sistem/cihaz parantez işaretlerinin bilinçli olarak kaldırılması senkron ihlali sayılmaz.
 - Sistem ve yöntem bağımlı istemlerinin tamamı ana/üst istemlere ve önceki bağımlı istemlere karşı semantik tekrar kontrolünden geçirilir. Farklı kelimelerle aynı teknik sınırlamayı tekrar eden alt istem Word üretimini durdurur.
 - Sistem şekillerinde görünüşte temsil edilen zorunlu ana taşıyıcı referans atlanmaz. Ok uçları küçük ve tutarlı tutulur. Yöntem akışına kaynak açıkça işlem-adımı döngüsü vermedikçe son adımdan önceki adıma geri dönüş oku eklenmez.
+
+
+## v5.4.16 — BBF kaynak şekilleri zorunlu kullanım kalite kapısı
+
+BBF veya açık teknik müşteri kaynağında kullanılabilir teknik şekil, blok diyagramı veya yöntem akış diyagramı bulunuyorsa bu görseller artık yalnız “öncelikli” kabul edilmez; **nihai Şekiller Word çıktısında zorunlu kaynak şekiller** olarak tutulur. Model tarafından yeniden çizilen bir şema, özgün BBF şeklinin yerine geçemez. Kaynakta sistem şekli ve yöntem/akış şekli birlikte bulunuyorsa ikisi de kullanılır. Ayrıca yüklenen müşteri şekilleri BBF içindeki teknik şekilleri otomatik olarak devre dışı bırakmaz; kaynak görsellerle birlikte değerlendirilir ve bayt düzeyinde mükerrerler tekilleştirilir. Kullanıcı açıkça bir şekli hariç bırakmadıkça veya daha yeni/düzeltilmiş müşteri şekli aynı görselin yerini almadıkça kaynak teknik şekil atlanırsa Şekiller çıktısı başarısız sayılır.
+
+## 2026-08-13.v6 — Kaynak şekil envanteri
+
+Şekiller üretiminden önce kullanılabilir BBF teknik görselleri `source_figure_inventory` altında envantere alınır. Şekiller Word oluşturulmadan önce bu kaynak görsellerin seçim listesinde bulunduğu doğrulanır. Böylece kaynakta şekil varken yalnız yardımcı/model üretimi bir çizimin teslim edilmesi engellenir.
+
+
+## v5.4.17 — Referans kimliği ve ana istem tanım sırası sert kalite kapısı
+
+- `(N)` referansı artık yalnız referans listesindeki aynı unsur adı/çekimiyle kullanılabilir; kısaltma veya eş anlamlı ad numarayı taşıyamaz.
+- Ana sistem isteminde her bullet için ilk-tanım sırası kod seviyesinde kontrol edilir; bir bullet birden fazla yeni/henüz tanımlanmamış referans kullanırsa çıktı engellenir.
+- Referanssız elektronik işlem birimi gibi yazılım taşıyıcıları, henüz tanımlanmamış modülleri sayan ayrı bullet yapılmaz; ilgili modül tanımına gömülür.
+- Salt `... ortamında çalışmaya uygun sistem` ve `yöntemin ... ortamında gerçekleştirilmesi` biçimindeki bağlam-only alt istemler engellenir.
+- Sistem ve yöntem bağımlı istemlerinin semantik tekrar kalite kapısı korunur.
+
+## v5.4.18 — Hiyerarşik yazılım taşıyıcısı ve şekil referans-seti tamlığı
+
+- 181284 dosyasındaki kullanıcı düzeltmesi kural haline getirildi: aynı elektronik işlem birimi üzerinde aynı çalışma ilişkisine sahip ardışık yazılım modülleri, taşıyıcı ifadesi tekrar edilmeden ortak bir üst madde altında gerçek Word alt madde işaretleriyle sıralanabilir. Üst madde referans taşımaz; her alt madde bir yeni referanslı unsuru ilk-tanım sırasıyla tanımlar. `... çalışan ve;` yalnız bu hiyerarşik yapı için izin verilen noktalı virgül istisnasıdır.
+- Şekillerde kaynak BBF/müşteri görseli esas olmaya devam eder. Ancak referans listesinde ayrı olan unsurlar aynı tek kutu/tek hedef altında `2-3` gibi birleştirilemez; aynı taşıyıcı içinde dahi ayrı kutucuk/callout/ok ile ayırt edilebilir gösterilir.
+- Ayrı Şekiller çıktısı istenmişse REFERANS NUMARALARI bölümündeki tüm gerçek sistem unsurları nihai şekil setinde en az bir kez bulunmak zorundadır. Sistem+yöntem şekilleri hazırlanıyorsa yöntem referanslarının tamamı da akış şekillerinde kapsanır. Set bazında eksik referans kalite kapısını durdurur.
+- v5.4.17'de bazı yeni istem kontrolleri yalnız yardımcı `validators.py` tarafında kalabildiği için aktif Streamlit kalite kapısıyla eşzamanlılık riski vardı. v5.4.18'de aynı kontroller `app.py` aktif üretim/Word kapısına da bağlandı ve hiyerarşik istem yapısı hem üretici hem doğrulayıcı tarafından destekleniyor.

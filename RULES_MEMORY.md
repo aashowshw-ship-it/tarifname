@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-13.v5**
+Kural sürümü: **2026-08-13.v7**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -271,3 +271,29 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Referans listesi ↔ detaylı açıklama ↔ yöntem istemi senkronizasyonunda referans listesinden bilinçli olarak çıkarılan sistem/cihaz parantez işaretleri karşılaştırma dışı, teknik kelimeler ve işlem ilişkileri karşılaştırma dahilidir.
 - Sistem ve yöntem bağımlı istemlerinin tümü semantik tekrar kontrolüne tabidir; her alt istem gerçek ek teknik sınırlama veya stratejik geri çekilme konumu getirmelidir.
 - Sistem şekillerinde görünüşte temsil edilen zorunlu ana taşıyıcı referans atlanmaz. Ok uçları küçük ve tutarlı tutulur. Yöntem akışına kaynak açıkça işlem-adımı döngüsü vermedikçe son adımdan önceki adıma geri dönüş oku eklenmez.
+
+
+## 2026-08-13.v6 — BBF Özgün Teknik Şekli Zorunlu Kullanım Kuralı (Bağlayıcı)
+
+- BBF veya açık teknik müşteri kaynağında kullanılabilir özgün teknik şekil/şema/akış diyagramı varsa nihai Şekiller Word çıktısında bu kaynak görsel **zorunlu olarak** kullanılır. “Öncelik ver” ifadesi artık yeterli değildir; özgün görsel model üretimi veya yeniden çizilmiş şema ile ikame edilemez.
+- Kaynakta sistem/yapılanma şekli ile yöntem/algoritma akış diyagramı birlikte varsa ikisi de kullanılır. Biri diğerinin yerine geçmez.
+- Yardımcı/ek şekil ancak kaynakta açık dayanağı bulunan teknik ilişkiyi açıklamak için eklenebilir; kaynak şekli kaldırmaz.
+- Kullanıcı açıkça kaynak şeklin kullanılmamasını istemedikçe veya daha sonra verilen düzeltilmiş müşteri şeklinin aynı şeklin yerine geçtiği açık olmadıkça kaynak şekil atlanamaz.
+- Şekillerden önce `source_figure_inventory` oluşturulur; kullanılabilir her kaynak teknik görsel nihai seçime alınmış olmalıdır. Eksik kaynak şekil varsa Şekiller Word çıktısı kalite kapısından geçmez.
+
+
+## 2026-08-13.v7 — Referans Unsur Kimliği, İlk Tanım Sırası ve Alt İstem Ortam Kuralı (Bağlayıcı)
+
+- Parantezli unsur numarası her kullanımda REFERANS NUMARALARI listesindeki aynı unsur adı veya yalnız dilbilgisel çekimiyle birlikte kullanılır. `1 = İnsansız hava aracı` ise `İHA (1)` ve `İHA’dan (1)` yasaktır; `insansız hava aracı (1)` ve `insansız hava aracından (1)` kullanılır. Kısaltma numarasız kullanılabilir.
+- Ana istemde bir madde henüz tanımlanmamış birden fazla referanslı unsuru aynı anda kullanamaz. Kural olarak her madde tek yeni referanslı unsur tanımlar ve sonraki unsurlar yalnız daha önce tanımlananlara bağlanır.
+- Kaynakta referanssız olan elektronik işlem birimi gibi yazılım taşıyıcısı, 2/3/4/5 gibi henüz tanımlanmamış modülleri topluca sayan ayrı unsur maddesi yapılmaz. Taşıyıcı ilişkisi ilgili modül ilk tanımlanırken aynı madde içinde kurulur.
+- Bağımlı sistem istemi yalnız `sistemin ... ortamında çalışmaya uygun sistem olmasıdır` biçiminde kurulamaz. Çalışma ortamı ilgili baz istasyonu/arayüz/iletişim birimi vb. somut teknik unsurun niteliği veya bağlantısına dönüştürülür. Bağımlı yöntem isteminde de yalnız gerçekleştirme ortamı yazılmaz; gerçek bir işlem adımı, girdi veya teknik taşıyıcı ile ilişkilendirilir.
+- Alt istemlerin her biri ana/üst isteme karşı semantik tekrar kontrolünden geçmeye devam eder; yalnız farklı kelime kullanılması yeni sınırlama sayılmaz.
+
+## 2026-08-13.v8 — Ortak taşıyıcı istem grubu ve şekil tamlık kapısı
+
+- Aynı elektronik işlem birimi/elektronik cihaz üzerinde aynı şekilde koşturulan birden fazla ardışık yazılım modülü varsa, teknik taşıyıcıyı her modülde tekrar etmek yerine ana istemde numarasız bir üst bullet `bir elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ve;` biçiminde kurulabilir; altında her referanslı modül ayrı gerçek Word alt bullet olarak, ilk-tanım sırasıyla yazılır. Bu `ve;` kullanımı yalnız bu hiyerarşik grup için noktalı virgül istisnasıdır.
+- Ortak taşıyıcı üst bullet hiçbir referans numarası taşımaz. Her alt bullet kural olarak tek yeni referanslı unsur tanımlar; önce tanımlanmamış sonraki referansı kullanamaz. Taşıyıcı kaynakta ayrı referanslı unsur ise bu gruplama kullanılmaz.
+- BBF/müşteri şekli temel şekildir; ancak referans listesinde ayrı olan iki unsur kaynak şekil üzerinde `2-3` gibi tek bir hedefte birleştirilmişse nihai patent şekli bunu ayrı kutucuk/çağrı/oklarla ayırır. Ortak taşıyıcı korunabilir, fakat ayrı referanslı unsurlar tek ayırt edilemeyen kutuda gösterilemez.
+- Şekiller Word dosyası istenmişse REFERANS NUMARALARI bölümündeki tüm gerçek sistem/cihaz/ürün/yapılanma unsurları nihai şekil setinde en az bir kez gösterilmelidir. Yöntem adımları referans listesinde yer alıyor ve sistem+yöntem şekilleri hazırlanıyorsa tüm yöntem referansları da akış/yöntem şekillerinde en az bir kez bulunmalıdır. Eksik referans varsa veya güvenilir konum belirlenemiyorsa Şekiller çıktısı oluşturulmaz.
+- Şekil denetimi yalnız tek tek şekil bazında değil, son aşamada set bazında `beklenen referanslar ↔ nihai şekillerde görülen referanslar` karşılaştırmasıyla yapılır.

@@ -50,6 +50,15 @@ def _add_bullet(doc, text: str):
     return _fmt(p)
 
 
+def _add_nested_dash(doc, text: str):
+    p = doc.add_paragraph()
+    p.paragraph_format.left_indent = Cm(3.75)
+    p.paragraph_format.first_line_indent = Cm(-0.65)
+    p.paragraph_format.line_spacing = 1.5
+    p.add_run("-\t" + text)
+    return _fmt(p)
+
+
 def _copy_template_paragraph(doc: Document, template: Document, index: int):
     doc._element.body.insert(-1, deepcopy(template.paragraphs[index]._p))
 
@@ -180,7 +189,12 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
     preamble = sc.get("preamble", "")
     _numbered_claim(doc, claim_no, preamble + " olup, özelliği;")
     for el in sc.get("elements") or []:
-        _add_bullet(doc, el)
+        if isinstance(el, dict):
+            _add_bullet(doc, str(el.get("lead", "") or ""))
+            for sub in el.get("subelements") or []:
+                _add_nested_dash(doc, str(sub))
+        else:
+            _add_bullet(doc, str(el))
     _add_text(doc, sc.get("closing", "içermesidir."))
     claim_no += 1
 

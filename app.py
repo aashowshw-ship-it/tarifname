@@ -373,12 +373,14 @@ Tarifname dili: {language}
 
 KRİTİK DENETİM MANTIĞI:
 - Şekildeki mevcut numara veya okun doğru olduğunu varsayma.
-- Her işaret için dört aşamalı eşleştirme yap: referans işareti → unsur adı → detaylı açıklamadaki teknik tanım/işlev → şekil üzerindeki gerçek fiziksel karşılık.
+- Her işaret için dört aşamalı eşleştirme yap: referans işareti → unsur adı → detaylı açıklamadaki teknik tanım/işlev → şekil üzerindeki gerçek fiziksel veya şematik teknik karşılık.
 - Kılavuz çizgisi/ok ucu doğrudan ilgili fiziksel unsurda sonlanmalıdır. Boş alan, komşu parça veya genel tertibat doğru hedef değildir.
 - Görünüşte temsil edilen zorunlu ana taşıyıcı unsurun referansı atlanmamalıdır; örneğin modülleri barındıran Akıllı SIM Donanım Platformu (1) uygun bir kapsayıcı çerçeve/taşıyıcı olarak gösterilebilir.
 - Ok uçları küçük, sade ve şeklin ölçeğiyle orantılı olmalıdır; büyük ok uçları kullanma.
 - Yöntem akış şekline kaynak işlem-adımı düzeyinde açık bir döngü vermiyorsa son adımdan önceki bir adıma geri dönüş oku ekleme. Modül geri beslemesini sistem şekli üzerinde modüller arasında göster.
 - Bir referans belirli alt parçaya aitse bütün tertibatı gösteremez. Örneğin referans listesinde `9 = Travers` ise 9 yalnız traversin kendisini göstermelidir.
+- REFERANS NUMARALARI bölümünde AYRI numaraya ve ayrı ada sahip unsurlar aynı taşıyıcı içinde bulunsa dahi tek ayırt edilemeyen kutu/hedef üzerinde `2-3`, `2/3` veya iki numara birlikte gösterilemez. Her ayrı unsur için ayrı kutucuk, ayrı çağrı alanı veya ayrı kılavuz çizgisi olmalıdır. Böyle bir birleşik gösterim görürsen `merged_reference_groups` alanına numaraları yaz ve status=`needs_edit` yap. Ortak taşıyıcı ve mevcut teknik bağlantılar korunarak yalnız çağrı/referans katmanının ayrıştırılmasını iste.
+- Bu şekil tek başına bütün referansları taşımak zorunda değildir; fakat nihai şekil SETİ tamamlandığında referans listesindeki tüm sistem unsurları en az bir şekil üzerinde, yöntem adımları da uygulanabilir yöntem/akış şekillerinde kapsanacaktır.
 - Her görünür parçayı zorla numaralandırma. Yalnız tarifnamede gerçek referansla tanımlanmış ve BU ŞEKİLDE fiziksel karşılığı güvenilir biçimde görülen unsuru değerlendir.
 - Referanslı ve bu şekilde görünür bir unsur numarasızsa, fiziksel yeri güvenilir biçimde belirlenebiliyorsa action=`add` yap. Belirsizse `unresolved` yaz; uydurma hedef seçme.
 - Mevcut numara doğru fakat ok yanlış fiziksel parçaya gidiyorsa action=`correct` yap.
@@ -398,12 +400,13 @@ JSON ŞEMASI:
       "reference": "9",
       "name": "Travers",
       "visible": true,
-      "action": "keep/correct/add/omit",
+      "action": "keep/correct/add/split/omit",
       "location_description": "Şekilde hedeflenen fiziksel parçanın açık ve ayırt edici tarifi",
       "reason": "",
       "confidence": 0.95
     }}
   ],
+  "merged_reference_groups": [["2","3"]],
   "extra_or_temporary_marks": [""],
   "unresolved": [""],
   "edit_instruction": "Yalnız needs_edit durumunda, hangi numara/okun hangi fiziksel parçaya yöneltileceğini kısa ve kesin yaz."
@@ -451,7 +454,7 @@ def _audit_has_unsafe_edit(audit: dict[str, Any]) -> bool:
         return True
     for item in audit.get("annotations") or []:
         action = str(item.get("action", "")).strip().casefold()
-        if action in {"add", "correct"}:
+        if action in {"add", "correct", "split"}:
             try:
                 confidence = float(item.get("confidence", 0.0) or 0.0)
             except (TypeError, ValueError):
@@ -488,7 +491,7 @@ def edit_figure_reference_annotations(
     client = get_client()
     context = _figure_reference_context(draft, figure_index)
     prompt = f"""Bu görsel bir patent şeklidir ve özgün müşteri çizimi teknik kaynak olarak bağlayıcıdır.
-Yalnız referans numaraları ile bunların kılavuz çizgileri/oklarını düzelt. Mekanik/elektronik geometriyi, parça biçimlerini, delikleri, kesit taramalarını, perspektifi, boyut ilişkilerini, çizgi yapısını veya teknik kurguyu değiştirme. Yeni parça üretme, parça silme, şemayı yeniden tasarlama, açıklama/legend ekleme.
+Yalnız referans numaraları ile bunların kılavuz çizgileri/oklarını ve AYRI REFERANSLI yazılım/modül unsurları için gereken sade çağrı/kutucuk katmanını düzelt. Mekanik/elektronik taşıyıcı geometrisini, parça biçimlerini, delikleri, kesit taramalarını, perspektifi, boyut ilişkilerini, bağlantı oklarını veya teknik kurguyu değiştirme. Yeni teknik parça üretme veya parça silme. Ancak iki ayrı referans kaynak şekil üzerinde tek `2-3`/tek kutuda birleştirilmişse ortak taşıyıcıyı koruyarak yalnız bu referans gösterimini iki ayrı küçük kutucuk/çağrı alanına ayırabilirsin.
 
 REFERANS DENETİMİ:
 {json.dumps(audit, ensure_ascii=False, indent=2)}
@@ -499,7 +502,8 @@ TARİFNAME BAĞLAMI:
 UYGULAMA KURALLARI:
 - action=keep olan referansı ve doğru hedefini koru.
 - action=correct olan numaranın kılavuz çizgisi/okunu location_description içinde tarif edilen fiziksel unsura yönelt.
-- action=add olan referansı yalnız tarif edilen fiziksel unsur kesin görünüyorsa ekle.
+- action=add olan referansı yalnız tarif edilen fiziksel/şematik unsur kesin görünüyorsa ekle.
+- action=split ise birleşik referans gösterimini (örn. 2-3) aynı ortak taşıyıcı içinde iki ayrı ve ayırt edilebilir referans kutucuğu/çağrısına ayır; teknik bağlantıları ve taşıyıcıyı değiştirme.
 - action=omit olan referansı sırf referans listesinde var diye bu şekle ekleme.
 - Ok/kılavuz çizgisi ucu doğrudan ilgili fiziksel unsur üzerinde sonlansın; boş alana veya genel tertibata yönelmesin.
 - Referans belirli bir alt parçaya aitse tüm tertibatı işaretleme.
@@ -550,7 +554,8 @@ KABUL KRİTERLERİ:
 3. Her kılavuz çizgisi/ok doğrudan doğru fiziksel unsurda sonlanmalı; boş alanı, komşu parçayı veya genel tertibatı göstermemelidir.
 4. Adayda tarifnamede olmayan yeni referans numarası/legend/açıklama eklenmemelidir.
 5. Bu şekilde görünmeyen unsurlar sırf numaralandırma amacıyla eklenmemelidir.
-6. Denetimde unresolved kalan unsur varsa annotations_correct=false yap.
+6. REFERANS NUMARALARI bölümünde ayrı olan unsurlar tek `2-3`/tek kutu/tek hedefte birleştirilmemelidir; ortak taşıyıcı içinde dahi ayrı kutucuk/çağrı/ok ile ayırt edilebilir olmalıdır.
+7. Denetimde unresolved kalan unsur varsa annotations_correct=false yap.
 
 ÖN DENETİM:
 {json.dumps(audit, ensure_ascii=False, indent=2)}
@@ -562,6 +567,7 @@ JSON ŞEMASI:
 {{
   "geometry_preserved": true,
   "annotations_correct": true,
+  "distinct_references_separated": true,
   "wrong_or_missing": [""],
   "extra_reference_marks": [""],
   "confidence": 0.95,
@@ -606,9 +612,9 @@ def prepare_figures_with_reference_audit(
 
         status = str(audit.get("status", "ok")).strip().casefold()
         needs_edit = status == "needs_edit" or any(
-            str(x.get("action", "")).strip().casefold() in {"add", "correct"}
+            str(x.get("action", "")).strip().casefold() in {"add", "correct", "split"}
             for x in audit.get("annotations") or []
-        )
+        ) or _has_nonempty_items(audit.get("merged_reference_groups"))
         if not needs_edit:
             report["final_status"] = "ok"
             reports.append(report)
@@ -646,6 +652,7 @@ def prepare_figures_with_reference_audit(
         accepted = (
             bool(verification.get("geometry_preserved"))
             and bool(verification.get("annotations_correct"))
+            and bool(verification.get("distinct_references_separated", True))
             and not _has_nonempty_items(verification.get("wrong_or_missing"))
             and not _has_nonempty_items(verification.get("extra_reference_marks"))
             and verify_confidence >= FIGURE_REFERENCE_CONFIDENCE
@@ -660,6 +667,26 @@ def prepare_figures_with_reference_audit(
             report.update({"final_status": "unresolved", "message": message})
             prepared.append(asset)
         reports.append(report)
+
+    # SET BAZINDA REFERANS TAMLIK KAPISI: referans listesindeki her unsur/adım en az bir nihai şekilde görünmelidir.
+    expected_elements = {str(x.get("number", "") or "").strip() for x in (draft.get("elements") or []) if str(x.get("number", "") or "").strip()}
+    expected_methods = {str(x.get("number", "") or "").strip() for x in (draft.get("method_steps") or []) if str(x.get("number", "") or "").strip()}
+    represented: set[str] = set()
+    for report in reports:
+        audit = report.get("audit") or {}
+        for mark in audit.get("existing_reference_marks") or []:
+            represented.add(str(mark or "").strip())
+        for annotation in audit.get("annotations") or []:
+            ref = str(annotation.get("reference", "") or "").strip()
+            action = str(annotation.get("action", "") or "").strip().casefold()
+            if ref and action in {"keep", "add", "correct", "split"} and annotation.get("visible", True) is not False:
+                represented.add(ref)
+    missing_elements = sorted(expected_elements - represented)
+    missing_methods = sorted(expected_methods - represented)
+    if missing_elements:
+        unresolved.append("Şekil setinde gösterilmeyen REFERANS NUMARALARI sistem unsurları: " + ", ".join(missing_elements))
+    if expected_methods and missing_methods:
+        unresolved.append("Şekil/akış setinde gösterilmeyen yöntem adımı referansları: " + ", ".join(missing_methods))
 
     return prepared, reports, unresolved
 
@@ -842,6 +869,22 @@ def _copy_list_properties(target, source):
 def add_template_list_item(doc: Document, template: Document, prototype_index: int, text: str):
     p = doc.add_paragraph()
     _copy_list_properties(p, template.paragraphs[prototype_index])
+    p.add_run(text)
+    return format_paragraph(p)
+
+
+def add_nested_claim_list_item(doc: Document, template: Document, text: str):
+    """Ortak taşıyıcı grubundaki alt unsuru gerçek Word alt bullet olarak yazar."""
+    p = doc.add_paragraph()
+    # Şablondaki tire biçimli gerçek bullet numaralandırmasını kullan.
+    _copy_list_properties(p, template.paragraphs[66])
+    ppr = p._p.get_or_add_pPr()
+    ind = ppr.find(qn("w:ind"))
+    if ind is None:
+        ind = OxmlElement("w:ind")
+        ppr.append(ind)
+    ind.set(qn("w:left"), "2136")
+    ind.set(qn("w:hanging"), "360")
     p.add_run(text)
     return format_paragraph(p)
 
@@ -1092,6 +1135,7 @@ KRİTİK TALİMATLAR:
 - BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı sistem/cihaz unsurlarını tek tek ayrı paragraf yapma; bütün unsur açıklamalarını teknik akış içinde tek sürekli paragrafta topla. Sistem unsuru-yöntem adımı ilişkisini açıklamak için “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü tablo oluşturma. Bu ilişkiyi modül (1), sonraki modül (2) ve ilgili yöntem adımı (1001, 1002...) arasındaki veri/işlev bağlantısını gösteren doğal teknik paragraf olarak yaz. Yalnız ham kaynakta gerçekten sayısal/deneysel veri tablosu olan tabloları tables alanında koru. Gerçekten ayrı bir yapılanma/alternatif/yöntem/çalışma prensibi ayrıca paragraf olabilir.
 - Ana istemde zorunlu teknik çekirdeği kapsayıcı biçimde ver. Aynı işlemin birinci/ikinci/k'ıncı tekrarlarını ana istemde gereksiz yere ayrı satırlara bölme. Bu ayrıntıları, aynı alt akışa aitse tek bağımlı istemde topla.
 - Buluş ağırlıklı olarak yazılım/algoritma/modül/birimlerden oluşuyorsa bağımsız istemleri soyut yazılım olarak bırakma. Kaynakta özel donanım zorunlu değilse geniş bir donanımsal taşıyıcı kullan. Türkçede “bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...”, İngilizcede “software executed on an electronic device ...” veya eşdeğer teknik taşıyıcı dili kullanılabilir. Gereksiz sunucu, cep telefonu/phone veya kişisel bilgisayar daraltması yapma; özel donanım uydurma.
+- AYNI referanssız elektronik işlem birimi/cihaz taşıyıcısı üzerinde AYNI çalışma ilişkisine sahip birden fazla ARDIŞIK modül varsa taşıyıcı ifadesini her modülde tekrar etmek zorunda değilsin. Türkçe sistem isteminde `elements` listesine bir grup nesnesi koyabilirsin: `{{"lead":"bir elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ve;","subelements":["... modülü (2),","... modülü (3),"]}}`. Lead referans taşımaz; her subelement ayrı bir yeni referanslı unsuru ilk-tanım sırasıyla tanımlar. Bu grup yalnız aynı taşıyıcı gerçekten bütün alt unsurlar için ortaksa kullanılır ve Word'de gerçek iç içe bullet olarak yazılır.
 - İstemleri yalnız hedeflenen sonuç veya fonksiyonla bırakma. Özellikle bağımsız istemde teknikte uzman kişinin “nasıl gerçekleştiriliyor?” sorusuna cevap verecek şekilde, kaynakta açık dayanağı bulunduğu ölçüde işlemi yapan teknik unsur/taşıyıcıyı, kullanılan girdiyi veya önceki unsurdan gelen veriyi, teknik işlem/mekanizmayı ve ortaya çıkan teknik çıktının sonraki unsurla bağlantısını yaz. “tespit eden / dönüştüren / optimize eden / classifying / transforming / determining” gibi sonuç bildiren fiiller kaynak mekanizmayı açıklıyorsa tek başına yeterli sayılmaz. Buna karşılık tercihli uygulama ayrıntılarıyla ana istemi gereksiz daraltma.
 - Bağımlı istemleri kaynakta geçen her ayrıntı için çoğaltma. Yalnız ana isteme gerçek teknik daraltma/geri çekilme konumu sağlayan seçilmiş özellikleri kullan; istem bağımlılığı ana donanımsal taşıyıcıyı zaten taşıyorsa alt istemde elektronik cihaz/yazılım ifadesini gereksiz yere tekrar etme.
 - Eğitim/genel aşama ile test aşamasındaki paralel akışları aynı mantıkla fakat ayrı teknik aşamalar olarak kur.
@@ -1111,6 +1155,7 @@ KRİTİK TALİMATLAR:
 - Bağımlı istemlerde Türkçe çıktıda “Önceki istemlerden herhangi birine” kalıbını, İngilizce çıktıda belirsiz “any preceding claim” zincirlerini varsayılan olarak kullanma; ek özellik hangi ana unsur veya işlem adımının ayrıntısıysa doğrudan onu tanımlayan gerekli isteme bağla.
 - objectives alanında Türkçe çıktı için amaç gövdesi “... sağlamaktır.” gibi tam yüklemle bitsin. İngilizce çıktı için her objective baştan sona tam bir cümle olarak yazılsın, örneğin “The main objective of the invention is to ... .”
 - Müşteri şekillerini teknik kaynak olarak aynen esas al. Görseldeki gerçek referans işaretlerini sayısal unsur, yöntem adımı, sembolik referans ve geçici şekil numarası olarak ayır. Gömülü grafik/ısı haritası/diyagram üzerindeki teknik sonuçları tamlık kontrolünde dikkate al. Geçici şekil numarasını yeni unsur referansı yapma. Şekildeki mevcut ok/numarayı otomatik olarak doğru kabul etme; nihai şekil aşamasında referans → unsur adı → detaylı açıklamadaki teknik tanım → fiziksel karşılık eşleştirmesi yapılacaktır. Belirli alt parçaya ait referansı tüm tertibat olarak yorumlama ve her görünür parçayı zorla numaralandırma.
+- REFERANS NUMARALARI bölümünde ayrı numaraya sahip iki unsur müşteri/BBF şekli üzerinde `2-3` gibi tek ve ayırt edilemeyen bir kutu/hedefte gösterilmişse bunu nihai şekle aynen taşıma. Müşteri şeklinin ortak taşıyıcısını ve teknik ilişkilerini koruyarak ayrı kutucuk/çağrı/oklarla her referansı ayrı göster. Şekiller Word isteniyorsa nihai `elements` referanslarının tamamı şekil SETİNDE en az bir kez görünmelidir; sistem+yöntem şekilleri hazırlanıyorsa yöntem referansları da akış şekillerinde tam kapsanmalıdır.
 - BBF referans/BOM tablosunu kaynak envanteri olarak çıkar; fakat “Diğer parçalar/Diğer elemanlar” gibi belirsiz üst başlıkları nihai patent unsuru yapma. Altında açıkça tanımlanan gerçek parçaları teknik adlarıyla kullan.
 - Sistem şeması yalnız “sistem” sözcüğüne özgü değildir; cihaz, ürün, tertibat, düzenek ve yapılanma istemleri de aynı ürün istem dil kurallarına tabidir. Yöntem dışındaki bağımlı istemler “olmasıdır.” veya “içermesidir.” ile bitmelidir.
 - Ana istemde bir referanslı unsuru ilk kez tanımlarken henüz tanımlanmamış sonraki referanslı unsurları kullanma. İlk/ana taşıyıcı unsuru kendi yapısı ve işleviyle tanımla; sonra diğer unsurları sırayla daha önce tanımlanmış unsurlara bağla. Kural olarak her claim bullet yalnız bir yeni referanslı unsur tanımlasın.
@@ -1131,7 +1176,7 @@ JSON dışında hiçbir şey yazma.
 {TARIFNAME_DRAFT_SCHEMA}
 
 SİSTEM İSTEMİ ŞEMASI (varsa):
-{{"preamble":"","elements":[""],"closing":"içermesidir."}}
+{{"preamble":"","elements":["tek düz unsur maddesi",{{"lead":"bir elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ve;","subelements":["ayrı referanslı alt unsur (2)","ayrı referanslı alt unsur (3)"]}},"sonraki düz unsur maddesi"],"closing":"içermesidir."}}
 YÖNTEM İSTEMİ ŞEMASI (varsa):
 {{"preamble":"","steps":[""],"closing":"işlem adımlarını içermesidir."}}
 
@@ -1236,6 +1281,9 @@ ZORUNLU KONTROL LİSTESİ:
 52. Yazılım/modül ağırlıklı buluşta yalnız “işlemci/donanım” kelimesi geçmesiyle yetinilmiş mi, yoksa modül/yazılımın kaynakta dayanaklı teknik taşıyıcı üzerinde çalıştığı/koşturulduğu açık ilişkiyle yazılmış mı? Kaynak özel taşıyıcı veriyorsa genel elektronik cihaz ifadesi özel taşıyıcıyı silmiş mi?
 53. BULUŞUN DETAYLI AÇIKLAMASI giriş cümlesinde buluş adı cümle içi normal yazımla mı kullanılmış? Başlıktaki Title Case düzeni cümle içine kopyalanmamış mı; SIM/eSIM gibi kısaltmalar korunmuş mu?
 54. REFERANS NUMARALARI bölümündeki yöntem adımları `1001. ...` biçiminde önden yöntem numarasıyla mı yazılmış ve bu satırlarda sistem/cihaz `(1)`, `(2)` türü parantezli referans işaretleri kaldırılmış mı? Parantezli unsur referansları yalnız BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren mi başlıyor? Sistem ve yöntem alt istemlerinin tamamı semantik tekrar kontrolünden geçti mi?
+55. Aynı teknik taşıyıcı üzerinde aynı çalışma ilişkisine sahip ardışık yazılım modüllerinde gereksiz taşıyıcı tekrarı var mı? Uygunsa ortak numarasız üst bullet + ayrı gerçek alt bullet yazım stili kullanılmış mı; üst bullet hiçbir referans taşımıyor ve alt maddeler ilk-tanım sırasına uyuyor mu?
+56. Referans listesinde ayrı olan iki unsur şekil üzerinde tek `2-3`/tek kutu/tek hedefte birleştirilmiş mi? Ayrı unsur kimlikleri ayrı kutucuk/çağrı/oklarla ayırt edilebilir mi?
+57. Şekiller çıktı setinde REFERANS NUMARALARI bölümündeki bütün gerçek sistem unsur referansları en az bir kez gösteriliyor mu? Sistem+yöntem şekilleri varsa yöntem adımı referansları da akış şekillerinde tam mı?
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
 {TARIFNAME_DRAFT_SCHEMA}
@@ -1572,6 +1620,68 @@ def _claim_refs(text: str) -> list[str]:
     return re.findall(r"\(\s*([A-Za-zÇĞİÖŞÜçğıöşü0-9_\-]+)\s*\)", str(text or ""))
 
 
+def _system_claim_entries(system_claim: dict[str, Any] | None) -> list[Any]:
+    """Ana sistem isteminin düz maddelerini ve ortak-taşıyıcı gruplarını sırasıyla döndür."""
+    return list((system_claim or {}).get("elements") or [])
+
+
+def _system_claim_entry_texts(entry: Any, include_group_lead: bool = True) -> list[str]:
+    if isinstance(entry, dict):
+        out: list[str] = []
+        lead = str(entry.get("lead", "") or "").strip()
+        if include_group_lead and lead:
+            out.append(lead)
+        out.extend(str(x or "").strip() for x in (entry.get("subelements") or []) if str(x or "").strip())
+        return out
+    text = str(entry or "").strip()
+    return [text] if text else []
+
+
+def _system_claim_all_texts(system_claim: dict[str, Any] | None, include_group_leads: bool = True) -> list[str]:
+    out: list[str] = []
+    for entry in _system_claim_entries(system_claim):
+        out.extend(_system_claim_entry_texts(entry, include_group_leads))
+    return out
+
+
+def _reference_name_pattern(name: str) -> re.Pattern:
+    """Referans adının (N)'den hemen önceki aynı/çekimli biçimini yaklaşık fakat sıkı eşleştir."""
+    tokens = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9]+", str(name or ""))
+    parts: list[str] = []
+    for token in tokens:
+        stem = token if len(token) <= 4 else token[:max(4, len(token) - 2)]
+        parts.append(re.escape(stem) + r"\w*")
+    return re.compile(r"\s+".join(parts) + r"\s*$", re.I)
+
+
+def _validate_reference_identity(draft: dict[str, Any]) -> None:
+    """(N) yalnız REFERANS NUMARALARI listesindeki aynı unsur adı/çekimiyle kullanılabilir."""
+    element_map = {
+        str(x.get("number", "") or "").strip(): str(x.get("name", "") or "").strip()
+        for x in (draft.get("elements") or [])
+        if str(x.get("number", "") or "").strip()
+    }
+    texts = [
+        *map(str, draft.get("detailed_paragraphs") or []),
+        str(draft.get("working_principle", "") or ""),
+        *_system_claim_all_texts(draft.get("system_claim") or {}),
+        *map(str, draft.get("dependent_system_claims") or []),
+        *map(str, (draft.get("method_claim") or {}).get("steps") or []),
+        *map(str, draft.get("dependent_method_claims") or []),
+    ]
+    for text in texts:
+        for m in re.finditer(r"\(([^()]+)\)", str(text)):
+            n = m.group(1).strip()
+            if n not in element_map:
+                continue
+            before = str(text)[max(0, m.start() - 160):m.start()].rstrip()
+            if not _reference_name_pattern(element_map[n]).search(before):
+                raise ValueError(
+                    f"Referans ({n}) '{element_map[n]}' unsurunun aynı/çekimli adıyla kullanılmalıdır; "
+                    "kısaltma veya eş anlamlı ad referans numarasını taşıyamaz."
+                )
+
+
 def _strip_known_element_reference_marks(text: str, element_numbers: list[str]) -> str:
     """REFERANS NUMARALARI yöntem satırında yalnız bilinen sistem/cihaz `(REF)` işaretlerini kaldır."""
     result = str(text or "")
@@ -1591,28 +1701,46 @@ def _normalize_claim_semantics(text: str) -> set[str]:
 
 
 def _validate_system_claim_reference_order(system_claim: dict[str, Any], element_numbers: list[str]) -> None:
-    """Her bullet'ın kural olarak tek yeni referans unsuru tanımlamasını ve ileri referans kullanmamasını zorlar."""
+    """Düz veya ortak-taşıyıcı gruplu ana istemde ilk-tanım sırasını zorlar."""
     if not system_claim:
         return
     valid = set(element_numbers)
     seen = set(_claim_refs(system_claim.get("preamble", ""))) & valid
-    for idx, item in enumerate(system_claim.get("elements") or [], start=1):
-        refs = [r for r in _claim_refs(str(item)) if r in valid]
-        new_refs = []
+
+    def check_leaf(text: str, label: str) -> None:
+        refs = [r for r in _claim_refs(str(text)) if r in valid]
+        new_refs: list[str] = []
         for r in refs:
             if r not in seen and r not in new_refs:
                 new_refs.append(r)
         if len(new_refs) > 1:
             raise ValueError(
-                f"Ana istemin {idx}. unsur maddesi birden fazla yeni referansı ({', '.join(new_refs)}) ilk kez birlikte tanımlıyor. "
-                "Ana taşıyıcı unsuru sonraki unsurları kullanmadan tanımlayın; yeni referanslı unsurları teknik sırayla ayrı maddelerde kurun."
+                f"Ana istemin {label} birden fazla yeni referansı ({', '.join(new_refs)}) ilk kez birlikte tanımlıyor. "
+                "Her düz/alt madde kural olarak tek yeni referanslı unsur tanımlamalıdır."
             )
         seen.update(new_refs)
+
+    for idx, entry in enumerate(_system_claim_entries(system_claim), start=1):
+        if isinstance(entry, dict):
+            lead = str(entry.get("lead", "") or "").strip()
+            subelements = [str(x or "").strip() for x in (entry.get("subelements") or []) if str(x or "").strip()]
+            lead_refs = [r for r in _claim_refs(lead) if r in valid]
+            if lead_refs:
+                raise ValueError(
+                    f"Ana istemin {idx}. ortak taşıyıcı üst maddesi referans numarası taşıyamaz ({', '.join(lead_refs)}). "
+                    "Referanslı modülleri alt maddelerde ayrı ayrı tanımlayın."
+                )
+            if len(subelements) < 2:
+                raise ValueError("Ortak taşıyıcı istem grubu en az iki ayrı referanslı alt madde içermelidir; aksi halde düz madde kullanın.")
+            for sub_idx, sub in enumerate(subelements, start=1):
+                check_leaf(sub, f"{idx}.{sub_idx}. alt maddesi")
+        else:
+            check_leaf(str(entry), f"{idx}. unsur maddesi")
 
 
 def _validate_dependent_claim_semantic_repetition(system_claim: dict[str, Any], dependents: list[str]) -> None:
     """Birebir/çok yakın teknik tekrarları yerel kalite kapısında yakalar; nihai semantik kontrol AI kalite turunda da yapılır."""
-    base = _normalize_claim_semantics(" ".join([str(system_claim.get("preamble", "")), *map(str, system_claim.get("elements") or [])]))
+    base = _normalize_claim_semantics(" ".join([str(system_claim.get("preamble", "")), *_system_claim_all_texts(system_claim)]))
     previous_sets: list[set[str]] = [base]
     for idx, claim in enumerate(dependents, start=2):
         words = _normalize_claim_semantics(claim)
@@ -1753,7 +1881,7 @@ def validate_tarifname_draft(
     if draft.get("system_claim"):
         system_text = " ".join([
             str((draft.get("system_claim") or {}).get("preamble", "")),
-            *map(str, (draft.get("system_claim") or {}).get("elements") or []),
+            *_system_claim_all_texts(draft.get("system_claim") or {}),
         ])
         if len(software_terms_re.findall(system_text)) >= 2 and not hardware_anchor_re.search(system_text):
             raise ValueError("Yazılım/modül ağırlıklı bağımsız sistem istemi geniş bir donanımsal taşıyıcıya dayandırılmalıdır; örneğin elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla.")
@@ -1767,7 +1895,7 @@ def validate_tarifname_draft(
 
     execution_relation_re = re.compile(r"üzerinde\s+(?:çalışan|koşturulan|yürütülen)|içerisinde\s+(?:çalışan|koşturulan|yürütülen)|vasıtasıyla|tarafından\s+(?:çalıştırılan|yürütülen)|executed\s+on|running\s+on|executed\s+by", re.IGNORECASE)
     if draft.get("system_claim"):
-        system_text = " ".join([str((draft.get("system_claim") or {}).get("preamble", "")), *map(str, (draft.get("system_claim") or {}).get("elements") or [])])
+        system_text = " ".join([str((draft.get("system_claim") or {}).get("preamble", "")), *_system_claim_all_texts(draft.get("system_claim") or {})])
         if len(software_terms_re.findall(system_text)) >= 2 and not execution_relation_re.search(system_text):
             raise ValueError("Yazılım/modül ağırlıklı bağımsız sistem isteminde teknik taşıyıcı ile yazılım/modül arasında açık çalışma/koşturma ilişkisi bulunmalıdır; yalnız işlemci/donanım kelimesi yeterli değildir.")
 
@@ -1815,14 +1943,29 @@ def validate_tarifname_draft(
                 r"\b(?:bağlanması|oluşturulması|yapılması|edilmesi|sağlanması|gerçekleştirilmesi|belirlenmesi|üretilmesi|hesaplanması|yerleştirilmesi|konumlandırılması|aktarılması|işlenmesi|tespit edilmesi)\b",
                 re.IGNORECASE,
             )
-            for item in system_claim.get("elements") or []:
-                if action_noun_re.search(str(item)):
-                    raise ValueError(
-                        "Ürün/sistem/yapılanma ana isteminde işlem isimleştirmesi bulundu. ‘... bağlanması/oluşturulması’ yerine ‘... bağlanan/... yapısına sahip’ gibi unsur merkezli dil kullanın."
-                    )
-                if ";" in str(item):
-                    raise ValueError("Ana istem unsur maddelerinde noktalı virgül kullanılmamalıdır; standart ‘olup, özelliği;’ kalıbı dışındaki noktalı virgülleri kaldırın.")
+            for entry in _system_claim_entries(system_claim):
+                if isinstance(entry, dict):
+                    lead = str(entry.get("lead", "") or "").strip()
+                    subs = [str(x or "").strip() for x in (entry.get("subelements") or []) if str(x or "").strip()]
+                    if not re.search(r"(?:\bve\s*;|\band\s*:)$", lead, re.IGNORECASE):
+                        raise ValueError("Ortak taşıyıcı üst maddesi alt maddeleri başlatacak biçimde ‘... ve;’ (İngilizcede doğal iki nokta yapısı) ile bitmelidir.")
+                    if lead.count(";") > 1:
+                        raise ValueError("Ortak taşıyıcı üst maddesinde yalnız sondaki ‘ve;’ noktalı virgülüne izin verilir.")
+                    for sub in subs:
+                        if action_noun_re.search(sub):
+                            raise ValueError("Ürün/sistem/yapılanma ana isteminin ortak taşıyıcı alt maddesinde yöntem/işlem isimleştirmesi bulundu; unsur merkezli dil kullanın.")
+                        if ";" in sub:
+                            raise ValueError("Ortak taşıyıcı alt maddelerinde noktalı virgül kullanılmamalıdır.")
+                else:
+                    item = str(entry)
+                    if action_noun_re.search(item):
+                        raise ValueError(
+                            "Ürün/sistem/yapılanma ana isteminde işlem isimleştirmesi bulundu. ‘... bağlanması/oluşturulması’ yerine ‘... bağlanan/... yapısına sahip’ gibi unsur merkezli dil kullanın."
+                        )
+                    if ";" in item:
+                        raise ValueError("Ana istem unsur maddelerinde noktalı virgül kullanılmamalıdır; ortak-taşıyıcı hiyerarşik grubundaki ‘ve;’ istisnası dışında kaldırın.")
             _validate_system_claim_reference_order(system_claim, element_numbers)
+            _validate_reference_identity(draft)
 
         dependents = [str(x or "").strip() for x in (draft.get("dependent_system_claims") or []) if str(x or "").strip()]
         bad_ending_re = re.compile(r"(?:yapmasıdır|etmesidir|belirlemesidir|oluşturulmasıdır|bağlanmasıdır|sağlanmasıdır|gerçekleştirilmesidir|yapılmasıdır|edilmesidir)\.?$", re.IGNORECASE)
@@ -2217,16 +2360,28 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
 
     system_claim = draft.get("system_claim")
     if system_claim:
+        entries = _system_claim_entries(system_claim)
         if en:
             add_numbered_claim(doc, template, f"{system_claim.get('preamble','').rstrip(' ,;:')}, comprising:")
-            items = list(system_claim.get("elements") or [])
-            for idx, item in enumerate(items):
-                text = str(item).rstrip(".,;:") + ("." if idx == len(items) - 1 else ";")
-                add_template_list_item(doc, template, 86, text)
+            for idx, entry in enumerate(entries):
+                if isinstance(entry, dict):
+                    lead = str(entry.get("lead", "") or "").strip().rstrip(";:") + ":"
+                    add_template_list_item(doc, template, 86, lead)
+                    subs = [str(x or "").strip() for x in (entry.get("subelements") or []) if str(x or "").strip()]
+                    for sub in subs:
+                        add_nested_claim_list_item(doc, template, sub.rstrip(".,;:") + ";")
+                else:
+                    text = str(entry).rstrip(".,;:") + ("." if idx == len(entries) - 1 else ";")
+                    add_template_list_item(doc, template, 86, text)
         else:
             add_numbered_claim(doc, template, f"{system_claim.get('preamble','')} olup, özelliği;")
-            for item in system_claim.get("elements") or []:
-                add_template_list_item(doc, template, 86, item)
+            for entry in entries:
+                if isinstance(entry, dict):
+                    add_template_list_item(doc, template, 86, str(entry.get("lead", "") or ""))
+                    for sub in entry.get("subelements") or []:
+                        add_nested_claim_list_item(doc, template, str(sub))
+                else:
+                    add_template_list_item(doc, template, 86, str(entry))
             closing = add_text(doc, system_claim.get("closing", "içermesidir."))
             closing.paragraph_format.first_line_indent = Cm(0.5)
         add_blank(doc)
@@ -3674,10 +3829,11 @@ if work_type == "Tarifname oluşturma":
                 figure_reports: list[dict[str, Any]] = []
                 figure_unresolved: list[str] = []
                 if separate_figures:
-                    # Ayrıca yüklenen müşteri şekilleri birincil kaynaktır; yoksa BBF içindeki özgün görseller kullanılır.
-                    all_figure_assets: list[UploadedAsset] = list(provided_figure_assets)
-                    if not all_figure_assets:
-                        all_figure_assets = embedded_images
+                    # BBF içindeki kullanılabilir özgün teknik şekiller ZORUNLU kaynak şekildir.
+                    # Ayrıca yüklenen müşteri şekilleri bunlara eklenir; salt ayrı şekil yüklenmiş olması BBF şekillerini düşürmez.
+                    # Aynı görsel bayt düzeyinde yineleniyorsa aşağıdaki deduplikasyon tek kopya bırakır.
+                    all_figure_assets: list[UploadedAsset] = [*embedded_images, *provided_figure_assets]
+                    source_figure_inventory = [asset.name for asset in embedded_images]
                     # Aynı görselin birden fazla kez eklenmesini engelle.
                     deduplicated: list[UploadedAsset] = []
                     seen_images: set[int] = set()
@@ -3686,6 +3842,15 @@ if work_type == "Tarifname oluşturma":
                         if marker not in seen_images:
                             seen_images.add(marker)
                             deduplicated.append(asset)
+
+                    # Kaynak şekil kalite kapısı: BBF'den çıkarılan kullanılabilir teknik görseller
+                    # seçim listesinden sessizce düşürülemez.
+                    selected_source_names = {asset.name for asset in deduplicated}
+                    omitted_source_figures = [name for name in source_figure_inventory if name not in selected_source_names]
+                    if omitted_source_figures:
+                        figure_unresolved.append(
+                            "BBF içindeki zorunlu kaynak teknik şekiller seçimden düştü: " + ", ".join(omitted_source_figures)
+                        )
 
                     if not deduplicated:
                         figure_unresolved.append("Şekiller Word dosyası için kullanılabilir müşteri görseli bulunamadı.")
