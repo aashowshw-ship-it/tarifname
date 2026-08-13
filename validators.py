@@ -37,6 +37,14 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     if re.search(r"\(\s*(?:\d{1,3}|10\d{2})\s*\)", combined):
         findings.append({"level": "Hata", "message": "Referans numaralarından önceki bölümlerde parantezli numara bulundu."})
 
+    generic_names = {"diğer parçalar", "diğer parça", "diğer elemanlar", "çeşitli parçalar", "çeşitli elemanlar"}
+    for name in names:
+        if name.casefold() in generic_names:
+            findings.append({"level": "Hata", "message": "Belirsiz referans unsuru kullanılmış: ‘Diğer parçalar/Diğer elemanlar’. Teknik unsur net adlandırılmalı."})
+
+    if re.search(r"müşteri tarafından iletilen(?: teknik)? (?:çizim|belge)|müşteri bilgilerine göre|ek teknik belgede|iletilen teknik çizimde", combined, re.I):
+        findings.append({"level": "Hata", "message": "Kullanıcıya görünen tarifname metninde kaynak/iletilen belge atfı bulunmamalı."})
+
     for obj in draft.get("objectives") or []:
         ot = str(obj).strip()
         if re.search(r"(?:mak|mek)\.?$", ot, re.I):
@@ -106,8 +114,10 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
             findings.append({"level": "Hata", "message": "Sistem-yöntem ilişki tablosu tablo olarak bırakılmamalı; doğal teknik paragrafa dönüştürülmeli."})
 
     for claim in draft.get("dependent_system_claims") or []:
-        if re.search(r"(?:yapmasıdır|etmesidir|belirlemesidir)\.?$", claim.strip(), re.I):
-            findings.append({"level": "Hata", "message": "Sistem alt istemi yanlış fiil sonuyla bitiyor."})
+        if re.search(r"(?:yapmasıdır|etmesidir|belirlemesidir|oluşturulmasıdır|bağlanmasıdır|sağlanmasıdır|gerçekleştirilmesidir|yapılmasıdır|edilmesidir)\.?$", claim.strip(), re.I):
+            findings.append({"level": "Hata", "message": "Yöntem dışındaki alt istem yanlış eylem/işlem sonuyla bitiyor; ‘olmasıdır.’ veya ‘içermesidir.’ kullanılmalı."})
+        elif not re.search(r"(?:olmasıdır|içermesidir)\.?$", claim.strip(), re.I):
+            findings.append({"level": "Hata", "message": "Yöntem dışındaki alt istem ‘olmasıdır.’ veya ‘içermesidir.’ ile bitmeli."})
 
     for claim in [*(draft.get("dependent_system_claims") or []), *(draft.get("dependent_method_claims") or [])]:
         if re.search(r"önceki\s+istemlerden\s+herhangi\s+birine", str(claim), re.I):

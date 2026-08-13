@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-13.v1**
+Kural sürümü: **2026-08-13.v2**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -220,3 +220,35 @@ Güncelleme Word çıktısı yeni bir rapor türü değildir. Aynı Tip 3 Ön Ar
 - Her görünür parça zorla numaralandırılmaz. Yalnız tarifnamede gerçek referans işaretiyle tanımlı ve ilgili şekilde fiziksel karşılığı güvenilir biçimde görülebilen unsur işaretlenir. Görünür ve referanslı bir unsur numarasız bırakılmışsa güvenilir konum tespitinde eksik numara/ok eklenir; konum belirsizse uydurma işaretleme yapılmaz.
 - Mevcut referans numarası doğru fakat oku yanlış parçaya gidiyorsa şekil doğru kabul edilmez; güvenilir eşleştirmede yalnız referans numarası/kılavuz çizgisi düzeltilir. Müşteri geometrisi, kesit taraması, perspektif, parça biçimi ve teknik kurgu değiştirilemez.
 - Otomatik düzeltmeden sonra özgün ve revize görsel ikinci kez karşılaştırılır. Teknik geometri korunmamışsa, yanlış/eksik/fazla referans kalmışsa veya doğrulama güvenilir değilse revize görsel kullanılmaz ve şekiller Word çıktısı oluşturulmaz.
+
+
+## 2026-08-13.v2 — Tek Tuş Tarifname Kalite Kapısı (Bağlayıcı)
+
+Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsiyesi değil, üretim öncesi kalite kapısının parçasıdır:
+
+1. Teknik gerçeklik yalnız BBF ve açık teknik ek kaynaklardan alınır; kullanıcıya görünen metinde BBF/müşteri çizimi/ek belge atfı yapılmaz.
+2. BBF/BOM referansları kaynak envanteri olarak çıkarılır; “Diğer parçalar/Diğer elemanlar” gibi belirsiz üst başlıklar nihai patent unsuru olmaz.
+3. Referans yalnız gerçek ve açık teknik unsura verilir; yapıştırıcı, malzeme, kaplama gibi özellikler gerektiğinde numarasız kullanılabilir.
+4. Unsur adı gereksiz özel uygulamaya kilitlenmez; kaynak destekliyorsa O-ring örneği “Sızdırmazlık elemanı” gibi genel teknik unsur altında açıklanır.
+5. Ana istemde ilk/ana unsur henüz tanımlanmamış sonraki referanslar kullanılmadan tanımlanır; yeni unsurlar teknik sırayla daha önce tanımlanan unsurlara bağlanır.
+6. Kural olarak her ana istem bullet'ı tek yeni referanslı unsur tanımlar.
+7. Sistem/cihaz/ürün/tertibat/yapılanma aynı ürün istem dil ailesidir. Yöntem dışındaki istemlerde işlem isimleştirmesi kullanılmaz.
+8. “somun flanşının gövdeye bağlanması” değil “gövdeye bağlanan somun flanşı” gibi unsur merkezli dil kullanılır.
+9. Yöntem dışındaki bağımlı istemler “olmasıdır.” veya “içermesidir.” ile biter.
+10. Ana istemde uzman “nasıl?” sorusuna cevap bulmalıdır: zorunlu unsurun temel ilişkisi ve gerekli işlevi kaynakta dayanaklı biçimde görünür olmalıdır.
+11. Unsur yalnız konumuyla bırakılmaz; gerekli ve kaynakta destekli teknik işlevi de açıklanır.
+12. Aynı olmayan fiziksel unsurlar “ve/veya” ile tek unsur gibi bulanıklaştırılmaz; gerçek alternatifler açık kurulur.
+13. Ana istem buluşun farklılaştırıcı zorunlu çekirdeğini taşımalıdır.
+14. “vidalanan/kaynaklanan/yapıştırılan” gibi daraltıcı mekanizmalar ancak zorunlu teknik çekirdek veya farklılaştırıcı mekanizmaysa ana istemde tutulur.
+15. Ana istemde aynı özellik farklı bullet'larda tekrar edilmez.
+16. Bağımlı istem semantik tekrar yapamaz; her alt istem gerçek yeni sınırlama/geri çekilme pozisyonu sağlar.
+17. İstem silme/birleştirme sonrası bağımlılık numaraları yeniden doğrulanır.
+18. Örnek ölçü, çap, diş standardı ve ebatlar zorunlu değilse istemlere taşınmaz; detaylı açıklamada örnek olarak korunur ve kaynak destekliyorsa farklı ölçülere uygulanabilirlik açıklanır.
+19. Noktalı virgül yalnız standart “olup, özelliği;” kalıbında kullanılır.
+20. Özet tek paragraf ve tek cümledir; özet içindeki buluş adı kalın ve ortalıdır.
+21. `Tarifname_181176_template.docx` paragraf/boşluk/numaralandırma/page-break bakımından bağlayıcıdır.
+22. Şekil açıklamaları başlıktan sonraki şablon boşluğu korunarak aralarında boş paragraf olmadan sıralanır; son şekil açıklamasından sonra şablon boşluğu ve “Çizimlerin...” paragrafı gelir.
+23. İstem numaraları gerçek Word otomatik numaralandırmasıyla oluşturulur; istemler arası boşluk şablondan korunur.
+24. Üretim akışı taslak → AI kalite turu → yerel kalite kapısı şeklindedir. Yerel kalite kapısı hata verirse aynı kullanıcı tıklaması içinde hata modele geri beslenir ve en fazla iki ek otomatik düzeltme turu yapılır.
+25. Doğrulama geçmeden Word oluşturulmaz. Word üretildikten sonra başlık, şekil açıklaması boşlukları, referans geçişi, istem otomatik numaralandırması, ÖZET page-break'i ve kalın özet başlığı programatik olarak doğrulanır. LibreOffice ile PDF render smoke-test geçmeden dosya sunulmaz.
+26. Şekil referans/ok kuralları v5.4.11'deki haliyle aynen korunur; bu sürüm şekil kuralını değiştirmez.

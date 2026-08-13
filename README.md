@@ -1,10 +1,10 @@
-# Patent Atölyesi v5.4.11
+# Patent Atölyesi v5.4.12
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 13.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.4.11-figure-reference-fix` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `Patent_Atolyesi_v5.4.12_GitHub` klasörünü ikinci bir alt klasör olarak yüklemeyin.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -30,7 +30,7 @@ GitHub web arayüzünde **Add file → Upload files** ile bütün dosyaları yü
 `render.yaml` varsayılan model değerini `gpt-5.6` olarak taşır. Hesabınızda farklı model adı kullanılıyorsa Render Environment ekranından değiştirin.
 
 
-## Şekil referans doğrulama ve otomatik düzeltme – v5.4.11
+## Şekil referans doğrulama ve otomatik düzeltme – v5.4.12
 
 Tarifname oluştururken ayrı `Şekiller` Word çıktısı istenmişse şekiller artık Word'e doğrudan aktarılmadan önce nihai tarifname ile çapraz kontrol edilir.
 
@@ -139,7 +139,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-13.v1`
+Kural sürümü: `2026-08-13.v2`
 
 ## Yerel çalıştırma
 
@@ -163,3 +163,8 @@ Tarifname oluşturma sırasında bağımsız istemler yalnız hedeflenen fonksiy
 
 ### Şekiller - tarifname oluşturma
 Şekil çıktısı müşteri görsellerini esas alır. Görseller `ŞEKİL 1`, `ŞEKİL 2` şeklinde sıralanır, başlık görselin altında bulunur ve her sayfanın üstünde `sayfa / toplam sayfa` göstergesi kullanılır. Sayfa sayısı sabit değildir. Şekildeki gerçek referans işaretleri tarifnamedeki `REFERANS NUMARALARI` ile senkron olmak zorundadır. Ayrıntılı şekil kuralları `rules.py` içinde arka planda uygulanır.
+
+
+## v5.4.12 — Tek tuş tarifname kalite kapısı
+
+Bu sürüm mevcut tarifname, görüş, Tip 3 ve araştırma güncelleme akışlarını korur. Tarifname oluşturma tarafına bağlayıcı kalite kapısı eklenmiştir. Ana istemde henüz tanımlanmamış referans kullanımı, belirsiz “Diğer parçalar” unsuru, ürün/yapılanma isteminde yöntem dili, gereksiz kapsam daraltma, bağımlı istem tekrarı ve örnek ölçülerin isteme taşınması kalite turunda özellikle denetlenir. Taslak yerel doğrulamadan geçmezse aynı tıklama içinde doğrulama hatası modele geri beslenerek en fazla iki ek otomatik düzeltme yapılır. Word üretiminden sonra şablon paragraf yapısı ve LibreOffice render smoke-test doğrulanır. v5.4.11 şekil referans/ok kuralları aynen korunmuştur.

@@ -911,6 +911,17 @@ TARIFNAME_DRAFT_SCHEMA = r"""
     "experimental_results_complete":true,
     "alternatives_complete":true,
     "claims_consistent":true,
+    "reference_names_clear":true,
+    "reference_order_valid":true,
+    "how_test_passed":true,
+    "core_difference_present":true,
+    "scope_not_overlimited":true,
+    "dependent_claims_non_redundant":true,
+    "dependent_claim_dependencies_valid":true,
+    "example_dimensions_not_claim_limited":true,
+    "product_claim_language_valid":true,
+    "abstract_single_paragraph_sentence":true,
+    "source_attribution_removed":true,
     "notes":[""]
   }
 }
@@ -1036,6 +1047,20 @@ KRİTİK TALİMATLAR:
 - Bağımlı istemlerde Türkçe çıktıda “Önceki istemlerden herhangi birine” kalıbını, İngilizce çıktıda belirsiz “any preceding claim” zincirlerini varsayılan olarak kullanma; ek özellik hangi ana unsur veya işlem adımının ayrıntısıysa doğrudan onu tanımlayan gerekli isteme bağla.
 - objectives alanında Türkçe çıktı için amaç gövdesi “... sağlamaktır.” gibi tam yüklemle bitsin. İngilizce çıktı için her objective baştan sona tam bir cümle olarak yazılsın, örneğin “The main objective of the invention is to ... .”
 - Müşteri şekillerini teknik kaynak olarak aynen esas al. Görseldeki gerçek referans işaretlerini sayısal unsur, yöntem adımı, sembolik referans ve geçici şekil numarası olarak ayır. Gömülü grafik/ısı haritası/diyagram üzerindeki teknik sonuçları tamlık kontrolünde dikkate al. Geçici şekil numarasını yeni unsur referansı yapma. Şekildeki mevcut ok/numarayı otomatik olarak doğru kabul etme; nihai şekil aşamasında referans → unsur adı → detaylı açıklamadaki teknik tanım → fiziksel karşılık eşleştirmesi yapılacaktır. Belirli alt parçaya ait referansı tüm tertibat olarak yorumlama ve her görünür parçayı zorla numaralandırma.
+- BBF referans/BOM tablosunu kaynak envanteri olarak çıkar; fakat “Diğer parçalar/Diğer elemanlar” gibi belirsiz üst başlıkları nihai patent unsuru yapma. Altında açıkça tanımlanan gerçek parçaları teknik adlarıyla kullan.
+- Sistem şeması yalnız “sistem” sözcüğüne özgü değildir; cihaz, ürün, tertibat, düzenek ve yapılanma istemleri de aynı ürün istem dil kurallarına tabidir. Yöntem dışındaki bağımlı istemler “olmasıdır.” veya “içermesidir.” ile bitmelidir.
+- Ana istemde bir referanslı unsuru ilk kez tanımlarken henüz tanımlanmamış sonraki referanslı unsurları kullanma. İlk/ana taşıyıcı unsuru kendi yapısı ve işleviyle tanımla; sonra diğer unsurları sırayla daha önce tanımlanmış unsurlara bağla. Kural olarak her claim bullet yalnız bir yeni referanslı unsur tanımlasın.
+- Ürün/yapılanma isteminde “somun flanşının gövdeye bağlanması”, “parçanın oluşturulması” gibi işlem isimleştirmesi kullanma; “gövdeye bağlanan somun flanşı”, “... yapısına sahip parça” gibi unsur merkezli dil kullan.
+- Bir unsur yalnız nerede bulunduğuyla bırakılmasın; kaynak destekliyorsa teknik işlevi de yazılsın. Örneğin sızdırmazlık elemanının bağlantı bölgesinde akışkan sızdırmazlığını sağladığı belirtilsin.
+- Aynı olmayan fiziksel unsurları “ve/veya” ile tek unsur gibi birleştirme. Gerçek alternatifleri teknik kimlikleri ve işlevleriyle açık ayrı maddelerde tanımla.
+- “vidalanan/kaynaklanan/yapıştırılan” ve belirli çap/diş/ölçü gibi daraltıcı ifadeleri yalnız zorunlu teknik çekirdek veya farklılaştırıcı mekanizma ise ana istemde tut. Değilse kaynakla uyumlu daha geniş bağlantı dili kullan.
+- Ana istemde tanımlanan bir özelliği başka bullet'ta tekrar etme. Sonraki unsur yalnız kendi ilişkisi ve işleviyle tanımlansın.
+- Bağımlı istemleri semantik olarak ana istemle karşılaştır; aynı teknik özelliği farklı kelimelerle tekrar eden bağımlı istem üretme. Bir istem silinir/değişirse sonraki bağımlılık numaralarını yeniden kur.
+- Örnek ölçü/çap/diş değerlerini zorunlu değilse istemlere taşıma; detaylı açıklamada örnek yapılanma olarak koru ve kaynak destekliyorsa farklı ölçülere uygulanabilirliği açıkla.
+- Referans adı koruma kapsamını gereksiz daraltmasın: özel bir örnek (örn. O-ring) daha genel kaynak destekli teknik işlevin gerçekleştirmesiyse unsur adını genel teknik kavramla (örn. sızdırmazlık elemanı) kur; özel örneği detaylı açıklamada parantez içinde ver.
+- Her teknik ayrıntıya zorla referans verme; yapıştırıcı/malzeme/kaplama gibi özellikler ayrı referans gerektirmiyorsa numarasız olarak detaylı açıklama ve uygun bağımlı istemde kullanılabilir.
+- Kullanıcıya görünen tarifnamede “BBF’de”, “müşteri tarafından iletilen teknik çizimde”, “müşteri bilgilerine göre”, “ek teknik belgede” gibi kaynak atıfları bulunmasın.
+- Türkçe özet tek paragraf ve tek cümle olsun; referans numarası kullanma.
 
 JSON dışında hiçbir şey yazma.
 ÇIKTI ŞEMASI:
@@ -1076,6 +1101,7 @@ def tarifname_quality_prompt(
     claim_mode: str,
     literature: list[dict[str, Any]],
     language: str = "Türkçe",
+    validation_feedback: str = "",
 ) -> str:
     language_instruction = (
         "Çıktı dili İngilizcedir. Tüm bölüm metinleri, istemler ve özet İngilizce kalmalı; TECHNICAL FIELD ve İngilizce claim kalıplarını kontrol et."
@@ -1086,6 +1112,10 @@ def tarifname_quality_prompt(
 {language_instruction}
 Aşağıdaki tarifname taslağını kaynaklarla SATIR SATIR karşılaştır ve eksik/yanlış hususları düzelterek tam JSON'u yeniden üret.
 Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi geri eklenmelidir.
+
+ÖNCEKİ OTOMATİK DOĞRULAMA GERİ BİLDİRİMİ (varsa):
+{validation_feedback or "Yok"}
+Bu geri bildirimde hata varsa JSON'u buna göre düzelt; yalnız hatayı yamamakla kalma, ilgili kuralın teknik mantığını bütün taslakta yeniden kontrol et.
 
 ZORUNLU KONTROL LİSTESİ:
 1. BBF'deki önceki teknik anlatımının tamamı korunmuş mu?
@@ -1120,6 +1150,24 @@ ZORUNLU KONTROL LİSTESİ:
 30. Şekildeki mevcut referans numarası/okun fiziksel hedefi, referans listesi ve detaylı açıklamadaki unsur tanımıyla gerçekten uyuşuyor mu? Mevcut işaret sırf şeklin üzerinde bulunduğu için doğru kabul edilmemelidir.
 31. Belirli bir alt parçaya ait referans genel tertibatı gösteriyor mu? Örneğin `9 = Travers` ise referans yalnız traversin fiziksel karşılığına yönelmelidir.
 32. İlgili şekilde görünür ve tarifnamede gerçek referansla tanımlı bir unsur numarasızsa bu durum figure/reference audit notunda belirlenmiş mi? Görünmeyen veya konumu belirsiz unsurlar için uydurma işaretleme yapılmamalıdır.
+33. BBF/BOM tablosunda “Diğer parçalar/Diğer elemanlar” gibi belirsiz satır nihai referans unsuru yapılmış mı? Yapılmışsa gerçek teknik parçalara ayır veya kaynakta açık karşılığı yoksa referans listesinden çıkar; teknik bilgiyi kaybetme.
+34. Ana istemde bir referanslı unsur ilk kez tanımlanırken henüz tanımlanmamış daha sonraki referanslı unsur kullanılmış mı? Kural olarak her bullet tek yeni referanslı unsur tanımlıyor mu ve tanım sırası ana taşıyıcıdan bağlı unsurlara doğru mu?
+35. Ürün/sistem/cihaz/tertibat/yapılanma istemlerinde “... bağlanması”, “... oluşturulması”, “... yapılması”, “... sağlanması” gibi yöntem/işlem isimleştirmesi var mı? Varsa unsur merkezli “... bağlanan ...”, “... yapısına sahip ...”, “... sağlayan ...” diline dönüştür.
+36. Yöntem dışındaki tüm bağımlı istemler “olmasıdır.” veya “içermesidir.” mantığıyla mı bitiyor?
+37. Aynı olmayan iki fiziksel unsur “ve/veya” ile tek unsur gibi bulanıklaştırılmış mı? Varsa teknik kimliklerini ve alternatif işlevlerini ayrı açık unsurlar olarak yaz.
+38. Her zorunlu unsur yalnız konumla mı tanımlanmış, yoksa kaynak desteklediği ölçüde teknik işlevi de açıklanmış mı? Özellikle sızdırmazlık, kilitleme, ölçme, işleme gibi işlevsel unsurlarda “ne yapıyor?” cevabı görünür mü?
+39. Ana istem buluşun mevcut tekniğe göre zorunlu/farklılaştırıcı çekirdeğini taşıyor mu? Genişletme uğruna esas teknik fark kaybolmuş mu?
+40. Ana istemde “vidalanan/kaynaklanan/yapıştırılan” veya belirli çap/diş/ölçü gibi zorunlu olmayan kapsam daraltıcı ifade var mı? Kaynak bunları vazgeçilmez kılmıyorsa daha geniş ama dayanaklı dile dönüştür.
+41. Ana istemin farklı maddelerinde aynı bağlantı/işlev özelliği gereksiz tekrar edilmiş mi? Sonraki maddeyi yalnız kendi unsur ilişkisi ve işleviyle sınırla.
+42. Her bağımlı istem semantik olarak ana/üst isteme yeni bir teknik sınırlama ekliyor mu? Aynı özelliği farklı kelimelerle tekrar eden istemleri sil veya gerçek daraltıcı özelliğe dönüştür.
+43. Bir istem silinmiş/değişmişse sonraki bağımlılık numaraları doğru isteme mi bağlı? Geçersiz bağımlılık kalmış mı?
+44. Örnek mm/inç/çap/diş/ebat değerleri zorunlu teknik sınır olmadığı halde istemlere taşınmış mı? Taşınmışsa detaylı açıklamadaki örnek yapılanmaya bırak ve kaynak destekliyorsa genel boyutlandırılabilirlik dili kullan.
+45. Referans unsur adı gereksiz biçimde özel örneğe kilitlenmiş mi? Kaynak destekliyorsa “O-ring” gibi özel gerçekleştirmeyi “sızdırmazlık elemanı” gibi genel teknik unsur altında açıklamaya taşı.
+46. Tarifnamede her ayrıntıya zorla referans verilmiş mi? Yapıştırıcı/malzeme/kaplama gibi numarasız kalabilecek teknik özellikleri gereksiz referans unsuruna dönüştürme.
+47. Kullanıcıya görünen metinde “müşteri tarafından iletilen teknik çizimde”, “müşteri bilgilerine göre”, “ek teknik belgede” gibi kaynak-atıf dili kalmış mı? Kalmışsa doğrudan teknik buluş anlatımına dönüştür.
+48. Türkçe özet tek paragraf ve tek cümle mi? Buluş adı özet bölümünde ayrı başlık olarak kalacak, abstract alanına ikinci paragraf/cümle eklenmeyecek.
+49. İstemlerde standart “olup, özelliği;” dışında noktalı virgül var mı? Varsa virgül veya noktayla düzelt.
+50. Son kalite kapısında şu soruların tamamı EVET mi: kaynak tamlığı, açık referans adları, unsur tanımlama sırası, uzman-nasıl testi, farklılaştırıcı çekirdek, gereksiz kapsam daraltma yokluğu, bağımlı istem tekrarının olmaması, geçerli bağımlılık, örnek ölçülerin istemden uzak tutulması, ürün istem dili, referans senkronizasyonu ve tek paragraf/tek cümle özet?
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
 {TARIFNAME_DRAFT_SCHEMA}
@@ -1450,6 +1498,74 @@ def apply_tarifname_house_style(
     return draft
 
 
+
+def _claim_refs(text: str) -> list[str]:
+    """Parantezli referans işaretlerini görünme sırasıyla döndür."""
+    return re.findall(r"\(\s*([A-Za-zÇĞİÖŞÜçğıöşü0-9_\-]+)\s*\)", str(text or ""))
+
+
+def _normalize_claim_semantics(text: str) -> set[str]:
+    """Bağımlı istem tekrarını kaba fakat deterministik biçimde yakalamak için içerik sözcükleri."""
+    txt = str(text or "").casefold()
+    txt = re.sub(r"^\s*istem\s+\d+(?:\s*(?:veya|ve|,)\s*\d+)*['’]?e\s+uygun\s+[^;]+;", " ", txt)
+    txt = re.sub(r"\(\s*[a-z0-9_\-]+\s*\)", " ", txt)
+    txt = re.sub(r"[^a-zçğıöşü0-9]+", " ", txt)
+    stop = {"istem", "uygun", "olup", "özelliği", "bir", "ve", "veya", "ile", "olan", "olarak", "söz", "konusu", "şekilde", "şeklinde"}
+    return {w for w in txt.split() if len(w) > 2 and w not in stop}
+
+
+def _validate_system_claim_reference_order(system_claim: dict[str, Any], element_numbers: list[str]) -> None:
+    """Her bullet'ın kural olarak tek yeni referans unsuru tanımlamasını ve ileri referans kullanmamasını zorlar."""
+    if not system_claim:
+        return
+    valid = set(element_numbers)
+    seen = set(_claim_refs(system_claim.get("preamble", ""))) & valid
+    for idx, item in enumerate(system_claim.get("elements") or [], start=1):
+        refs = [r for r in _claim_refs(str(item)) if r in valid]
+        new_refs = []
+        for r in refs:
+            if r not in seen and r not in new_refs:
+                new_refs.append(r)
+        if len(new_refs) > 1:
+            raise ValueError(
+                f"Ana istemin {idx}. unsur maddesi birden fazla yeni referansı ({', '.join(new_refs)}) ilk kez birlikte tanımlıyor. "
+                "Ana taşıyıcı unsuru sonraki unsurları kullanmadan tanımlayın; yeni referanslı unsurları teknik sırayla ayrı maddelerde kurun."
+            )
+        seen.update(new_refs)
+
+
+def _validate_dependent_claim_semantic_repetition(system_claim: dict[str, Any], dependents: list[str]) -> None:
+    """Birebir/çok yakın teknik tekrarları yerel kalite kapısında yakalar; nihai semantik kontrol AI kalite turunda da yapılır."""
+    base = _normalize_claim_semantics(" ".join([str(system_claim.get("preamble", "")), *map(str, system_claim.get("elements") or [])]))
+    previous_sets: list[set[str]] = [base]
+    for idx, claim in enumerate(dependents, start=2):
+        words = _normalize_claim_semantics(claim)
+        if not words:
+            continue
+        for prior in previous_sets:
+            if len(words) >= 4:
+                overlap = len(words & prior) / max(1, len(words))
+                if overlap >= 0.92:
+                    raise ValueError(
+                        f"İstem {idx} üst istemde zaten bulunan teknik özelliği anlam olarak tekrar ediyor. "
+                        "Bağımlı istem gerçek bir ek teknik sınırlama getirmelidir."
+                    )
+        previous_sets.append(words)
+
+
+def _validate_abstract_shape(abstract: str, language: str) -> None:
+    if _english_spec(language):
+        return
+    text = str(abstract or "").strip()
+    if not text:
+        raise ValueError("ÖZET metni boş olamaz.")
+    if re.search(r"\n\s*\n", text):
+        raise ValueError("ÖZET tek paragraf olmalıdır.")
+    endings = re.findall(r"[.!?](?=\s|$)", text)
+    if len(endings) > 1:
+        raise ValueError("ÖZET tek paragraf ve tek cümle olmalıdır; ayrı cümlelere bölünmemelidir.")
+
+
 def validate_tarifname_draft(
     draft: dict[str, Any],
     claim_mode: str,
@@ -1551,9 +1667,58 @@ def validate_tarifname_draft(
         if len(software_terms_re.findall(method_text)) >= 2 and not hardware_anchor_re.search(method_text):
             raise ValueError("Yazılım/algoritma ağırlıklı bağımsız yöntem istemi elektronik cihaz/işlemci gibi geniş bir donanımsal taşıyıcıya dayandırılmalıdır.")
 
+    # Tek-tuş istem kalite kapısı: ürün/sistem/yapılanma dili, unsur sırası, belirsiz referans ve özet.
+    if not _english_spec(language):
+        generic_names = {"diğer parçalar", "diğer parça", "diğer elemanlar", "çeşitli parçalar", "çeşitli elemanlar"}
+        for element in draft.get("elements") or []:
+            if str(element.get("name", "") or "").strip().casefold() in generic_names:
+                raise ValueError("REFERANS NUMARALARI bölümünde ‘Diğer parçalar/Diğer elemanlar’ gibi belirsiz bir unsur adı kullanılamaz; teknik unsur net adlandırılmalıdır.")
+
+        system_claim = draft.get("system_claim") or {}
+        if system_claim:
+            if str(system_claim.get("closing", "") or "").strip().casefold().rstrip(".") != "içermesidir":
+                raise ValueError("Yöntem dışındaki bağımsız ürün/sistem/yapılanma istemi ‘içermesidir.’ ile kapanmalıdır.")
+            action_noun_re = re.compile(
+                r"\b(?:bağlanması|oluşturulması|yapılması|edilmesi|sağlanması|gerçekleştirilmesi|belirlenmesi|üretilmesi|hesaplanması|yerleştirilmesi|konumlandırılması|aktarılması|işlenmesi|tespit edilmesi)\b",
+                re.IGNORECASE,
+            )
+            for item in system_claim.get("elements") or []:
+                if action_noun_re.search(str(item)):
+                    raise ValueError(
+                        "Ürün/sistem/yapılanma ana isteminde işlem isimleştirmesi bulundu. ‘... bağlanması/oluşturulması’ yerine ‘... bağlanan/... yapısına sahip’ gibi unsur merkezli dil kullanın."
+                    )
+                if ";" in str(item):
+                    raise ValueError("Ana istem unsur maddelerinde noktalı virgül kullanılmamalıdır; standart ‘olup, özelliği;’ kalıbı dışındaki noktalı virgülleri kaldırın.")
+            _validate_system_claim_reference_order(system_claim, element_numbers)
+
+        dependents = [str(x or "").strip() for x in (draft.get("dependent_system_claims") or []) if str(x or "").strip()]
+        bad_ending_re = re.compile(r"(?:yapmasıdır|etmesidir|belirlemesidir|oluşturulmasıdır|bağlanmasıdır|sağlanmasıdır|gerçekleştirilmesidir|yapılmasıdır|edilmesidir)\.?$", re.IGNORECASE)
+        for idx, claim in enumerate(dependents, start=2):
+            if bad_ending_re.search(claim):
+                raise ValueError(f"İstem {idx} ürün/sistem/yapılanma istem diline aykırı eylem sonucu ile bitiyor; ‘olmasıdır.’ veya ‘içermesidir.’ kullanın.")
+            if not re.search(r"(?:olmasıdır|içermesidir)\.?$", claim, re.IGNORECASE):
+                raise ValueError(f"İstem {idx} yöntem dışı bağımlı istemdir ve ‘olmasıdır.’ veya ‘içermesidir.’ ile bitmelidir.")
+            semicolons = claim.count(";")
+            if semicolons > 1 or (semicolons == 1 and not re.search(r"olup,\s*özelliği;", claim, re.IGNORECASE)):
+                raise ValueError(f"İstem {idx} içinde standart ‘olup, özelliği;’ kalıbı dışında noktalı virgül kullanılmış.")
+        _validate_dependent_claim_semantic_repetition(system_claim, dependents)
+        _validate_abstract_shape(str(draft.get("abstract", "") or ""), language)
+
+    audit = draft.get("coverage_audit") or {}
+    mandatory_audit_flags = [
+        "prior_art_complete", "reference_table_complete", "claims_consistent",
+        "reference_names_clear", "reference_order_valid", "how_test_passed",
+        "core_difference_present", "scope_not_overlimited", "dependent_claims_non_redundant",
+        "dependent_claim_dependencies_valid", "example_dimensions_not_claim_limited",
+        "product_claim_language_valid", "abstract_single_paragraph_sentence", "source_attribution_removed",
+    ]
+    failed_flags = [key for key in mandatory_audit_flags if audit.get(key) is not True]
+    if failed_flags:
+        raise ValueError("Tarifname kalite denetiminde başarısız alanlar: " + ", ".join(failed_flags))
+
     user_facing_text = json.dumps(draft, ensure_ascii=False)
-    if re.search(r"\bBBF\b|buluş bildirim formu|invention disclosure form", user_facing_text, flags=re.IGNORECASE):
-        raise ValueError("Tarifname taslağında kullanıcıya görünmemesi gereken kaynak form atfı bulundu.")
+    if re.search(r"\bBBF\b|buluş bildirim formu|invention disclosure form|müşteri tarafından iletilen(?: teknik)? (?:çizim|belge)|müşteri bilgilerine göre|ek teknik belgede|iletilen teknik çizimde", user_facing_text, flags=re.IGNORECASE):
+        raise ValueError("Tarifname taslağında kullanıcıya görünmemesi gereken kaynak/iletilen belge atfı bulundu; teknik bilgi doğrudan buluş anlatımı olarak yazılmalıdır.")
     if not _english_spec(language) and re.search(r"\bmevcut buluş\b", user_facing_text, flags=re.IGNORECASE):
         raise ValueError('Tarifname taslağında “mevcut buluş” ifadesi bulundu; “Buluş” dili kullanılmalıdır.')
     if claim_mode == "Sistem ve yöntem":
@@ -1591,6 +1756,104 @@ def _reference_sentence_case(name: str) -> str:
         return word.lower()
 
     return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", repl, text)
+
+
+
+def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], language: str = "Türkçe") -> None:
+    """Şablonun kullanıcı tarafından bağlayıcı kabul edilen Word yapılarını deterministik olarak denetler."""
+    doc = Document(io.BytesIO(data))
+    paras = doc.paragraphs
+    texts = [p.text.strip() for p in paras]
+    en = _english_spec(language)
+    claims_label = "CLAIMS" if en else "İSTEMLER"
+    abstract_label = "ABSTRACT" if en else "ÖZET"
+    figures_label = "BRIEF DESCRIPTION OF THE FIGURES" if en else "ŞEKİLLERİN KISA AÇIKLAMASI"
+    refs_label = "REFERENCE NUMERALS" if en else "REFERANS NUMARALARI"
+
+    def index_of(label: str) -> int:
+        try:
+            return texts.index(label)
+        except ValueError as exc:
+            raise ValueError(f"Word şablon kontrolü: {label} başlığı bulunamadı.") from exc
+
+    ci, ai = index_of(claims_label), index_of(abstract_label)
+    fi, ri = index_of(figures_label), index_of(refs_label)
+    if paras[ci].alignment != WD_ALIGN_PARAGRAPH.CENTER:
+        raise ValueError("Word şablon kontrolü: İSTEMLER/CLAIMS başlığı ortalı değil.")
+    if paras[ai].alignment != WD_ALIGN_PARAGRAPH.CENTER:
+        raise ValueError("Word şablon kontrolü: ÖZET/ABSTRACT başlığı ortalı değil.")
+    if paras[ai].paragraph_format.page_break_before is not True:
+        raise ValueError("Word şablon kontrolü: ÖZET/ABSTRACT yeni sayfadan başlamıyor.")
+    if ci + 1 >= len(paras) or texts[ci + 1] != "":
+        raise ValueError("Word şablon kontrolü: İSTEMLER başlığından sonraki şablon boş paragrafı korunmamış.")
+    if fi + 1 >= len(paras) or texts[fi + 1] != "":
+        raise ValueError("Word şablon kontrolü: ŞEKİLLERİN KISA AÇIKLAMASI başlığından sonraki boş paragraf korunmamış.")
+
+    figure_descs = [str(x or "").strip() for x in (draft.get("figure_descriptions") or []) if str(x or "").strip()]
+    if figure_descs:
+        # Şekil açıklamaları kendi aralarında boşluksuz olmalı; sonrasında bir boş paragraf gelmeli.
+        start = fi + 2
+        for offset, expected in enumerate(figure_descs):
+            if start + offset >= len(texts) or texts[start + offset] != expected:
+                raise ValueError("Word şablon kontrolü: Şekil açıklamaları şablondaki ardışık düzende değil.")
+        if start + len(figure_descs) >= len(texts) or texts[start + len(figure_descs)] != "":
+            raise ValueError("Word şablon kontrolü: Son şekil açıklamasından sonraki boş paragraf eksik.")
+    if ri <= fi:
+        raise ValueError("Word şablon kontrolü: REFERANS NUMARALARI, şekil açıklamalarından sonra gelmelidir.")
+
+    # Özet buluş adı başlığı: ÖZET + boş paragraf + kalın/ortalı başlık.
+    title_idx = ai + 2
+    if title_idx >= len(paras) or texts[title_idx] != str(draft.get("title", "") or "").strip():
+        raise ValueError("Word şablon kontrolü: Özet içindeki buluş başlığı beklenen yerde değil.")
+    title_p = paras[title_idx]
+    if title_p.alignment != WD_ALIGN_PARAGRAPH.CENTER or not title_p.runs or not all(r.bold for r in title_p.runs if r.text):
+        raise ValueError("Word şablon kontrolü: Özet içindeki buluş başlığı kalın ve ortalı olmalıdır.")
+
+    # İstem paragrafları gerçek Word numaralandırmasıyla gelmeli.
+    numbered_count = 0
+    for p in paras[ci + 1:ai]:
+        ppr = p._p.pPr
+        if ppr is None:
+            continue
+        numpr = ppr.find(qn("w:numPr"))
+        if numpr is None:
+            continue
+        numid = numpr.find(qn("w:numId"))
+        if numid is not None and numid.get(qn("w:val")) == "2":
+            numbered_count += 1
+    expected_claims = (1 if draft.get("system_claim") else 0) + len(draft.get("dependent_system_claims") or []) + (1 if draft.get("method_claim") else 0) + len(draft.get("dependent_method_claims") or [])
+    if numbered_count < expected_claims:
+        raise ValueError("Word şablon kontrolü: İstemlerin tamamında gerçek Word otomatik numaralandırması uygulanmamış.")
+
+
+def render_tarifname_docx_smoke_test(data: bytes) -> None:
+    """Render ortamında DOCX'in LibreOffice ile PDF'e sorunsuz çevrilebildiğini doğrular."""
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        docx_path = td_path / "tarifname_qa.docx"
+        docx_path.write_bytes(data)
+        proc = subprocess.run(
+            ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", str(td_path), str(docx_path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=90,
+            check=False,
+        )
+        pdf_path = td_path / "tarifname_qa.pdf"
+        if proc.returncode != 0 or not pdf_path.exists() or pdf_path.stat().st_size == 0:
+            detail = (proc.stderr or proc.stdout).decode("utf-8", errors="ignore")[-500:]
+            raise ValueError("Word render kalite kontrolü başarısız oldu; dosya kullanıcıya sunulmadı. " + detail)
+        if fitz is not None:
+            pdf = fitz.open(pdf_path)
+            try:
+                if pdf.page_count < 1:
+                    raise ValueError("Word render kalite kontrolü: PDF sayfası oluşmadı.")
+                for page in pdf:
+                    rect = page.rect
+                    if rect.width <= 0 or rect.height <= 0:
+                        raise ValueError("Word render kalite kontrolü: geçersiz sayfa geometrisi bulundu.")
+            finally:
+                pdf.close()
 
 
 def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> bytes:
@@ -3166,7 +3429,7 @@ if work_type == "Tarifname oluşturma":
                     images=model_images,
                 )
 
-                progress.progress(73, text="BBF ile tamlık ve istem tutarlılığı ikinci kez kontrol ediliyor...")
+                progress.progress(73, text="BBF ile tamlık, istem mantığı ve şablon kuralları ikinci kez kontrol ediliyor...")
                 draft = ask_json(
                     tarifname_quality_prompt(
                         source,
@@ -3180,21 +3443,40 @@ if work_type == "Tarifname oluşturma":
                     images=model_images,
                 )
 
-                if mode == "Yalnızca sistem":
-                    draft["method_claim"] = None
-                    draft["dependent_method_claims"] = []
-                    draft["method_steps"] = []
-                elif mode == "Yalnızca yöntem":
-                    draft["system_claim"] = None
-                    draft["dependent_system_claims"] = []
+                validation_feedback = ""
+                warnings: list[str] = []
+                for repair_round in range(3):
+                    if mode == "Yalnızca sistem":
+                        draft["method_claim"] = None
+                        draft["dependent_method_claims"] = []
+                        draft["method_steps"] = []
+                    elif mode == "Yalnızca yöntem":
+                        draft["system_claim"] = None
+                        draft["dependent_system_claims"] = []
 
-                draft = apply_tarifname_house_style(draft, mode, lit_docs, language_choice)
-                warnings = validate_tarifname_draft(draft, mode, lit_docs, language_choice)
+                    draft = apply_tarifname_house_style(draft, mode, lit_docs, language_choice)
+                    try:
+                        warnings = validate_tarifname_draft(draft, mode, lit_docs, language_choice)
+                        break
+                    except ValueError as validation_exc:
+                        validation_feedback = str(validation_exc)
+                        if repair_round >= 2:
+                            raise
+                        progress.progress(78 + repair_round * 3, text=f"Kalite kapısı düzeltme turu {repair_round + 1}: {validation_feedback[:120]}...")
+                        draft = ask_json(
+                            tarifname_quality_prompt(
+                                source, technical_text, extracted, draft, mode, lit_docs, language_choice, validation_feedback
+                            ),
+                            images=model_images,
+                        )
+
                 for warning in warnings:
                     st.warning(warning)
 
-                progress.progress(88, text="Word dosyası hazırlanıyor...")
+                progress.progress(88, text="Word dosyası hazırlanıyor ve şablon yapısı doğrulanıyor...")
                 data = build_tarifname_docx(draft, language_choice)
+                validate_tarifname_docx_structure(data, draft, language_choice)
+                render_tarifname_docx_smoke_test(data)
 
                 figure_data = None
                 figure_reports: list[dict[str, Any]] = []

@@ -91,6 +91,18 @@ NOTLAR:
 - İstemlerde HPU_W, FW_min, UW, UW_F, FE, TE gibi semboller anlamı açıklanmadan çıplak teknik unsur olarak kullanılmasın.
 - Şekillerde müşteri görselini esas al; şekil üzerindeki gerçek unsur/yöntem/sembolik referansları REFERANS NUMARALARI ile senkron tut. Gömülü grafik, ısı haritası ve diyagramlardaki teknik sonuçları içerik tamlığı açısından incele. Geçici şekil numaralarını yeni unsur numarası olarak uydurma. Eksik/yanlış bir şekil referansı değerlendirilirken referans işareti → unsur adı → detaylı açıklamadaki teknik tanım → şekil üzerindeki fiziksel karşılık sırasıyla doğrulanmalı; kılavuz çizgisi/ok doğrudan ilgili fiziksel unsurda sonlanmalı, alt parçaya ait referans tüm tertibatı göstermemelidir. Her görünür parçayı zorla numaralandırma; yalnız tarifnamede gerçek referansla tanımlı ve şekil üzerindeki yeri güvenilir biçimde belirlenebilen unsuru işaretle. Konum belirsizse uydurma ok/numara üretme. Önce “kuru hibrit güç ünitesi ağırlığı (HPU_W)”, “asgari görev yakıtı ağırlığı (FW_min)”, “ilave yakıt tahsisi (UW_F)” gibi açılımı yaz, matematiksel ifadede sembolü koru.
 
+- BBF/BOM içindeki “Diğer parçalar/Diğer elemanlar” gibi belirsiz başlıkları nihai referans unsuru yapma; gerçek teknik parçaları net adlandır.
+- Sistem/cihaz/ürün/tertibat/yapılanma aynı ürün istem dil ailesidir. Yöntem dışındaki alt istemler “olmasıdır.” veya “içermesidir.” ile bitsin; “oluşturulmasıdır/bağlanmasıdır/sağlanmasıdır” kullanma.
+- Ana istemde bir referanslı unsuru ilk kez tanımlarken henüz tanımlanmamış sonraki referansları kullanma; kural olarak her bullet tek yeni referanslı unsur tanımlasın.
+- Ürün isteminde işlem isimleştirmesi değil unsur dili kullan: “... bağlanması” değil “... bağlanan ...”.
+- Bir zorunlu unsurun kaynakta açık teknik işlevi varsa yalnız konumunu değil işlevini de yaz.
+- Aynı olmayan unsurları “ve/veya” ile tek unsur gibi birleştirme.
+- Zorunlu olmayan “vidalanan/kaynaklanan/yapıştırılan” ve örnek ölçü/diş/çap ifadeleriyle ana istemi daraltma; teknik farkın kendisiyse koru.
+- Bağımlı istemler ana istemi anlam olarak tekrar etmesin; her biri gerçek ek sınırlama getirsin ve bağımlılık numaraları silme/değişiklik sonrası yeniden kontrol edilsin.
+- Özel uygulama unsur adını gereksiz daraltma; kaynak destekliyorsa O-ring gibi örneği “sızdırmazlık elemanı” altında detaylı açıklamada ver. Her ayrıntıya zorla referans numarası verme.
+- Kullanıcıya görünen tarifnamede “müşteri tarafından iletilen teknik çizimde / müşteri bilgilerine göre / ek teknik belgede” gibi kaynak atıfları bulunmasın.
+- Özet tek paragraf ve tek cümle olsun.
+
 YAPILANDIRILMIŞ BBF VERİSİ:
 {json.dumps(extracted, ensure_ascii=False, indent=2)}
 """
