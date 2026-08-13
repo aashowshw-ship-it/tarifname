@@ -375,6 +375,9 @@ KRİTİK DENETİM MANTIĞI:
 - Şekildeki mevcut numara veya okun doğru olduğunu varsayma.
 - Her işaret için dört aşamalı eşleştirme yap: referans işareti → unsur adı → detaylı açıklamadaki teknik tanım/işlev → şekil üzerindeki gerçek fiziksel karşılık.
 - Kılavuz çizgisi/ok ucu doğrudan ilgili fiziksel unsurda sonlanmalıdır. Boş alan, komşu parça veya genel tertibat doğru hedef değildir.
+- Görünüşte temsil edilen zorunlu ana taşıyıcı unsurun referansı atlanmamalıdır; örneğin modülleri barındıran Akıllı SIM Donanım Platformu (1) uygun bir kapsayıcı çerçeve/taşıyıcı olarak gösterilebilir.
+- Ok uçları küçük, sade ve şeklin ölçeğiyle orantılı olmalıdır; büyük ok uçları kullanma.
+- Yöntem akış şekline kaynak işlem-adımı düzeyinde açık bir döngü vermiyorsa son adımdan önceki bir adıma geri dönüş oku ekleme. Modül geri beslemesini sistem şekli üzerinde modüller arasında göster.
 - Bir referans belirli alt parçaya aitse bütün tertibatı gösteremez. Örneğin referans listesinde `9 = Travers` ise 9 yalnız traversin kendisini göstermelidir.
 - Her görünür parçayı zorla numaralandırma. Yalnız tarifnamede gerçek referansla tanımlanmış ve BU ŞEKİLDE fiziksel karşılığı güvenilir biçimde görülen unsuru değerlendir.
 - Referanslı ve bu şekilde görünür bir unsur numarasızsa, fiziksel yeri güvenilir biçimde belirlenebiliyorsa action=`add` yap. Belirsizse `unresolved` yaz; uydurma hedef seçme.
@@ -1092,7 +1095,7 @@ KRİTİK TALİMATLAR:
 - İstemleri yalnız hedeflenen sonuç veya fonksiyonla bırakma. Özellikle bağımsız istemde teknikte uzman kişinin “nasıl gerçekleştiriliyor?” sorusuna cevap verecek şekilde, kaynakta açık dayanağı bulunduğu ölçüde işlemi yapan teknik unsur/taşıyıcıyı, kullanılan girdiyi veya önceki unsurdan gelen veriyi, teknik işlem/mekanizmayı ve ortaya çıkan teknik çıktının sonraki unsurla bağlantısını yaz. “tespit eden / dönüştüren / optimize eden / classifying / transforming / determining” gibi sonuç bildiren fiiller kaynak mekanizmayı açıklıyorsa tek başına yeterli sayılmaz. Buna karşılık tercihli uygulama ayrıntılarıyla ana istemi gereksiz daraltma.
 - Bağımlı istemleri kaynakta geçen her ayrıntı için çoğaltma. Yalnız ana isteme gerçek teknik daraltma/geri çekilme konumu sağlayan seçilmiş özellikleri kullan; istem bağımlılığı ana donanımsal taşıyıcıyı zaten taşıyorsa alt istemde elektronik cihaz/yazılım ifadesini gereksiz yere tekrar etme.
 - Eğitim/genel aşama ile test aşamasındaki paralel akışları aynı mantıkla fakat ayrı teknik aşamalar olarak kur.
-- REFERANS NUMARALARI bölümünde müşteri tarafından sistem/cihaz unsurları veya yöntem işlem adımları için verilmiş açık referansları AYNEN koru; 10, 20..., S101..., M1... veya başka bir referans ailesini sırf standartlaştırmak için değiştirme. Sistem/cihaz modüllerinde hiç referans yoksa kaynak sırasıyla 1, 2, 3... ver. Yöntem işlem adımlarında hiç referans yoksa varsayılan 1001, 1002, 1003... ailesini kullan. Kısmen numaralandırılmış kaynakta mevcut müşteri işaretlerini koru, yalnız boş kalanlara çakışmayacak varsayılan referans ata.
+- REFERANS NUMARALARI bölümünde müşteri tarafından sistem/cihaz unsurları veya yöntem işlem adımları için verilmiş açık referansları AYNEN koru; 10, 20..., S101..., M1... veya başka bir referans ailesini sırf standartlaştırmak için değiştirme. Sistem/cihaz modüllerinde hiç referans yoksa kaynak sırasıyla 1, 2, 3... ver. Yöntem işlem adımlarında hiç referans yoksa varsayılan 1001, 1002, 1003... ailesini kullan. Kısmen numaralandırılmış kaynakta mevcut müşteri işaretlerini koru, yalnız boş kalanlara çakışmayacak varsayılan referans ata. Word'deki yöntem referans satırı `1001. ...` biçiminde başlar; bu satırın içinde sistem/cihaz unsur işaretleri `(1)`, `(2)` vb. yazılmaz. Parantezli unsur referansları BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren başlar.
 - “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” bölümü için method_steps tam ve tutarlı olsun. Kaynaktaki yöntem referansları varsa aynen korunsun; yalnız kaynakta hiç yöntem referansı yoksa 1001’den başlayan varsayılan sıra oluşturulsun. REFERANS NUMARALARI, detaylı açıklamadaki yöntem listesi ve bağımsız yöntem isteminde aynı referanslı adımın teknik metni birebir aynı olsun. Detaylı açıklamadaki ara maddeler virgülle, son madde noktayla bitsin. Bağımsız yöntem istemindeki ara adımlar virgülle bitsin, son adım noktalamasız bitsin.
 - Yalnızca yöntem modunda system_claim null olmalıdır. Yalnızca sistem modunda method_claim null olmalıdır.
 - Her bağımlı istem ana isteme göre gerçek bir daraltma sağlamalıdır.
@@ -1116,7 +1119,7 @@ KRİTİK TALİMATLAR:
 - Aynı olmayan fiziksel unsurları “ve/veya” ile tek unsur gibi birleştirme. Gerçek alternatifleri teknik kimlikleri ve işlevleriyle açık ayrı maddelerde tanımla.
 - “vidalanan/kaynaklanan/yapıştırılan” ve belirli çap/diş/ölçü gibi daraltıcı ifadeleri yalnız zorunlu teknik çekirdek veya farklılaştırıcı mekanizma ise ana istemde tut. Değilse kaynakla uyumlu daha geniş bağlantı dili kullan.
 - Ana istemde tanımlanan bir özelliği başka bullet'ta tekrar etme. Sonraki unsur yalnız kendi ilişkisi ve işleviyle tanımlansın.
-- Bağımlı istemleri semantik olarak ana istemle karşılaştır; aynı teknik özelliği farklı kelimelerle tekrar eden bağımlı istem üretme. Bir istem silinir/değişirse sonraki bağımlılık numaralarını yeniden kur.
+- Sistem ve yöntem bağımlı istemlerinin HER BİRİNİ semantik olarak ana/üst istemle ve önceki bağımlı istemlerle karşılaştır; aynı teknik özelliği farklı kelimelerle tekrar eden bağımlı istem üretme. Her alt istem gerçek ek teknik sınırlama getirmelidir. Bir istem silinir/değişirse sonraki bağımlılık numaralarını yeniden kur.
 - Örnek ölçü/çap/diş değerlerini zorunlu değilse istemlere taşıma; detaylı açıklamada örnek yapılanma olarak koru ve kaynak destekliyorsa farklı ölçülere uygulanabilirliği açıkla.
 - Referans adı koruma kapsamını gereksiz daraltmasın: özel bir örnek (örn. O-ring) daha genel kaynak destekli teknik işlevin gerçekleştirmesiyse unsur adını genel teknik kavramla (örn. sızdırmazlık elemanı) kur; özel örneği detaylı açıklamada parantez içinde ver.
 - Her teknik ayrıntıya zorla referans verme; yapıştırıcı/malzeme/kaplama gibi özellikler ayrı referans gerektirmiyorsa numarasız olarak detaylı açıklama ve uygun bağımlı istemde kullanılabilir.
@@ -1232,6 +1235,7 @@ ZORUNLU KONTROL LİSTESİ:
 51. YAPILANDIRILMIŞ ENVANTER içindeki her mandatory `technical_facts` maddesinin `source_coverage_map` içinde tek tek karşılığı var mı? Her kaydın `covered=true`, en az bir bölüm adı ve tarifname taslağında birebir geçen en az 20 karakterlik gerçek bir kanıt alıntısı var mı? Özellikle teknik avantajlar, ayırt edici yönler ve bağımsızlık/performans sonuçları “benzer anlam var” denilerek atlanmış mı?
 52. Yazılım/modül ağırlıklı buluşta yalnız “işlemci/donanım” kelimesi geçmesiyle yetinilmiş mi, yoksa modül/yazılımın kaynakta dayanaklı teknik taşıyıcı üzerinde çalıştığı/koşturulduğu açık ilişkiyle yazılmış mı? Kaynak özel taşıyıcı veriyorsa genel elektronik cihaz ifadesi özel taşıyıcıyı silmiş mi?
 53. BULUŞUN DETAYLI AÇIKLAMASI giriş cümlesinde buluş adı cümle içi normal yazımla mı kullanılmış? Başlıktaki Title Case düzeni cümle içine kopyalanmamış mı; SIM/eSIM gibi kısaltmalar korunmuş mu?
+54. REFERANS NUMARALARI bölümündeki yöntem adımları `1001. ...` biçiminde önden yöntem numarasıyla mı yazılmış ve bu satırlarda sistem/cihaz `(1)`, `(2)` türü parantezli referans işaretleri kaldırılmış mı? Parantezli unsur referansları yalnız BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren mi başlıyor? Sistem ve yöntem alt istemlerinin tamamı semantik tekrar kontrolünden geçti mi?
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
 {TARIFNAME_DRAFT_SCHEMA}
@@ -1568,6 +1572,14 @@ def _claim_refs(text: str) -> list[str]:
     return re.findall(r"\(\s*([A-Za-zÇĞİÖŞÜçğıöşü0-9_\-]+)\s*\)", str(text or ""))
 
 
+def _strip_known_element_reference_marks(text: str, element_numbers: list[str]) -> str:
+    """REFERANS NUMARALARI yöntem satırında yalnız bilinen sistem/cihaz `(REF)` işaretlerini kaldır."""
+    result = str(text or "")
+    for number in sorted({str(x or "").strip() for x in element_numbers if str(x or "").strip()}, key=len, reverse=True):
+        result = re.sub(rf"\s*\(\s*{re.escape(number)}\s*\)", "", result)
+    return re.sub(r"\s{2,}", " ", result).strip()
+
+
 def _normalize_claim_semantics(text: str) -> set[str]:
     """Bağımlı istem tekrarını kaba fakat deterministik biçimde yakalamak için içerik sözcükleri."""
     txt = str(text or "").casefold()
@@ -1613,6 +1625,27 @@ def _validate_dependent_claim_semantic_repetition(system_claim: dict[str, Any], 
                     raise ValueError(
                         f"İstem {idx} üst istemde zaten bulunan teknik özelliği anlam olarak tekrar ediyor. "
                         "Bağımlı istem gerçek bir ek teknik sınırlama getirmelidir."
+                    )
+        previous_sets.append(words)
+
+
+def _validate_dependent_method_claim_semantic_repetition(method_claim: dict[str, Any], dependents: list[str]) -> None:
+    """Yöntem alt istemlerinde de ana/üst isteme karşı semantik tekrar kalite kapısı uygular."""
+    if not method_claim:
+        return
+    base = _normalize_claim_semantics(" ".join([str(method_claim.get("preamble", "")), *map(str, method_claim.get("steps") or [])]))
+    previous_sets: list[set[str]] = [base]
+    for idx, claim in enumerate(dependents, start=1):
+        words = _normalize_claim_semantics(claim)
+        if not words:
+            continue
+        for prior in previous_sets:
+            if len(words) >= 4:
+                overlap = len(words & prior) / max(1, len(words))
+                if overlap >= 0.92:
+                    raise ValueError(
+                        f"Bağımlı yöntem istemi {idx} ana/üst istemde zaten bulunan teknik özelliği anlam olarak tekrar ediyor. "
+                        "Yöntem alt istemi gerçek bir ek teknik sınırlama getirmelidir."
                     )
         previous_sets.append(words)
 
@@ -1802,6 +1835,10 @@ def validate_tarifname_draft(
             if semicolons > 1 or (semicolons == 1 and not re.search(r"olup,\s*özelliği;", claim, re.IGNORECASE)):
                 raise ValueError(f"İstem {idx} içinde standart ‘olup, özelliği;’ kalıbı dışında noktalı virgül kullanılmış.")
         _validate_dependent_claim_semantic_repetition(system_claim, dependents)
+        _validate_dependent_method_claim_semantic_repetition(
+            draft.get("method_claim") or {},
+            [str(x or "").strip() for x in (draft.get("dependent_method_claims") or []) if str(x or "").strip()],
+        )
         _validate_abstract_shape(str(draft.get("abstract", "") or ""), language)
 
     audit = draft.get("coverage_audit") or {}
@@ -1896,6 +1933,8 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
         raise ValueError("Word şablon kontrolü: İSTEMLER/CLAIMS başlığı ortalı değil.")
     if paras[ai].alignment != WD_ALIGN_PARAGRAPH.CENTER:
         raise ValueError("Word şablon kontrolü: ÖZET/ABSTRACT başlığı ortalı değil.")
+    if paras[ci].paragraph_format.page_break_before is not True:
+        raise ValueError("Word şablon kontrolü: İSTEMLER/CLAIMS yeni sayfadan başlamıyor.")
     if paras[ai].paragraph_format.page_break_before is not True:
         raise ValueError("Word şablon kontrolü: ÖZET/ABSTRACT yeni sayfadan başlamıyor.")
     if ci + 1 >= len(paras) or texts[ci + 1] != "":
@@ -1914,6 +1953,25 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
             raise ValueError("Word şablon kontrolü: Son şekil açıklamasından sonraki boş paragraf eksik.")
     if ri <= fi:
         raise ValueError("Word şablon kontrolü: REFERANS NUMARALARI, şekil açıklamalarından sonra gelmelidir.")
+
+    # REFERANS NUMARALARI yöntem satırları "1001. ..." biçiminde olmalı ve sistem/cihaz `(1)` vb. işaretleri içermemelidir.
+    detail_label = "DETAILED DESCRIPTION OF THE INVENTION" if en else "BULUŞUN DETAYLI AÇIKLAMASI"
+    di = index_of(detail_label)
+    ref_segment = texts[ri + 1:di]
+    element_numbers = [str(x.get("number", "") or "").strip() for x in (draft.get("elements") or []) if str(x.get("number", "") or "").strip()]
+    for step in draft.get("method_steps") or []:
+        number = str(step.get("number", "") or "").strip()
+        raw = str(step.get("text", "") or "").strip()
+        if number:
+            raw = re.sub(rf"\s*\(\s*{re.escape(number)}\s*\)\s*$", "", raw).strip()
+        expected_text = _strip_known_element_reference_marks(raw, element_numbers).rstrip(".,;:")
+        expected = f"{number}. {expected_text}" if number else expected_text
+        if expected not in ref_segment:
+            raise ValueError(f"Word şablon kontrolü: REFERANS NUMARALARI yöntem satırı beklenen biçimde değil: {number or '?'}.")
+    for ptxt in ref_segment:
+        for number in element_numbers:
+            if re.search(rf"\(\s*{re.escape(number)}\s*\)", ptxt):
+                raise ValueError("Word şablon kontrolü: Parantezli sistem/cihaz referansları BULUŞUN DETAYLI AÇIKLAMASI bölümünden önce kullanılmamalıdır.")
 
     # Özet buluş adı başlığı: ÖZET + boş paragraf + kalın/ortalı başlık.
     title_idx = ai + 2
@@ -2066,13 +2124,15 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
     method_steps = draft.get("method_steps") or []
     if draft.get("elements") and method_steps:
         add_blank(doc)
+    element_numbers_for_refs = [str(x.get("number", "") or "").strip() for x in (draft.get("elements") or [])]
     for step in method_steps:
         number = str(step.get("number", "") or "").strip()
         text = str(step.get("text", "") or "").strip()
         if number:
             text = re.sub(rf"\s*\(\s*{re.escape(number)}\s*\)\s*$", "", text).strip()
-        text = text.rstrip(".,;:")
-        add_text(doc, f"{number}. {text}")
+        text = _strip_known_element_reference_marks(text, element_numbers_for_refs).rstrip(".,;:")
+        # REFERANS NUMARALARI bir listedir: yöntem numarası önde, sistem/cihaz parantez referansları yoktur.
+        add_text(doc, f"{number}. {text}" if number else text)
     add_blank(doc)
 
     add_heading(doc, labels["detail"])
@@ -2136,10 +2196,10 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
         add_text(doc, draft.get("working_principle", ""))
         add_blank(doc)
 
-    # Şablonda istemler öncesinde iki boş paragraf vardır; page break yeni sayfayı garanti eder.
+    # Şablonda istemler öncesindeki boşluk korunur; başlığın kendisinde zorunlu sayfa kırılımı kullanılır.
     add_blank(doc)
-    doc.add_page_break()
-    add_heading(doc, labels["claims"], center=True)
+    claims_heading = add_heading(doc, labels["claims"], center=True)
+    claims_heading.paragraph_format.page_break_before = True
     add_blank(doc)
     if en:
         english_claim_notes = {

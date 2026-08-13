@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.13"
-RULESET_VERSION = "2026-08-13.v3"
+APP_VERSION = "v5.4.15"
+RULESET_VERSION = "2026-08-13.v5"
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI
@@ -106,7 +106,7 @@ F. SON KALİTE KONTROLÜ
 60. BULUŞUN KISA AÇIKLAMASI bölümündeki amaç cümleleri çıplak mastarla bitmez. "Buluşun ana amacı, ... karşılaştırmaktır.", "Buluşun diğer bir amacı, ... sağlamaktır." gibi tam yüklemli ve dilbilgisel olarak tamamlanmış cümleler kullanılır.
 61. Tarifnamenin açıklama bölümlerinde noktalı virgül gereksiz yere kullanılmaz. Normal teknik anlatımda virgül veya nokta tercih edilir. İstemlerin standart "olup, özelliği;" kalıbındaki noktalı virgül korunabilir.
 62. İstemlerde HPU_W, FW_min, UW, UW_F, FE, TE gibi semboller tek başına teknik unsur adı yerine kullanılmaz. Anlamın gerekli olduğu yerde önce teknik açılım yazılır ve sembol parantez içinde verilir; örneğin "kuru hibrit güç ünitesi ağırlığı (HPU_W)", "asgari görev yakıtı ağırlığı (FW_min)", "ilave yakıt tahsisi (UW_F)". Matematiksel ilişkilerde semboller aynen korunur.
-63. Yöntem işlem adımlarının teknik metni REFERANS NUMARALARI, BULUŞUN DETAYLI AÇIKLAMASI ve yöntem istemi arasında birebir aynı tutulur. Kaynakta yöntem referansları varsa müşterinin verdiği referans ailesi aynen korunur; kaynakta hiç yöntem referansı yoksa varsayılan 1001, 1002... ailesi kullanılır. Bir adım metni istemde değiştirilirse referans listesi ve detaylı açıklama aynı revizyonda güncellenir. Yalnız numaranın yeri ve son noktalama bölüme göre değişir: referans listesinde "REF. ...", detaylı açıklamada ara adım için "... (REF)," ve son adım için "... (REF).", bağımsız yöntem isteminde ara adım için "... (REF)," ve son adım için "... (REF)".
+63. Yöntem işlem adımlarının teknik ifadesi REFERANS NUMARALARI, BULUŞUN DETAYLI AÇIKLAMASI ve yöntem istemi arasında aynı teknik anlam ve kelime dizisini korur. Ancak REFERANS NUMARALARI bir referans listesidir: yöntem adımı burada "REF. ..." biçiminde önde yöntem numarasıyla yazılır ve adım metni içindeki sistem/cihaz unsur işaretleri `(1)`, `(2)` gibi parantezli referanslar GÖSTERİLMEZ. Parantezli unsur referansları BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren kullanılmaya başlar. Detaylı açıklamada ara adım "... (REF),", son adım "... (REF)."; bağımsız yöntem isteminde ara adım "... (REF),", son adım "... (REF)" biçimindedir. Senkron kontrolünde referans listesindeki bilinçli olarak kaldırılmış unsur işaretleri karşılaştırma dışı tutulur; teknik kelimeler ve işlem ilişkisi değiştirilmez.
 64. Kaynakta bir sembolün açılımı veriliyorsa istemlerde ve kritik teknik açıklamalarda çıplak sembol kullanarak anlamı belirsiz bırakma; kullanıcı sonradan "bu değişken neydi" demeyecek şekilde açılımı metne taşı.
 65A. Nihai taslakta “BBF’de”, “buluş bildirim formunda”, “müşteri tarafından iletilen teknik çizimde”, “müşteri bilgilerine göre”, “ek teknik belgede” gibi kaynak-atıf dili bulunamaz. Teknik bilgi doğrudan buluşun açıklaması olarak yazılır. Teknik bağlamda gerçekten son kullanıcıyı ifade eden “müşteri” sözcüğü bu yasaktan etkilenmez.
 65B. Nihai referans listesinde “Diğer parçalar”, “Diğer elemanlar”, “Çeşitli parçalar” gibi belirsiz unsur adları bulunamaz.
@@ -225,3 +225,12 @@ ARAŞTIRMA GÜNCELLEME – TİP 3 EK KURALLARI
 11. D1/D2'nin özgün patent şekilleri rapora doğrudan patent kaynağından eklenir. İlk rapordaki D1/D2 korunuyorsa onların orijinal patent şekilleri yeniden kullanılır; yeni bir doküman D1/D2 olarak seçilirse onun özgün şekli alınır. Yardımcı dokümanın ayrı şekil başlığı şablonda yoksa Word'e yeni şekil bölümü açılmaz.
 12. DP referans numarası, araştırma kesim tarihi ve çıktı dosyasının adı arayüzde kullanıcı tarafından belirlenir. Varsayılan çıktı adı `Ön Araştırma Raporu_<DP REF>_rev.docx` olabilir.
 """
+
+
+# 2026-08-13.v5 — Referans listesi gösterimi ve bağımlı istem tekrar kalite kapısı
+# Bağlayıcı ek kurallar:
+# - İSTEMLER ve ÖZET başlıkları mutlaka yeni sayfadan başlar; bu koşul DOCX yapısında page_break_before ile doğrulanır.
+# - REFERANS NUMARALARI bölümündeki yöntem işlem adımları "1001. ...", "1002. ..." biçiminde önde yöntem numarasıyla yazılır. Bu satırlarda sistem/cihaz unsur numaraları `(1)`, `(2)` vb. parantez içinde gösterilmez. Parantezli unsur referansları BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren başlar.
+# - Referans listesindeki yöntem satırının teknik metni, yalnız parantezli unsur referans işaretleri çıkarılmış haliyle detaylı açıklama ve bağımsız yöntem istemindeki aynı işlem adımıyla senkron tutulur.
+# - Sistem bağımlı istemleri kadar yöntem bağımlı istemleri de ana/üst isteme ve önceki bağımlı istemlere karşı semantik tekrar kontrolünden geçirilir. Farklı kelimelerle aynı teknik özelliği tekrar eden alt istem Word üretimini durdurur.
+# - Şekil 1 gibi sistem şekillerinde tarifnamenin referans listesinde bulunan ve o görünüşte temsil edilen zorunlu ana taşıyıcı unsur atlanamaz. Ok uçları küçük ve tutarlı tutulur. Kaynak işlem-adımı seviyesinde açık bir döngü vermedikçe yöntem şekline son adımdan önceki adıma otomatik geri dönüş oku eklenmez.

@@ -4,6 +4,29 @@ import re
 from typing import Any
 
 
+def _normalize_semantics(text: str) -> set[str]:
+    txt = str(text or "").casefold()
+    txt = re.sub(r"^\s*istem\s+\d+(?:\s*(?:veya|ve|,)\s*\d+)*['’]?e\s+uygun\s+[^;]+;", " ", txt)
+    txt = re.sub(r"\(\s*[a-z0-9_\-]+\s*\)", " ", txt)
+    txt = re.sub(r"[^a-zçğıöşü0-9]+", " ", txt)
+    stop = {"istem", "uygun", "olup", "özelliği", "bir", "ve", "veya", "ile", "olan", "olarak", "söz", "konusu", "şekilde", "şeklinde"}
+    return {w for w in txt.split() if len(w) > 2 and w not in stop}
+
+
+def _semantic_repeat_findings(base_text: str, dependents: list[str], label: str) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    previous = [_normalize_semantics(base_text)]
+    for idx, claim in enumerate(dependents, start=1):
+        words = _normalize_semantics(claim)
+        if len(words) >= 4:
+            for prior in previous:
+                if len(words & prior) / max(1, len(words)) >= 0.92:
+                    out.append({"level": "Hata", "message": f"{label} bağımlı istem {idx} ana/üst istemdeki teknik özelliği semantik olarak tekrar ediyor; gerçek ek sınırlama gerekir."})
+                    break
+        previous.append(words)
+    return out
+
+
 def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     elements = draft.get("elements") or []
@@ -136,6 +159,12 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     execution_relation_re = re.compile(r"üzerinde\s+(?:çalışan|koşturulan|yürütülen)|içerisinde\s+(?:çalışan|koşturulan|yürütülen)|vasıtasıyla|tarafından\s+(?:çalıştırılan|yürütülen)", re.I)
     if sc_text and len(software_terms_re.findall(sc_text)) >= 2 and not execution_relation_re.search(sc_text):
         findings.append({"level": "Hata", "message": "Yazılım/modül ağırlıklı bağımsız sistem isteminde teknik taşıyıcı ile modül/yazılım arasında açık çalışma/koşturma ilişkisi kurulmalı; yalnız işlemci/donanım kelimesi yeterli değildir."})
+
+    system_base = " ".join([str(sc.get("preamble", "")), *map(str, sc.get("elements") or [])])
+    findings.extend(_semantic_repeat_findings(system_base, [str(x or "") for x in (draft.get("dependent_system_claims") or [])], "Sistem"))
+    if method:
+        method_base = " ".join([str(method.get("preamble", "")), *map(str, method.get("steps") or [])])
+        findings.extend(_semantic_repeat_findings(method_base, [str(x or "") for x in (draft.get("dependent_method_claims") or [])], "Yöntem"))
 
     coverage_map = draft.get("source_coverage_map")
     if coverage_map is not None:

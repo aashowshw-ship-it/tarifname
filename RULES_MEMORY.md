@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-13.v3**
+Kural sürümü: **2026-08-13.v5**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -254,7 +254,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 26. Şekil referans/ok kuralları v5.4.11'deki haliyle aynen korunur; bu sürüm şekil kuralını değiştirmez.
 
 
-## 2026-08-13.v3 — BBF Atomik Tamlık Kapısı ve Yazılım Taşıyıcı Doğrulaması (Bağlayıcı)
+## 2026-08-13.v4 — BBF Atomik Tamlık Kapısı ve Yazılım Taşıyıcı Doğrulaması (Bağlayıcı)
 
 - Tarifname oluşturmanın birinci ve en üst kalite kuralı BBF ve ek teknik kaynaklardaki **tüm teknik bilgilerin uygun yerde eksiksiz korunmasıdır**. Bu kural istem kapsamından bağımsızdır; isteme taşınmayan teknik bilgi teknik alan, önceki teknik, kısa açıklama, detaylı açıklama, çalışma prensibi, alternatif yapılanma veya özet içinde korunmalıdır.
 - Kaynaklar atomik `technical_facts` maddelerine ayrılır. Teknik avantaj, teknik etki, kullanım koşulu, ayırt edici yön, bağımsızlık sonucu, performans sonucu ve görsel/akış bilgisi ayrı fact olarak tutulur.
@@ -263,3 +263,11 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Yazılım/modül ağırlıklı istemlerde yalnız donanım/işlemci kelimesi yeterli değildir. Yazılım/modülün elektronik cihaz, işlem birimi veya kaynakta verilen özel donanım üzerinde çalıştığı/koşturulduğu açık teknik ilişkiyle yazılmalıdır. Kaynak özel taşıyıcı veriyorsa (örn. SIM/eSIM üzerindeki güvenli işlemci, bellek ve izole çalışma ortamı) bu taşıyıcı korunur.
 - BULUŞUN DETAYLI AÇIKLAMASI giriş cümlesinde buluş başlığı cümle içinde normal küçük harf düzeninde yazılır; başlık biçimi cümle içine kopyalanmaz. SIM, eSIM, API, NFC gibi teknik kısaltmalar korunur.
 - Arayüzde Word üretimi öncesi BBF teknik bilgi kapsam paneli gösterilir. Panel yalnız bilgi amaçlı değil, validator tarafından geçirilmiş coverage map'i gösterir.
+
+
+## 2026-08-13.v5 — Referans listesi ve alt istem semantik kalite kapısı
+- `İSTEMLER` ve `ÖZET` DOCX yapısında `page_break_before=True` ile ayrı sayfadan başlatılır ve doğrulayıcı her iki başlık için bunu zorunlu olarak kontrol eder.
+- `REFERANS NUMARALARI` altındaki yöntem işlem adımları `1001. ...`, `1002. ...` biçiminde önde yöntem numarasıyla yazılır. Bu satırlarda sistem/cihaz unsur işaretleri `(1)`, `(2)` vb. bulunmaz; parantezli unsur referansları `BULUŞUN DETAYLI AÇIKLAMASI` bölümünden itibaren kullanılır.
+- Referans listesi ↔ detaylı açıklama ↔ yöntem istemi senkronizasyonunda referans listesinden bilinçli olarak çıkarılan sistem/cihaz parantez işaretleri karşılaştırma dışı, teknik kelimeler ve işlem ilişkileri karşılaştırma dahilidir.
+- Sistem ve yöntem bağımlı istemlerinin tümü semantik tekrar kontrolüne tabidir; her alt istem gerçek ek teknik sınırlama veya stratejik geri çekilme konumu getirmelidir.
+- Sistem şekillerinde görünüşte temsil edilen zorunlu ana taşıyıcı referans atlanmaz. Ok uçları küçük ve tutarlı tutulur. Yöntem akışına kaynak açıkça işlem-adımı döngüsü vermedikçe son adımdan önceki adıma geri dönüş oku eklenmez.

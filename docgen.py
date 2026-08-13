@@ -78,6 +78,13 @@ def _add_page_number(section):
     run._r.extend([fld_char1, instr_text, fld_char2])
 
 
+def _strip_known_element_reference_marks(text: str, element_numbers: list[str]) -> str:
+    result = str(text or "")
+    for number in sorted({str(x or "").strip() for x in element_numbers if str(x or "").strip()}, key=len, reverse=True):
+        result = re.sub(rf"\s*\(\s*{re.escape(number)}\s*\)", "", result)
+    return re.sub(r"\s{2,}", " ", result).strip()
+
+
 def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
     template = Document(str(template_path))
     doc = Document(str(template_path))
@@ -145,8 +152,14 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
         _add_text(doc, f"{e['number']}. {e['name']}")
     if draft.get("elements") and draft.get("method_steps"):
         doc.add_paragraph()
+    element_numbers = [str(x.get("number", "") or "").strip() for x in (draft.get("elements") or [])]
     for s in draft.get("method_steps") or []:
-        _add_text(doc, f"{s['number']}. {s['text']}")
+        number = str(s.get("number", "") or "").strip()
+        text = str(s.get("text", "") or "").strip()
+        if number:
+            text = re.sub(rf"\s*\(\s*{re.escape(number)}\s*\)\s*$", "", text).strip()
+        text = _strip_known_element_reference_marks(text, element_numbers).rstrip(".,;:")
+        _add_text(doc, f"{number}. {text}" if number else text)
 
     _add_heading(doc, "BULUŞUN DETAYLI AÇIKLAMASI")
     doc.add_paragraph()
@@ -155,8 +168,8 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
         doc.add_paragraph()
         _add_text(doc, para)
 
-    doc.add_page_break()
-    _add_heading(doc, "İSTEMLER")
+    claims_p = _add_heading(doc, "İSTEMLER")
+    claims_p.paragraph_format.page_break_before = True
     doc.add_paragraph()
     for idx in (79, 81, 83):
         _copy_template_paragraph(doc, template, idx)
