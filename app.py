@@ -44,6 +44,7 @@ ARASTIRMA_TEMPLATE = BASE_DIR / "On_Arastirma_Raporu_181612_template.docx"
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.6")
 MAX_TEXT_PER_FILE = int(os.getenv("MAX_TEXT_PER_FILE", "180000"))
 MAX_TOTAL_TEXT = int(os.getenv("MAX_TOTAL_TEXT", "700000"))
+FIGURE_REFERENCE_CONFIDENCE = float(os.getenv("FIGURE_REFERENCE_CONFIDENCE", "0.86"))
 
 
 # -----------------------------------------------------------------------------
@@ -346,8 +347,322 @@ def _figure_dimensions_cm(data: bytes, max_width_cm: float = 16.5, max_height_cm
         return max_width_cm, 10.0
 
 
+
+def _figure_reference_context(draft: dict[str, Any], figure_index: int) -> dict[str, Any]:
+    descriptions = list(draft.get("figure_descriptions") or [])
+    figure_description = descriptions[figure_index - 1] if 0 <= figure_index - 1 < len(descriptions) else ""
+    return {
+        "figure_index": figure_index,
+        "figure_description": figure_description,
+        "elements": draft.get("elements") or [],
+        "method_steps": draft.get("method_steps") or [],
+        "detailed_paragraphs": draft.get("detailed_paragraphs") or [],
+        "working_principle": draft.get("working_principle") or "",
+    }
+
+
+def _figure_reference_audit_prompt(draft: dict[str, Any], figure_index: int, language: str) -> str:
+    context = _figure_reference_context(draft, figure_index)
+    return f"""{TARIFNAME_RULES}
+
+BİRİNCİ görsel denetlenecek patent şeklidir. Varsa sonraki görseller aynı müşteri çizim setinden yalnız fiziksel unsurun tanınmasına yardımcı bağlam olarak verilmiştir; sonraki görsellere ilişkin ayrı audit üretme.
+BİRİNCİ şekli nihai tarifnamedeki REFERANS NUMARALARI ve teknik açıklamayla karşılaştır.
+Bu aşamada görsel üretme veya değiştirme. Yalnız teknik referans denetimi yap ve JSON döndür.
+Şekil sırası: {figure_index}
+Tarifname dili: {language}
+
+KRİTİK DENETİM MANTIĞI:
+- Şekildeki mevcut numara veya okun doğru olduğunu varsayma.
+- Her işaret için dört aşamalı eşleştirme yap: referans işareti → unsur adı → detaylı açıklamadaki teknik tanım/işlev → şekil üzerindeki gerçek fiziksel karşılık.
+- Kılavuz çizgisi/ok ucu doğrudan ilgili fiziksel unsurda sonlanmalıdır. Boş alan, komşu parça veya genel tertibat doğru hedef değildir.
+- Bir referans belirli alt parçaya aitse bütün tertibatı gösteremez. Örneğin referans listesinde `9 = Travers` ise 9 yalnız traversin kendisini göstermelidir.
+- Her görünür parçayı zorla numaralandırma. Yalnız tarifnamede gerçek referansla tanımlanmış ve BU ŞEKİLDE fiziksel karşılığı güvenilir biçimde görülen unsuru değerlendir.
+- Referanslı ve bu şekilde görünür bir unsur numarasızsa, fiziksel yeri güvenilir biçimde belirlenebiliyorsa action=`add` yap. Belirsizse `unresolved` yaz; uydurma hedef seçme.
+- Mevcut numara doğru fakat ok yanlış fiziksel parçaya gidiyorsa action=`correct` yap.
+- Doğru numara ve doğru hedef varsa action=`keep` yap.
+- Unsur bu şekilde görünmüyorsa action=`omit` yap; sırf tüm referansları kullanmak için ekleme yapma.
+- Geçici/yardımcı şekil numaralarını gerçek tarifname referansı gibi kabul etme.
+- confidence, teknik fiziksel eşleştirme güvenidir. 0.86 altında add/correct önerme; unresolved olarak bildir.
+
+JSON ŞEMASI:
+{{
+  "figure_index": {figure_index},
+  "figure_description": "",
+  "status": "ok/needs_edit/unresolved",
+  "existing_reference_marks": [""],
+  "annotations": [
+    {{
+      "reference": "9",
+      "name": "Travers",
+      "visible": true,
+      "action": "keep/correct/add/omit",
+      "location_description": "Şekilde hedeflenen fiziksel parçanın açık ve ayırt edici tarifi",
+      "reason": "",
+      "confidence": 0.95
+    }}
+  ],
+  "extra_or_temporary_marks": [""],
+  "unresolved": [""],
+  "edit_instruction": "Yalnız needs_edit durumunda, hangi numara/okun hangi fiziksel parçaya yöneltileceğini kısa ve kesin yaz."
+}}
+
+TARİFNAME/ŞEKİL BAĞLAMI:
+{json.dumps(context, ensure_ascii=False, indent=2)}
+"""
+
+
+def audit_figure_references(
+    asset: UploadedAsset,
+    draft: dict[str, Any],
+    figure_index: int,
+    language: str,
+    context_images: list[UploadedAsset] | None = None,
+) -> dict[str, Any]:
+    visual_context = [asset]
+    for candidate in context_images or []:
+        if candidate is asset:
+            continue
+        visual_context.append(candidate)
+        if len(visual_context) >= 4:
+            break
+    audit = ask_json(
+        _figure_reference_audit_prompt(draft, figure_index, language),
+        images=visual_context,
+    )
+    audit["figure_index"] = figure_index
+    return audit
+
+
+def _has_nonempty_items(value: Any) -> bool:
+    if not value:
+        return False
+    if isinstance(value, (list, tuple, set)):
+        return any(str(x or "").strip() for x in value)
+    return bool(str(value).strip())
+
+
+def _audit_has_unsafe_edit(audit: dict[str, Any]) -> bool:
+    if str(audit.get("status", "")).strip().casefold() == "unresolved":
+        return True
+    if _has_nonempty_items(audit.get("unresolved")):
+        return True
+    for item in audit.get("annotations") or []:
+        action = str(item.get("action", "")).strip().casefold()
+        if action in {"add", "correct"}:
+            try:
+                confidence = float(item.get("confidence", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                confidence = 0.0
+            if confidence < FIGURE_REFERENCE_CONFIDENCE:
+                return True
+    return False
+
+
+def _extract_image_generation_result(response: Any) -> bytes:
+    for item in getattr(response, "output", []) or []:
+        item_type = item.get("type") if isinstance(item, dict) else getattr(item, "type", "")
+        if item_type != "image_generation_call":
+            continue
+        result = item.get("result") if isinstance(item, dict) else getattr(item, "result", None)
+        if isinstance(result, list) and result:
+            result = result[-1]
+        if isinstance(result, str) and result.strip():
+            try:
+                return base64.b64decode(result)
+            except Exception as exc:  # pragma: no cover - API response shape guard
+                raise ValueError("Şekil düzeltme çıktısı base64 görsel olarak çözülemedi.") from exc
+    raise ValueError("Şekil düzeltme çağrısı görsel çıktı üretmedi.")
+
+
+def edit_figure_reference_annotations(
+    asset: UploadedAsset,
+    draft: dict[str, Any],
+    figure_index: int,
+    language: str,
+    audit: dict[str, Any],
+) -> UploadedAsset:
+    """Özgün şeklin yalnız referans numarası/kılavuz çizgisi katmanını düzeltir."""
+    client = get_client()
+    context = _figure_reference_context(draft, figure_index)
+    prompt = f"""Bu görsel bir patent şeklidir ve özgün müşteri çizimi teknik kaynak olarak bağlayıcıdır.
+Yalnız referans numaraları ile bunların kılavuz çizgileri/oklarını düzelt. Mekanik/elektronik geometriyi, parça biçimlerini, delikleri, kesit taramalarını, perspektifi, boyut ilişkilerini, çizgi yapısını veya teknik kurguyu değiştirme. Yeni parça üretme, parça silme, şemayı yeniden tasarlama, açıklama/legend ekleme.
+
+REFERANS DENETİMİ:
+{json.dumps(audit, ensure_ascii=False, indent=2)}
+
+TARİFNAME BAĞLAMI:
+{json.dumps(context, ensure_ascii=False, indent=2)}
+
+UYGULAMA KURALLARI:
+- action=keep olan referansı ve doğru hedefini koru.
+- action=correct olan numaranın kılavuz çizgisi/okunu location_description içinde tarif edilen fiziksel unsura yönelt.
+- action=add olan referansı yalnız tarif edilen fiziksel unsur kesin görünüyorsa ekle.
+- action=omit olan referansı sırf referans listesinde var diye bu şekle ekleme.
+- Ok/kılavuz çizgisi ucu doğrudan ilgili fiziksel unsur üzerinde sonlansın; boş alana veya genel tertibata yönelmesin.
+- Referans belirli bir alt parçaya aitse tüm tertibatı işaretleme.
+- Mümkün olduğunca çizgi kesişmelerini azalt; fakat teknik geometrinin hiçbir bölümünü değiştirme.
+- Çıktıda yalnız patent şekli bulunsun; açıklama listesi, referans lejandı, başlık veya ek metin ekleme.
+- Siyah-beyaz patent çizimi ve özgün en-boy oranı korunmalıdır.
+"""
+    content = [{"type": "input_text", "text": prompt}, image_content(asset)]
+    common = {
+        "model": MODEL,
+        "input": [{"role": "user", "content": content}],
+    }
+    # Yüksek girdi sadakati desteklenen hesaplarda müşteri geometrisini daha güçlü korur.
+    try:
+        response = client.responses.create(
+            **common,
+            tools=[{"type": "image_generation", "quality": "high", "input_fidelity": "high"}],
+            tool_choice="required",
+        )
+    except Exception:
+        # Bazı API/model sürümlerinde input_fidelity araç parametresi bulunmayabilir.
+        response = client.responses.create(
+            **common,
+            tools=[{"type": "image_generation", "quality": "high"}],
+            tool_choice="required",
+        )
+    data = _extract_image_generation_result(response)
+    if not _valid_figure_image(data, min_width=1, min_height=1):
+        raise ValueError("Şekil düzeltme çıktısı geçerli bir görsel değil.")
+    return UploadedAsset(f"{Path(asset.name).stem}_referans_duzeltilmis.png", data, "image/png")
+
+
+def verify_figure_reference_edit(
+    original: UploadedAsset,
+    edited: UploadedAsset,
+    draft: dict[str, Any],
+    figure_index: int,
+    language: str,
+    audit: dict[str, Any],
+) -> dict[str, Any]:
+    context = _figure_reference_context(draft, figure_index)
+    prompt = f"""İki patent şekli veriliyor. BİRİNCİ görsel özgün müşteri şekli, İKİNCİ görsel yalnız referans numarası/okları düzeltilmiş aday görseldir.
+Adayı çok sıkı doğrula. Görsel üretme; yalnız JSON döndür.
+
+KABUL KRİTERLERİ:
+1. Özgün müşteri şeklinin teknik geometrisi, parça biçimleri, delikler, kesitler/taramalar, perspektif, bileşen konumları ve teknik kurgu özünde korunmuş olmalıdır. Antialiasing/çizgi keskinliği gibi önemsiz raster farklarını geometri değişikliği sayma.
+2. Referanslar dört aşamalı eşleşmeye uymalıdır: referans → unsur adı → teknik tanım → fiziksel karşılık.
+3. Her kılavuz çizgisi/ok doğrudan doğru fiziksel unsurda sonlanmalı; boş alanı, komşu parçayı veya genel tertibatı göstermemelidir.
+4. Adayda tarifnamede olmayan yeni referans numarası/legend/açıklama eklenmemelidir.
+5. Bu şekilde görünmeyen unsurlar sırf numaralandırma amacıyla eklenmemelidir.
+6. Denetimde unresolved kalan unsur varsa annotations_correct=false yap.
+
+ÖN DENETİM:
+{json.dumps(audit, ensure_ascii=False, indent=2)}
+
+TARİFNAME BAĞLAMI:
+{json.dumps(context, ensure_ascii=False, indent=2)}
+
+JSON ŞEMASI:
+{{
+  "geometry_preserved": true,
+  "annotations_correct": true,
+  "wrong_or_missing": [""],
+  "extra_reference_marks": [""],
+  "confidence": 0.95,
+  "notes": ""
+}}
+"""
+    return ask_json(prompt, images=[original, edited])
+
+
+def prepare_figures_with_reference_audit(
+    images: list[UploadedAsset],
+    draft: dict[str, Any],
+    language: str = "Türkçe",
+    progress_callback: Any | None = None,
+) -> tuple[list[UploadedAsset], list[dict[str, Any]], list[str]]:
+    """Şekilleri tarifnameyle denetler; güvenliyse yalnız referans katmanını düzeltir ve tekrar doğrular."""
+    prepared: list[UploadedAsset] = []
+    reports: list[dict[str, Any]] = []
+    unresolved: list[str] = []
+    total = len(images)
+
+    for index, asset in enumerate(images, 1):
+        if progress_callback:
+            progress_callback(index, total, "audit")
+        try:
+            audit = audit_figure_references(asset, draft, index, language, context_images=images)
+        except Exception as exc:
+            message = f"ŞEKİL {index}: referans denetimi çalıştırılamadı ({exc})."
+            unresolved.append(message)
+            reports.append({"figure_index": index, "final_status": "unresolved", "message": message})
+            prepared.append(asset)
+            continue
+
+        report: dict[str, Any] = {"figure_index": index, "audit": audit}
+        if _audit_has_unsafe_edit(audit):
+            message = f"ŞEKİL {index}: en az bir referansın fiziksel karşılığı güvenilir biçimde belirlenemedi."
+            unresolved.append(message)
+            report.update({"final_status": "unresolved", "message": message})
+            reports.append(report)
+            prepared.append(asset)
+            continue
+
+        status = str(audit.get("status", "ok")).strip().casefold()
+        needs_edit = status == "needs_edit" or any(
+            str(x.get("action", "")).strip().casefold() in {"add", "correct"}
+            for x in audit.get("annotations") or []
+        )
+        if not needs_edit:
+            report["final_status"] = "ok"
+            reports.append(report)
+            prepared.append(asset)
+            continue
+
+        if progress_callback:
+            progress_callback(index, total, "edit")
+        try:
+            edited = edit_figure_reference_annotations(asset, draft, index, language, audit)
+        except Exception as exc:
+            message = f"ŞEKİL {index}: referans düzeltmesi uygulanamadı ({exc})."
+            unresolved.append(message)
+            report.update({"final_status": "unresolved", "message": message})
+            reports.append(report)
+            prepared.append(asset)
+            continue
+
+        if progress_callback:
+            progress_callback(index, total, "verify")
+        try:
+            verification = verify_figure_reference_edit(asset, edited, draft, index, language, audit)
+        except Exception as exc:
+            message = f"ŞEKİL {index}: düzeltme sonrası doğrulama çalıştırılamadı ({exc})."
+            unresolved.append(message)
+            report.update({"final_status": "unresolved", "message": message})
+            reports.append(report)
+            prepared.append(asset)
+            continue
+
+        try:
+            verify_confidence = float(verification.get("confidence", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            verify_confidence = 0.0
+        accepted = (
+            bool(verification.get("geometry_preserved"))
+            and bool(verification.get("annotations_correct"))
+            and not _has_nonempty_items(verification.get("wrong_or_missing"))
+            and not _has_nonempty_items(verification.get("extra_reference_marks"))
+            and verify_confidence >= FIGURE_REFERENCE_CONFIDENCE
+        )
+        report["verification"] = verification
+        if accepted:
+            report["final_status"] = "corrected"
+            prepared.append(edited)
+        else:
+            message = f"ŞEKİL {index}: otomatik düzeltme, geometri/referans doğrulamasını geçemedi."
+            unresolved.append(message)
+            report.update({"final_status": "unresolved", "message": message})
+            prepared.append(asset)
+        reports.append(report)
+
+    return prepared, reports, unresolved
+
+
 def build_figures_docx(images: list[UploadedAsset], language: str = "Türkçe") -> bytes:
-    """Müşteri şekillerini değiştirmeden, dinamik sayfa düzeni ve ŞEKİL N başlıklarıyla Word'e yerleştirir."""
+    """Referans denetiminden geçmiş müşteri şekillerini dinamik sayfa düzeni ve ŞEKİL N başlıklarıyla Word'e yerleştirir."""
     if not images:
         raise ValueError("Şekiller Word dosyası için BBF içinde veya ayrıca yüklenen dosyalarda kullanılabilir görsel bulunamadı.")
 
@@ -635,7 +950,7 @@ JSON dışında hiçbir şey yazma.
  "alternatives":[""],
  "use_cases":[""],
  "figures":[""],
- "figure_reference_audit":[{"figure":"Şekil 1","reference_marks":["1"],"method_marks":["S101"],"symbolic_reference_marks":["UW"],"temporary_marks":[],"notes":""}],
+ "figure_reference_audit":[{"figure":"Şekil 1","reference_marks":["1"],"method_marks":["S101"],"symbolic_reference_marks":["UW"],"temporary_marks":[],"possible_wrong_targets":["9 numaralı ok travers yerine başka bir parçaya yöneliyor olabilir"],"missing_reference_candidates":[""],"notes":""}],
  "claim_core":[""],
  "parallel_step_groups":[{{"summary":"","step_numbers":["1007","1008"],"recommended_claim_location":"ana istem/tek bağımlı istem"}}],
  "stage_distinctions":[{{"step_numbers":["1001","1006"],"difference":""}}],
@@ -720,7 +1035,7 @@ KRİTİK TALİMATLAR:
 - ŞEKİLLERİN KISA AÇIKLAMASI kısa ve işlevsel olsun; gerekli değilse yöntem adımı numara aralığını şekil açıklamasında tekrarlama.
 - Bağımlı istemlerde Türkçe çıktıda “Önceki istemlerden herhangi birine” kalıbını, İngilizce çıktıda belirsiz “any preceding claim” zincirlerini varsayılan olarak kullanma; ek özellik hangi ana unsur veya işlem adımının ayrıntısıysa doğrudan onu tanımlayan gerekli isteme bağla.
 - objectives alanında Türkçe çıktı için amaç gövdesi “... sağlamaktır.” gibi tam yüklemle bitsin. İngilizce çıktı için her objective baştan sona tam bir cümle olarak yazılsın, örneğin “The main objective of the invention is to ... .”
-- Müşteri şekillerini teknik kaynak olarak aynen esas al. Görseldeki gerçek referans işaretlerini sayısal unsur, yöntem adımı, sembolik referans ve geçici şekil numarası olarak ayır. Gömülü grafik/ısı haritası/diyagram üzerindeki teknik sonuçları tamlık kontrolünde dikkate al. Geçici şekil numarasını yeni unsur referansı yapma.
+- Müşteri şekillerini teknik kaynak olarak aynen esas al. Görseldeki gerçek referans işaretlerini sayısal unsur, yöntem adımı, sembolik referans ve geçici şekil numarası olarak ayır. Gömülü grafik/ısı haritası/diyagram üzerindeki teknik sonuçları tamlık kontrolünde dikkate al. Geçici şekil numarasını yeni unsur referansı yapma. Şekildeki mevcut ok/numarayı otomatik olarak doğru kabul etme; nihai şekil aşamasında referans → unsur adı → detaylı açıklamadaki teknik tanım → fiziksel karşılık eşleştirmesi yapılacaktır. Belirli alt parçaya ait referansı tüm tertibat olarak yorumlama ve her görünür parçayı zorla numaralandırma.
 
 JSON dışında hiçbir şey yazma.
 ÇIKTI ŞEMASI:
@@ -802,6 +1117,9 @@ ZORUNLU KONTROL LİSTESİ:
 27. Buluş yazılım/algoritma ağırlıklıysa bağımsız sistem ve/veya yöntem istemi geniş bir donanımsal taşıyıcıya, tercihen elektronik cihaz üzerinde koşturulan yazılıma, açıkça dayandırılmış mı? Gereksiz sunucu/telefon/bilgisayar daraltması yapılmış mı?
 28. Bağımlı istemler kaynakta geçen her ayrıntıyı ayrı isteme dönüştürmek yerine yalnız stratejik ve gerçek daraltma sağlayan özelliklerle kontrollü tutulmuş mu?
 29. Bağımsız istemler yalnız “ne/sonuç” anlatımıyla mı kalıyor, yoksa teknikte uzman kişinin “nasıl gerçekleştiriliyor?” sorusuna cevap verecek biçimde kaynakta dayanaklı teknik taşıyıcı, girdi/veri, işlem mekanizması ve çıktı/ilişkiyi yeterince gösteriyor mu? Özellikle yazılım/algoritma istemlerinde yalnız elektronik cihaz demekle yetinilmiş mi, yoksa yazılımın cihaz üzerinde hangi teknik yapılar ve işlemler üzerinden sonucu ürettiği de istemden anlaşılabiliyor mu? Ana istem bu amaçla gereksiz tercihli ayrıntılarla daraltılmışsa sadeleştir.
+30. Şekildeki mevcut referans numarası/okun fiziksel hedefi, referans listesi ve detaylı açıklamadaki unsur tanımıyla gerçekten uyuşuyor mu? Mevcut işaret sırf şeklin üzerinde bulunduğu için doğru kabul edilmemelidir.
+31. Belirli bir alt parçaya ait referans genel tertibatı gösteriyor mu? Örneğin `9 = Travers` ise referans yalnız traversin fiziksel karşılığına yönelmelidir.
+32. İlgili şekilde görünür ve tarifnamede gerçek referansla tanımlı bir unsur numarasızsa bu durum figure/reference audit notunda belirlenmiş mi? Görünmeyen veya konumu belirsiz unsurlar için uydurma işaretleme yapılmamalıdır.
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
 {TARIFNAME_DRAFT_SCHEMA}
@@ -2763,6 +3081,12 @@ if work_type == "Tarifname oluşturma":
                 key="tar_figures",
                 disabled=not separate_figures,
             )
+        if separate_figures:
+            st.caption(
+                "Şekiller Word'e alınmadan önce nihai REFERANS NUMARALARI ile otomatik çapraz kontrol edilir. "
+                "Eksik veya yanlış referans okları yalnız fiziksel karşılık güvenilir biçimde belirlenebiliyorsa düzeltilir; "
+                "belirsiz referans varsa şekiller çıktısı durdurulur ve uydurma işaretleme yapılmaz."
+            )
 
         literature = st.checkbox("Literatür araştırması yap ve önceki tekniğe ekle")
         lc1, lc2 = st.columns(2)
@@ -2873,6 +3197,8 @@ if work_type == "Tarifname oluşturma":
                 data = build_tarifname_docx(draft, language_choice)
 
                 figure_data = None
+                figure_reports: list[dict[str, Any]] = []
+                figure_unresolved: list[str] = []
                 if separate_figures:
                     # Ayrıca yüklenen müşteri şekilleri birincil kaynaktır; yoksa BBF içindeki özgün görseller kullanılır.
                     all_figure_assets: list[UploadedAsset] = list(provided_figure_assets)
@@ -2886,7 +3212,29 @@ if work_type == "Tarifname oluşturma":
                         if marker not in seen_images:
                             seen_images.add(marker)
                             deduplicated.append(asset)
-                    figure_data = build_figures_docx(deduplicated, language_choice)
+
+                    if not deduplicated:
+                        figure_unresolved.append("Şekiller Word dosyası için kullanılabilir müşteri görseli bulunamadı.")
+                    else:
+                        def figure_progress(index: int, total: int, stage: str) -> None:
+                            stage_text = {
+                                "audit": "referansları tarifnameyle karşılaştırıyor",
+                                "edit": "eksik/yanlış referans oklarını düzeltiyor",
+                                "verify": "düzeltmeyi ve müşteri geometrisini doğruluyor",
+                            }.get(stage, "şekilleri kontrol ediyor")
+                            ratio = (index - 1) / max(total, 1)
+                            percent = min(97, 89 + int(ratio * 8))
+                            progress.progress(percent, text=f"ŞEKİL {index}/{total}: {stage_text}...")
+
+                        prepared_figures, figure_reports, figure_unresolved = prepare_figures_with_reference_audit(
+                            deduplicated,
+                            draft,
+                            language_choice,
+                            progress_callback=figure_progress,
+                        )
+                        if not figure_unresolved:
+                            progress.progress(98, text="Referansları doğrulanmış şekiller Word dosyasına yerleştiriliyor...")
+                            figure_data = build_figures_docx(prepared_figures, language_choice)
 
                 progress.progress(100, text="Hazır")
                 st.success("Tarifname oluşturuldu ve BBF tamlık kontrolü tamamlandı.")
@@ -2897,6 +3245,25 @@ if work_type == "Tarifname oluşturma":
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     type="primary",
                 )
+                if separate_figures and figure_reports:
+                    with st.expander("Şekil referans kontrolü", expanded=bool(figure_unresolved)):
+                        for report in figure_reports:
+                            idx = report.get("figure_index", "?")
+                            status = report.get("final_status", "unresolved")
+                            if status == "ok":
+                                st.write(f"✅ ŞEKİL {idx}: referanslar doğru; özgün müşteri şekli korundu.")
+                            elif status == "corrected":
+                                st.write(f"🛠️ ŞEKİL {idx}: eksik/yanlış referans numarası veya oku düzeltildi ve ikinci kontrolden geçti.")
+                            else:
+                                st.write(f"⚠️ {report.get('message', f'ŞEKİL {idx}: referans belirsizliği giderilemedi.')}")
+                if figure_unresolved:
+                    st.error(
+                        "Şekiller dosyası oluşturulmadı. En az bir referansın fiziksel karşılığı güvenilir biçimde "
+                        "doğrulanamadı veya otomatik düzeltme müşteri geometrisi kontrolünü geçemedi. "
+                        "Tarifname Word dosyası kullanılabilir; şekilleri düzeltip yeniden yükleyin."
+                    )
+                    for message in figure_unresolved:
+                        st.warning(message)
                 if figure_data is not None:
                     st.download_button(
                         "Şekiller Word dosyasını indir",

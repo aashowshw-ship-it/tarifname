@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-12.v2**
+Kural sürümü: **2026-08-13.v1**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -215,3 +215,8 @@ Güncelleme Word çıktısı yeni bir rapor türü değildir. Aynı Tip 3 Ön Ar
 - Referans listesinde şekille ilişkili gerçek bir unsur bulunup şekil üzerinde işareti eksikse şekil tamamlanmış sayılmaz. Kaynaktan konumu açıksa yalnız eksik referans işareti eklenir; konum belirsizse uydurma yerleştirme yapılmaz.
 - Patent şekillerindeki açıklama yazıları mümkün olduğunca azaltılır. Ancak müşterinin özgün şekli içindeki yazı/formül kaldırıldığında teknik anlam veya hesaplama ilişkisi kaybolacaksa müşteri görseli korunabilir. Bu durum bilinçli bir şekil-formalite riski olarak kabul edilir; teknik içerik formalite uğruna değiştirilmez.
 - Şekil kalite kontrolünün zorunlu eşleşmeleri: **şekil ↔ REFERANS NUMARALARI ↔ detaylı açıklama ↔ istemler**, ayrıca yöntem şekillerinde **↔ yöntem adımları**.
+- Eksik referans işareti eklenmeden veya mevcut ok düzeltilmeden önce **referans işareti → unsur adı → detaylı açıklamadaki teknik tanım/işlev → şekil üzerindeki fiziksel karşılık** eşleştirmesi yapılır. Mevcut numara/ok tek başına doğru kabul edilmez.
+- Kılavuz çizgisi/ok ucu doğrudan ilgili fiziksel unsurda sonlanır; boş alanı, komşu parçayı veya genel tertibatı gösteremez. Alt parçaya ait referans tüm tertibatı gösteremez. Örneğin `9 = Travers` ise ok traversin kendisine, `1 = Topuz` ise topuzun kendisine yönelmelidir.
+- Her görünür parça zorla numaralandırılmaz. Yalnız tarifnamede gerçek referans işaretiyle tanımlı ve ilgili şekilde fiziksel karşılığı güvenilir biçimde görülebilen unsur işaretlenir. Görünür ve referanslı bir unsur numarasız bırakılmışsa güvenilir konum tespitinde eksik numara/ok eklenir; konum belirsizse uydurma işaretleme yapılmaz.
+- Mevcut referans numarası doğru fakat oku yanlış parçaya gidiyorsa şekil doğru kabul edilmez; güvenilir eşleştirmede yalnız referans numarası/kılavuz çizgisi düzeltilir. Müşteri geometrisi, kesit taraması, perspektif, parça biçimi ve teknik kurgu değiştirilemez.
+- Otomatik düzeltmeden sonra özgün ve revize görsel ikinci kez karşılaştırılır. Teknik geometri korunmamışsa, yanlış/eksik/fazla referans kalmışsa veya doğrulama güvenilir değilse revize görsel kullanılmaz ve şekiller Word çıktısı oluşturulmaz.

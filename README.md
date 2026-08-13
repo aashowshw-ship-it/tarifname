@@ -1,10 +1,10 @@
-# Patent Atölyesi v5.4.10
+# Patent Atölyesi v5.4.11
 
-Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 12.08.2026 tarihli güncel tam sürümüdür.
+Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 13.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.4.10-final` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `tarifname-main-v5.4.11-figure-reference-fix` klasörünü ikinci bir alt klasör olarak yüklemeyin.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -25,8 +25,21 @@ GitHub web arayüzünde **Add file → Upload files** ile bütün dosyaları yü
 
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
+- `FIGURE_REFERENCE_CONFIDENCE` (opsiyonel; varsayılan `0.86`)
 
 `render.yaml` varsayılan model değerini `gpt-5.6` olarak taşır. Hesabınızda farklı model adı kullanılıyorsa Render Environment ekranından değiştirin.
+
+
+## Şekil referans doğrulama ve otomatik düzeltme – v5.4.11
+
+Tarifname oluştururken ayrı `Şekiller` Word çıktısı istenmişse şekiller artık Word'e doğrudan aktarılmadan önce nihai tarifname ile çapraz kontrol edilir.
+
+- Her şekil için `referans işareti → unsur adı → detaylı açıklamadaki teknik tanım → şekil üzerindeki fiziksel karşılık` eşleştirmesi yapılır.
+- Mevcut numara/ok doğru varsayılmaz. Örneğin `9 = Travers` ise kılavuz çizgisi traversin kendisine, `1 = Topuz` ise topuzun kendisine yönelmelidir.
+- Referans listesindeki bir unsur ilgili şekilde açıkça görünür fakat numarasızsa, fiziksel konumu güvenilir biçimde belirlenebiliyorsa eksik numara/ok eklenir. Her görünür parça zorla numaralandırılmaz.
+- Yanlış fiziksel parçaya yönelen mevcut referans oku güvenilir biçimde düzeltilebilir; otomatik görsel düzenleme yalnız numara ve kılavuz çizgisi/oklarla sınırlıdır.
+- Düzenleme sonrasında özgün ve revize görsel ikinci kez karşılaştırılır. Teknik geometri değişmişse veya referans hâlâ belirsiz/yanlışsa revize görsel reddedilir ve `Şekiller` Word çıktısı oluşturulmaz. Tarifname Word çıktısı bundan bağımsız olarak verilir.
+- Bu kontrol patent literatürü şekilleri için kullanılmaz. Tip 3 raporundaki D1/D2 şekilleri yine yalnız özgün patent kaynaklarından alınır ve yapay zekâ ile yeniden çizilmez.
 
 ## Görüş akışı
 
@@ -126,7 +139,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-12.v2`
+Kural sürümü: `2026-08-13.v1`
 
 ## Yerel çalıştırma
 

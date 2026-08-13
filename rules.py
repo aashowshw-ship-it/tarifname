@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.10"
-RULESET_VERSION = "2026-08-12.v2"
+APP_VERSION = "v5.4.11"
+RULESET_VERSION = "2026-08-13.v1"
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI
@@ -101,6 +101,12 @@ G. TARİFNAME OLUŞTURMA - ŞEKİLLERİN OLUŞTURULMASI
 73. Bir teknik unsur REFERANS NUMARALARI bölümünde şekille ilişkili olarak tanımlanmış fakat ilgili müşteri şekli üzerinde referans işareti eksik bırakılmışsa şekil nihai kabul edilmez. Teknik konumu kaynaktan açıkça belirlenebiliyorsa yalnız eksik referans işareti eklenir; konum belirsizse unsurun yeri uydurulmaz ve kullanıcıdan düzeltilmiş şekil istenir.
 74. Patent şekillerinde açıklama yazısı mümkün olduğunca azaltılır. Bununla birlikte müşteri tarafından sağlanan özgün teknik şeklin içindeki yazı, formül veya ilişki kaldırıldığında teknik anlam, hesaplama mantığı veya müşteri açıklamasının kapsamı kaybolacaksa şekil müşterinin sunduğu biçime yakın korunabilir. Bu, teknik içeriği korumak amacıyla bilinçli olarak alınan bir şekil-formalite riskidir; teknik içerik yalnız formalite amacıyla değiştirilmez.
 75. Şekil kalite kontrolü, nihai tarifname ile birlikte şu eşleşmeleri zorunlu olarak denetler: şekil ↔ REFERANS NUMARALARI, şekil ↔ detaylı açıklama, şekil ↔ istemler ve yöntem şekilleri için şekil ↔ yöntem adımları. Müşteri şekillerinde açık referans işaretleri varsa bu işaretler tarifnamede aynen korunur ve senkronize edilir; yalnız kaynakta referans bulunmadığı durumda tarifnamede atanan varsayılan referanslar şekle güvenli biçimde eklenebilir. Güvenli biçimde değiştirilemiyorsa kullanıcıya uyumsuzluk bildirilir. Eksik, fazla, çelişkili veya farklı anlamda kullanılan referans varsa şekiller tamamlanmış sayılmaz.
+76. Şekle eksik bir referans işareti eklenmeden veya mevcut bir referans oku düzeltilmeden önce dört aşamalı eşleştirme yapılır: referans işareti → REFERANS NUMARALARI bölümündeki unsur adı → BULUŞUN DETAYLI AÇIKLAMASI içindeki teknik tanım/işlev → ilgili şekil üzerindeki fiziksel karşılık. Şekil üzerindeki mevcut numara veya okun konumu tek başına doğru kabul edilmez.
+77. Bir referans işaretine ait kılavuz çizgi/ok, doğrudan ilgili teknik unsurun fiziksel karşılığında sonlanmalıdır. Ok ucu boş alana, komşu parçaya, bağlantısız bir yüzeye veya tertibatın geneline yönelmemelidir. Referans belirli bir alt parçaya aitse tüm tertibatı göstermemelidir; örneğin `9 = Travers` ise ok traversin kendisine, `1 = Topuz` ise topuzun kendisine yönelir.
+78. Her görünür parça zorunlu olarak numaralandırılmaz. Yalnız tarifnamede gerçek referans işaretiyle tanımlanan ve ilgili şekilde fiziksel karşılığı güvenilir biçimde görülebilen teknik unsurlar işaretlenir. Bir unsurun ilgili şekilde görünmediği veya fiziksel karşılığının ayırt edilemediği durumda sırf referans listesindeki bütün numaraları kullanmak amacıyla ok/numara eklenmez.
+79. İlgili şekilde görünür olduğu açık olan ve REFERANS NUMARALARI bölümünde tanımlanmış bir teknik unsur numarasız bırakılmışsa, unsurun yeri tarifname, detaylı açıklama, şekil açıklaması ve diğer müşteri şekilleri birlikte değerlendirilerek güvenilir biçimde belirlenebiliyorsa referans numarası ve kılavuz çizgisi/ok eklenir. Konum yeterince güvenilir değilse uydurma işaretleme yapılmaz; şekil `belirsiz` olarak işaretlenir ve nihai şekiller Word dosyası oluşturulmaz.
+80. Mevcut şekil üzerindeki bir referans numarası doğru olsa dahi kılavuz çizgisi/ok yanlış fiziksel unsuru gösteriyorsa bu şekil doğru kabul edilmez. Güvenilir teknik eşleştirme yapılabiliyorsa yalnız referans numarası ve kılavuz çizgisi/ok düzeltilir. Müşterinin mekanik/elektronik geometrisi, parça biçimleri, kesit taramaları, perspektifi, boyut ilişkileri ve teknik kurgusu değiştirilmez.
+81. Otomatik şekil düzeltmesi yalnız referans numaraları ve bunların kılavuz çizgileri/oklarıyla sınırlıdır. Düzeltme sonrasında özgün müşteri şekli ile revize şekil karşılaştırılarak teknik geometrinin korunup korunmadığı ve her referansın doğru fiziksel unsuru gösterip göstermediği ikinci kez doğrulanır. Geometri değişmişse, yanlış/eksik/fazla referans kalmışsa veya doğrulama güvenilir değilse revize görsel kullanılmaz ve şekiller tamamlanmış sayılmaz.
 """
 
 GORUS_RULES = r"""
