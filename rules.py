@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.23"
-RULESET_VERSION = "2026-08-14.v13"
+APP_VERSION = "v5.4.24"
+RULESET_VERSION = "2026-08-14.v14"
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI
@@ -168,33 +168,44 @@ G. TARİFNAME OLUŞTURMA - ŞEKİLLERİN OLUŞTURULMASI
 
 GORUS_RULES = r"""
 TÜRK PATENT GÖRÜŞ ÇALIŞMASI KURALLARI
-1. Yalnızca raporda X veya Y olarak gösterilen dokümanlara karşı savunma yap. A kategorisi veya itiraz dayanağı yapılmayan dokümanlara karşı görüş yazma.
-2. Araştırma raporuna karşı görüşte rapor, tarifname, D1/D2 ve varsa müşteri bilgilerini birlikte analiz et.
-3. İnceleme raporuna karşı görüşte bunlara ek olarak önceki görüşü analiz et; uzmanın ikna olmadığı savunmaları aynen tekrarlamak yerine farklı teknik ayrım ve dayanaklar geliştir.
-4. Müşteri bilgisini yalnızca tarifname/istemlerde açık dayanağı varsa doğrudan kullan. Dayanağı yoksa teknik gerçek gibi yazma; uygunsa çıkarım olduğunu belirterek yumuşat veya kullanma.
-5. Teknik farklara, teknik etkiye ve unsurlar arasındaki işlevsel ilişkiye odaklan.
-6. Tarifname dayanağı verilecek yerde şu kalıbı kullan: 'Tarifnamede bu durum şu şekilde belirtilmektedir:' Ardından tarifnamedeki ilgili cümle/pasajı tırnak içinde ve kalın ver.
-7. Tarifname alıntısını kesme, değiştirme, sadeleştirme veya kelime ekleyip çıkarma. Alıntı tarifname metninde birebir bulunmalıdır.
-8. Yenilik itirazında ilgili istemin tüm özelliklerinin tek dokümanda doğrudan ve açık biçimde açıklanmadığını göster.
-9. Buluş basamağı itirazında D1 ve D2'yi tek başına ve birlikte değerlendir; teknik fark, teknik etki, objektif teknik problem, birleştirme motivasyonu ve geriye dönük değerlendirme riskini ele al.
-10. Başvuru numarası ve başvuru sahibi rapordan çekilsin. Referans kullanıcıdan alınsın.
-11. Görüş formatı bağlayıcı `Gorus_metni_696809_template.docx` şablonuna birebir sadık kalsın.
-12. Çıktı oluşturulduktan sonra ikinci bir kalite kontrolü yap: yanlış doküman, dayanağı olmayan müşteri bilgisi, eksik alıntı, tekrar eden savunma ve sonuç tutarlılığı bakımından düzelt.
-13. Görüş için bağlayıcı ve tek Word şablonu `Gorus_metni_696809_template.docx` dosyasıdır. Başka eski görüş dosyalarını şablon yerine kullanma. Şablonun logo, header/footer, marj, sayfa geometrisi, başlık konumu, font, punto ve paragraf düzenini değiştirme.
-14. Başvuru bilgi alanlarında `Başvuru No`, `Başvuru Sahibi` ve `Referans` etiketleri kalın; bunların karşısındaki değerler normal yazı olmalıdır. Başvuru numarası veya diğer değerleri kalınlaştırma. Görüş gövdesindeki normal paragraflar iki yana yaslı olmalıdır.
-15. İnceleme/araştırma raporunda istem değişikliği zorunlu görülmüyorsa istemleri sırf iyileştirmek amacıyla değiştirme. Bu durumda mevcut tarifname ve istemleri esas alarak görüş oluştur.
-16. İstem revizyonu gerçekten gerekiyorsa önce yalnızca önerilen istem değişikliklerini kullanıcıyla netleştir. Kullanıcı açıkça onaylamadan görüş metni oluşturma ve onaylanmamış bir istem kurgusunu görüşe taşıma.
-17. İstem revizyonlarında en az değişiklik ilkesi uygulanır. Yalnızca uzmanın itiraz ettiği veya düzeltme istediği noktaya ve bu noktayı gidermek için zorunlu olan ifadeye müdahale edilir; genel redaksiyon veya kapsamı gereksiz değiştiren yeniden yazım yapılmaz.
-18. Revizyonlarda kapsam aşımı/yeni konu yaratma. Eklenen her teknik ifade mevcut tarifname veya istemlerde açık ve doğrudan dayanak bulmalıdır. Ürün/sistem istemlerinde yöntem dili yerine yapısal unsur dili kullan; ürün ve yöntem istemlerini birbirinden ayır.
-19. İstem revizyonu onaylandıktan sonra görüş yalnızca kullanıcının onayladığı nihai istem seti üzerinden hazırlanır. Görüş oluşturma aşamasında istemlere kendiliğinden yeni değişiklik ekleme.
-20. İndirilen çıktı dosyasının adı URL-kodlu görünmemelidir. `%20`, `%C3` gibi kodlanmış parçalar dosya adına taşınmamalı; Türkçe karakterler ve normal boşluklar korunmalıdır.
-21. Görüş akışı tek adımda doğrudan Word üretmez. İlk düğme yalnızca raporu, önceki görüşü, tarifnameyi, X/Y dokümanlarını ve varsa müşteri bilgisini analiz eder; analiz sonucu ekranda gösterildikten sonra görüş oluşturma aşamasına geçilir.
-22. İlk analiz istem revizyonu gerekip gerekmediğini açıkça belirler. Revizyon gerekmiyorsa kullanıcıya bu durum gösterilir ve mevcut istemlerle görüş oluşturma düğmesi açılır.
-23. Revizyon gerekiyorsa önce önerilen değişiklikler istem bazında gösterilir. Her değişiklik için istem numarası, değişiklik gerekçesi, tarifname dayanağı, eski ifade ve önerilen yeni ifade ayrı ayrı verilmelidir.
-24. Revizyon önerileri kullanıcı onayı olmadan uygulanmaz. Kullanıcı isterse önerileri ek talimatla yeniden analiz ettirebilir. Kullanıcı önerilen revizyonları açıkça onayladıktan sonra revize istem çıktıları hazırlanır.
-25. Onaylı istem revizyonu için iki Word çıktısı oluşturulur: gerçek OOXML Track Changes işaretlerini içeren MARKUP sürümü ve aynı değişikliklerin kabul edilmiş halini içeren TEMİZ sürüm. Track Changes değişiklikleri mümkün olan en küçük ifade/kelime düzeyinde uygulanır; bütün istem paragrafı sırf kolaylık için silinip yeniden eklenmez.
-26. Markup üretimi için kaynak tarifname DOCX olmalıdır. PDF veya eski DOC kaynakta istem revizyonu gerekiyorsa kullanıcıdan DOCX tarifname istenir; dosya dönüştürülmüş gibi varsayım yapılmaz.
-27. Revize istemler kullanıcı tarafından son kez onaylanmadan görüş Word dosyası oluşturulmaz. Görüş metni yalnızca kullanıcının onayladığı mevcut veya revize nihai istem seti üzerinden hazırlanır.
+1. Görüş akışı arayüz üzerinden adım adım yürütülür. İlk ayrım araştırma raporu mu, inceleme/ofis aksiyonu mu olduğudur. Rapor yüklenmeden savunma veya istem revizyonu üretilmez.
+2. Rapor önce tek başına analiz edilir; hangi istemlere hangi itirazların yöneltildiği, yenilik/buluş basamağı/açıklık/destek/kapsam gibi gerekçeler ve kullanılan D1/D2/D3 dokümanları çıkarılır. Tarifname görülmeden "istem revizyonu gerekli" sonucu verilmez.
+3. İnceleme/ofis aksiyonu çalışmasında önceki sunulan görüş YALNIZCA gerçekten varsa yüklenir ve analiz edilir. İlk inceleme bildiriminde veya önceki görüş bulunmayan dosyada sistem önceki görüşü zorunlu tutamaz.
+4. Kullanıcı istem revizyonu yapılmayacağını seçmişse görüş mevcut istemler üzerinden hazırlanır. İstemlere kendiliğinden yeni sınırlama eklenmez. Revizyon gerekiyorsa önce öneri gösterilir ve kullanıcı açıkça onaylamadan uygulanmaz.
+5. Müşteri bilgisini yalnızca tarifname/istemlerde açık dayanağı varsa doğrudan kullan. Dayanağı yoksa teknik gerçek gibi yazma; çıkarım olarak dahi görüşün merkezine yerleştirme.
+6. Görüş dili arayüzde ayrı ve zorunlu bir seçimdir. Türkçe veya İngilizce seçilebilir. Seçilen dil bütün görüş gövdesine uygulanır; şablon geometrisi değişmez.
+7. Görüş formatı bağlayıcı ve tek Word şablonu olan `Gorus_metni_696809_template.docx` dosyasına birebir sadık kalır. Logo, header/footer, marjlar, sayfa geometrisi, ilk iki kurum başlığı, metadata tablosu, `Sayın Uzman,` girişi, Arial 11 punto, iki yana yaslama, 1,5 satır aralığı, paragraf/boş satır ritmi, şekil tablo biçimi ve kapanış yapısı korunur.
+8. Başvuru bilgi alanlarında `Başvuru No`, `Başvuru Sahibi` ve `Referans` etiketleri kalın; karşılarındaki değerler normal yazıdır. Başvuru sahibi resmi raporda bulunmuyorsa kullanıcıdan alınır; tahmin edilmez.
+9. Giriş şablondaki mantıkta kısa yazılır: rapor tarihi ve türü, hangi istemlerin hangi patentlenebilirlik kriteri bakımından kabul/ret edildiği ve `Başvuru sahibinin görüşleri aşağıda dikkatinize sunulmaktadır.` cümlesi. Uzun teknik savunma giriş paragrafına taşınmaz.
+10. Raporda geçen D1, D2, D3 vb. dokümanlar liste halinde verilir. Araştırma raporundaki X/Y kategorileri varsa korunur; inceleme raporunda X/Y etiketi yoksa uydurulmaz. Uzmanın esas itirazı yalnız D1 üzerinden kurulmuşsa bu açıkça belirtilir; D2/D3 tamamlayıcı değerlendirmede rapordaki statüleri aşılmadan kullanılır.
+11. Her ilgili doküman ayrı başlık altında objektif olarak tanıtılır. Dokümanın gerçekten açıkladığı teknik yapı ile başvurunun çözümü birbirine karıştırılmaz; doküman metninde bulunmayan işlev, bağlantı veya motivasyon uydurulmaz.
+12. Her patent dokümanı bölümünde bağlayıcı şablondaki `D1 dokümanı - Şekil ...` biçimine uygun özgün patent şekli kullanılır. D1/D2/D3 için mümkünse savunulan teknik farkı en iyi gösteren özgün şekil veya özgün şekil sayfası ilgili kullanıcı PDF/DOCX kaynağından alınır. Patent şekli model tarafından çizilmez, yeniden tasarlanmaz veya temsili olarak üretilmez. Gerekirse özgün sayfadan yalnız kırpma/ölçekleme yapılabilir.
+13. Teknik farklara, teknik etkiye ve unsurlar arasındaki işlevsel ilişkiye odaklan. Yalnız `D1'de yoktur` şeklinde özellik listesi görüşün ana savunması olamaz.
+14. Yenilik itirazında ilgili istemin tüm teknik özelliklerinin ve aralarındaki işlevsel ilişkinin tek dokümanda doğrudan ve açık biçimde açıklanmadığını göster.
+15. Buluş basamağı itirazında önce en yakın dokümanın gerçek öğretisini tespit et; ardından ayırt edici özellikleri, bunların sağladığı teknik etkiyi ve bu etkiden çıkan objektif teknik problemi açıkla. Sonrasında uzman kişinin dokümandan veya diğer dokümanlarla kombinasyondan başvuru çözümüne neden olağan/rutin biçimde ulaşamayacağını teknik olarak gerekçelendir.
+16. `Dokümanların birlikte değerlendirilmesi` bölümü buluş basamağı itirazı bulunan dosyalarda görüşün ana ikna bölümüdür. Bu bölüm kısa bir sonuç paragrafı olarak geçilemez. Şu zinciri açıkça kurmalıdır: başlangıç noktası → D1'in somut öğretisi → başvurunun ayırt edici teknik ilişkisi → teknik etki → objektif teknik problem → D2/D3'ün somut öğretisi → birleştirme motivasyonu var mı/yok mu → kombinasyon yapılsa dahi hangi ilave yapısal/işlevsel değişikliklerin gerektiği → geriye dönük değerlendirme riski → buluş basamağı sonucu.
+17. Bir dokümanda unsurlar ayrı ayrı biliniyor olsa bile, başvurudaki özel yapısal ve işlevsel ilişkinin neden doğrudan önerilmediği açıklanır. `Aynı teknik sonuca ulaşır` gibi sonuç odaklı ifade yerine hangi teknik özelliğin hangi mekanizma üzerinden hangi sonucu doğurduğu gösterilir.
+18. Tekniğin uzmanı açısından NASIL kontrolü görüş savunmasına da uygulanır: iddia edilen teknik katkının nasıl ortaya çıktığı, hangi unsur/işlev ilişkisinden kaynaklandığı ve neden atıf dokümanındaki düzenle aynı olmadığı metinden anlaşılabilmelidir.
+19. D1/D2/D3 birlikte değerlendirilirken dokümanları başvuru bilindikten sonra parçalarına ayırıp yeniden kuran hindsight/geriye dönük yaklaşım kullanılmaz. Birleştirme için dokümanlarda veya ortak genel bilgide gerçek teknik motivasyon gösterilmelidir; salt `yapılabilir` olması yeterli kabul edilmez.
+20. İstem 2 ve diğer bağımlı istemler ana istemin bütün özelliklerini içerdiği için bu bağlantı açıkça dikkate alınır. Bağımlı istemdeki ek özellik ilgili dokümanda biliniyorsa bunu saklama; ana istemdeki ayırt edici çekirdeğin neden devam ettiğini dürüst biçimde açıkla.
+21. Tarifname dayanağı verilen her önemli teknik savunmada format ZORUNLU olarak `Tarifname sayfa X, satır Y-Z’te bu durum şu şekilde belirtilmiştir: “...”` biçimindedir. X ve Y-Z, yüklenen tarifnamenin gerçek fiziksel sayfa ve satır numaralarından otomatik belirlenir; model tahminiyle yazılmaz.
+22. Tırnak içindeki tarifname pasajı kaynak metinde kelimesi kelimesine bulunmalıdır. Alıntı kesilmez, sadeleştirilmez, sözcük eklenip çıkarılmaz. Sayfa/satır atfı ile alıntı metninin gerçek konumu kalite kapısında yeniden doğrulanır.
+23. Şablondaki örneklerde olduğu gibi tarifname alıntısı mümkün olduğunda ilgili teknik savunmanın hemen ardından verilir. Alıntı sırf sayfa doldurmak için eklenmez; doğrudan savunulan teknik noktayı desteklemelidir.
+24. Yapay zekâ kokan veya gereksiz soyut ifadelerden kaçınılır. `mimari`, `benzersiz sinerji`, `paradigma`, `sofistike yaklaşım` gibi ifadeler teknik zorunluluk yoksa kullanılmaz. Sade patent vekili dili, kısa ve teknik gerekçeli cümleler tercih edilir; gereksiz noktalı virgül kullanılmaz.
+25. Sonuç bölümü önceki paragrafları tekrarlamaz. Raporda kabul edilen yenilik/sanayiye uygulanabilirlik hususları doğru biçimde anılır; savunulan teknik farklar nedeniyle ilgili istemlerin buluş basamağı kriterini sağladığı/sağlamadığı net biçimde sonuçlandırılır.
+26. Revizyon gerekiyorsa en az değişiklik ilkesi uygulanır; her ekleme mevcut tarifname/istemlerde açık ve doğrudan dayanak bulmalıdır. Ürün/sistem istemlerinde yöntem dili kullanılmaz; kapsam aşımı/yeni konu yaratılmaz.
+27. Onaylı istem revizyonu varsa Markup ve Temiz sürüm üretilir; gerçek OOXML Track Changes mümkün olan en küçük kelime/ifade düzeyinde uygulanır. Revize istemler kullanıcı tarafından son kez onaylanmadan görüş Word dosyası üretilmez.
+28. İndirilen çıktı dosyasının adı URL-kodlu görünemez. `%20`, `%C3` vb. parçalar dosya adına taşınmaz; Türkçe karakterler ve normal boşluklar korunur.
+29. GÖRÜŞ ÇIKTI KALİTE KAPISI, Word kullanıcıya verilmeden önce ZORUNLU olarak aşağıdaki alt kapıların tamamını çalıştırır:
+    (a) RAPOR/KAYNAK KAPISI: raporda bulunmayan itiraz, istem sonucu veya doküman kategorisi uydurulmamış mı; D1/D2/D3 hakkındaki teknik ifadeler yüklenen dokümanlarla uyumlu mu;
+    (b) TARİFNAME DAYANAK KAPISI: her doğrudan alıntı birebir mi ve `sayfa X, satır Y-Z` konumu gerçek kaynakta doğrulanıyor mu;
+    (c) İSTEM/KAPSAM KAPISI: kullanıcı revizyon istemediyse görüş mevcut istem kapsamının dışına teknik sınırlama taşıyor mu;
+    (d) BULUŞ BASAMAĞI KAPISI: buluş basamağı sorunu varsa `Dokümanların birlikte değerlendirilmesi` bölümü teknik fark + teknik etki + objektif teknik problem + birleştirme motivasyonu + gerekli ilave değişiklikler + hindsight değerlendirmesini gerçekten içeriyor mu;
+    (e) ÖZGÜN ŞEKİL KAPISI: görüşte ele alınan her D1/D2/D3 patent dokümanı için özgün patent şekli/şekil sayfası kullanılmış mı ve yapay/temsili şekil yok mu;
+    (f) ŞABLON KAPISI: bağlayıcı 696809 şablonunun kurum başlıkları, metadata tablosu, boş satır ritmi, paragraf formatı, 1,5 satır aralığı, şekil tablosu, font/punto, header/footer, marj ve kapanışı korunmuş mu;
+    (g) RENDER KAPISI: Word LibreOffice ile PDF'e başarıyla render ediliyor mu ve sayfa üretimi bozulmadan tamamlanıyor mu.
+30. Herhangi bir görüş kalite kapısı başarısızsa dosya tamamlanmış sayılmaz. Hata aynı üretim turunda düzeltilir ve kapılar tekrar çalıştırılır; bütün kapılar geçmeden indirme butonu açılmaz.
+31. Görüş metni yalnızca kullanıcının onayladığı mevcut veya revize nihai istem seti üzerinden hazırlanır. Görüş oluşturma aşamasında istemlere kendiliğinden yeni değişiklik eklenemez.
 """
 
 ARASTIRMA_RULES = r"""
@@ -277,3 +288,5 @@ ARAŞTIRMA GÜNCELLEME – TİP 3 EK KURALLARI
 # 2026-08-14.v12 — Ham kaynak pasaj tamlığı + deterministik Sistem/Yöntem modu + SVG müşteri şekli tamlığı + bağımlı yöntem istemi kapanış kapısı.
 
 # 2026-08-14.v13 — Word OMML formül kapısı + sabit kırmızı/mavi run sadakati + deterministik ana istem uzman-NASIL/modül sıra kapısı.
+
+# 2026-08-14.v14 — Görüş dili adımı + sayfa/satır birebir dayanak kapısı + D1/D2/D3 özgün şekil kapısı + tam görüş şablon/output gate + buluş basamağı birlikte değerlendirme derinliği.

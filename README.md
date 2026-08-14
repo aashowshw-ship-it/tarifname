@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.23
+# Patent Atölyesi v5.4.24
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 14.08.2026 tarihli güncel tam sürümüdür.
 
@@ -263,3 +263,16 @@ Tarifname üretiminde header/footer yeniden kurulmaz; bağlayıcı şablondan ay
 - `Tarifname_181176_template.docx` içindeki giriş talimatı ile İSTEMLER altındaki üç sabit talimat paragrafının kırmızı/mavi kelime dağılımı run düzeyinde bağlayıcıdır. Sabit metnin tamamını tek kırmızı run'a yazıp mavi run'ları boş bırakmak artık tam şablon kontrolünden geçmez.
 - Bağımsız sistem istemindeki yazılım/modül unsurları deterministik uzman “NASIL?” kontrolünden geçer. `X modülü (N), ... yapan bir modül` biçimindeki İngilizce claim sırası reddedilir; Türkçe istemde kaynak destekli teknik işlev/mekanizma önce, unsur adı ve referansı sonra yazılır. Sınıflandırma ve hesaplama modüllerinde kaynak kriter/ilişki açıklıyorsa yalnız sonuç fiili yeterli değildir.
 - Bu kontroller yalnız prompt kuralı değildir: taslak validasyonu, Word üretimi ve çıktı sonrası kalite kapısında çalışır.
+
+
+## v5.4.24 — Görüş şablon ve buluş basamağı çıktı kapısı
+
+Görüş hazırlama akışında dil seçimi arayüzün bağlayıcı girdisidir. Başvuru sahibi raporda/tarifnamede güvenilir biçimde bulunamıyorsa arayüzde ayrıca girilebilir; kullanıcı girdisi aynen korunur ve metadata alanları boşsa Word çıktısı verilmez.
+
+`Gorus_metni_696809_template.docx` görüş çıktısı için bağlayıcıdır. Kurum başlıkları, 3x3 metadata tablosu, metadata sonrası fiziksel boş paragraf, `Sayın Uzman,` girişi, kısa giriş paragrafı ve ardından fiziksel boş paragraf deterministik olarak denetlenir. D1/D2/D3 şekil tablolarından önce taslaktaki iki fiziksel boş paragraf korunur; şekiller modelce yeniden çizilmez, yüklenen özgün patent PDF'lerinden alınır.
+
+Tarifname dayanaklarında model sayfa/satır numarası üretmez. Birebir alıntı önce tarifname metninde doğrulanır, ardından DOC/DOCX/PDF fiziksel sayfası render edilerek basılı satır numaraları üzerinden `Tarifname sayfa X, satır Y-Z’te bu durum şu şekilde belirtilmiştir: “...”` biçiminde deterministik atıf eklenir.
+
+Buluş basamağı itirazında `Dokümanların birlikte değerlendirilmesi` görüşün ana ikna bölümüdür. Çıktı kapısı bu bölümde teknik fark → teknik etki → objektif teknik problem → birleştirme motivasyonu/yönlendirme → gereken ilave yapısal/işlevsel değişiklikler → geriye dönük değerlendirme riskinin kurulmasını ve yeterli teknik derinliği zorunlu tutar. D1/D2/D3 ayrı ayrı objektif incelenir; raporda olmayan X/Y kategorisi uydurulmaz; mevcut istemlerle devam kararı verilmişse görüş içinde yeni istem revizyonu yapılmaz.
+
+İndirme düğmesi ancak şu görüş kapıları geçtikten sonra açılır: metadata/kaynak doğruluğu, birebir tarifname alıntısı, fiziksel sayfa-satır doğrulaması, özgün D-şekilleri, tam görüş şablon sadakati, buluş basamağı birlikte değerlendirme derinliği ve Word→PDF render smoke testi.

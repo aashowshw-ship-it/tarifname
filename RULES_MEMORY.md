@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-14.v13**
+Kural sürümü: **2026-08-14.v14**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -338,3 +338,15 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Kaynakta açık formül/bağıntı varsa nihai Word'de düz metin denklem kullanılmaz; gerçek OMML denklem nesnesi zorunludur. Detay formülleri ortalı denklem, istem içindeki açık bağıntılar `[[EQ: ...]]` üzerinden inline denklem olarak üretilir. Çıktı sonrası denklem nesnesi sayısı doğrulanır.
 - Tarifname girişindeki sabit talimat ve İSTEMLER altındaki üç sabit talimatta şablondaki kırmızı/mavi run bölünmeleri, metin, renk ve kalınlık birebir korunur.
 - Yazılım/modül ağırlıklı ana sistem isteminde uzman “nasıl?” testi deterministiktir: İngilizce claim benzeri `X modülü (N), ... yapan bir modül` sırası yasaktır; işlev/mekanizma önce, unsur adı `(N)` sonra gelir. Kaynakta mevcutsa girdi/veri + işlem/mekanizma + çıktı/sonraki unsur ilişkisi görünmelidir. Salt `hesaplayan/sınıflandıran/dönüştüren` sonucu yeterli değildir.
+
+
+## 2026-08-14.v14 — Görüş Çalışması tam çıktı kapısı (Bağlayıcı)
+
+- Görüş arayüzünde `Görüş dili` ayrı girdidir. Başvuru sahibi kaynakta güvenilir biçimde bulunamıyorsa kullanıcıdan alınır; kullanıcı girdisi bağlayıcıdır. Başvuru No / Başvuru Sahibi / Referans boşsa çıktı verilmez.
+- İnceleme raporu önce okunur; ancak istem revizyonu gerekliliği tarifname ve istem seti görülmeden kesinleştirilemez. Kullanıcı revizyonsuz devam dediyse görüş mevcut istemlerle hazırlanır ve görüş sırasında kendiliğinden revizyon yapılmaz.
+- `Gorus_metni_696809_template.docx` bağlayıcıdır: iki kurum başlığı → metadata tablosu → fiziksel boş paragraf → `Sayın Uzman,` → kısa giriş → fiziksel boş paragraf sırası korunur. Font/punto/1,5 satır aralığı, section/marj/header/footer ve imza düzeni şablondan sapamaz.
+- D1/D2/D3 her biri objektif teknik içerikle ayrı incelenir. İlgili patent dokümanının özgün şekli kullanılır; model çizimi kullanılmaz. Her D-şekil tablosundan önce şablondaki iki fiziksel boş paragraf bulunmalıdır.
+- Tarifnameden her önemli teknik savunma için mümkün olduğunca birebir dayanak verilir. Model sayfa/satır numarası üretmez. Alıntı fiziksel tarifname sayfasında bulunur ve basılı satır numaraları deterministik hesaplanarak `Tarifname sayfa X, satır Y-Z’te bu durum şu şekilde belirtilmiştir: “...”` biçiminde yazılır. Tırnak içi metin kelimesi kelimesine tarifnameden olmalıdır.
+- Buluş basamağı itirazında en güçlü bölüm `Dokümanların birlikte değerlendirilmesi`dir. Teknik fark, teknik etki, objektif teknik problem, D1/D2/D3 birleştirme motivasyonu veya yokluğu, gerekli ilave yapısal/işlevsel değişiklikler ve geriye dönük (hindsight) değerlendirme riski açık zincirle tartışılır. Yalnız `D1'de yok / D2'de yok` listesi yeterli değildir.
+- Bağımlı istemde tekil olarak bilinen bir ek özellik varsa bu dürüstçe kabul edilir; savunma, bağımlı istemin ana istemdeki patentlenebilir çekirdeği de içerdiği gerçeğine dayanır.
+- Nihai görüş çıktı kapısı: rapor/kaynak sadakati, metadata, birebir alıntı, fiziksel sayfa-satır, istem kapsamını aşmama, özgün şekil, tam Word şablonu, buluş basamağı teknik derinliği ve render testi. Kapılardan biri başarısızsa Word indirmesi sunulmaz.

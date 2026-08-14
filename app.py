@@ -44,6 +44,13 @@ from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCE
 from template_audit import validate_full_tarifname_template_fidelity
 from source_guards import build_source_passage_registry, validate_source_passage_audit, resolve_tarifname_claim_mode
 from word_math import EQ_MARKER_RE, append_text_with_equations as _append_text_with_equations, add_display_equation
+from gorus_audit import (
+    annotate_quote_locations,
+    extract_cited_original_figure_pages,
+    validate_gorus_template_fidelity,
+    validate_opinion_payload,
+    render_gorus_docx_smoke_test,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 TARIFNAME_TEMPLATE = BASE_DIR / "Tarifname_181176_template.docx"
@@ -2979,32 +2986,62 @@ def gorus_prompt(
     customer_text: str,
     preanalysis: dict[str, Any] | None = None,
     revision_status: str = "Mevcut istemlerle devam",
+    output_language: str = "Türkçe",
+    applicant_override: str = "",
 ) -> str:
+    language_instruction = (
+        "Nihai görüşün tamamını İngilizce yaz; ancak bağlayıcı Word şablonunun kurum/metadata yerleşimini koru."
+        if _english_spec(output_language)
+        else "Nihai görüşün tamamını Türkçe yaz."
+    )
     return f"""{GORUS_RULES}
 Aşağıdaki dosyalara dayanarak Türk Patent ve Marka Kurumu için ayrıntılı görüş metni hazırla.
 Görüş türü: {report_type}
 Ana dosya referansı: {reference}
 Nihai istem durumu: {revision_status}
+Görüş dili: {output_language}
+Kullanıcı tarafından girilmiş başvuru sahibi (varsa bağlayıcı): {applicant_override}
+{language_instruction}
 
 Bu aşama ilk teknik analizden SONRA çalışmaktadır. İstemlerde kendiliğinden yeni revizyon önerme veya onaylanmış istem setini değiştirme.
-Aşağıdaki ÖN ANALİZ yalnızca savunma yönünü ve kullanıcının onayladığı revizyon durumunu anlamak içindir.
+Raporun sonucunu dürüstçe koru. Özellikle buluş basamağı itirazı varsa `Dokümanların birlikte değerlendirilmesi` bölümünü görüşün en güçlü ve en ayrıntılı ikna bölümü olarak yaz.
+Tarifname alıntılarında sayfa/satır numarası YAZMA; yalnız birebir quote text döndür. Sayfa ve satırlar Word üretiminden önce fiziksel tarifname üzerinden deterministik olarak eklenecektir.
+Her D1/D2/D3 bölümünün `figure_caption` alanı şablondaki `D1 dokümanı - Şekil ...` biçiminde olsun; yalnız yüklenen özgün patentte gerçekten bulunan şekil numaralarını kullan.
 
 JSON dışında yazma.
 ŞEMA:
 {{
  "application_no":"", "applicant":"", "reference":"{reference}", "report_date":"", "intro":"",
- "cited_documents":[{{"label":"D1","number":"","title":"","category":"X/Y","summary":""}}],
- "sections":[{{"heading":"D1 dokümanı:","paragraphs":[""],"quotes":[{{"lead":"Tarifnamede bu durum şu şekilde belirtilmektedir:","text":"","following":""}}]}}],
+ "cited_documents":[{{"label":"D1","number":"","title":"","category":"","summary":""}}],
+ "sections":[
+   {{
+     "label":"D1",
+     "heading":"D1 (...) dokümanı:",
+     "figure_caption":"D1 dokümanı - Şekil ...",
+     "blocks":[
+       {{"type":"paragraph","text":""}},
+       {{"type":"quote","text":""}},
+       {{"type":"paragraph","text":""}}
+     ],
+     "inventive_step_heading":"D1 karşısında buluş basamağı",
+     "inventive_step_paragraphs":[""]
+   }}
+ ],
  "combined_assessment":{{"heading":"Dokümanların birlikte değerlendirilmesi","paragraphs":[""]}},
  "conclusion":[""], "signoff":"Saygılarımızla,\nDESTEK PATENT A.Ş."
 }}
+
 ÖZEL:
-- Raporda X/Y olmayan dokümanı savunma bölümüne alma.
+- Şablon girişine uy: intro kısa olsun; teknik savunmayı girişe doldurma.
+- `applicant_override` boş değilse JSON `applicant` alanını aynen bu değer yap; değiştirme veya kısaltma. Boşsa yalnız rapor/tarifnameden güvenilir biçimde çıkar.
+- İnceleme raporunda X/Y etiketi yoksa category alanını boş bırak; uydurma kategori yazma.
+- Uzman buluş basamağını yalnız D1 üzerinden gerekçelendirmişse bunu dürüstçe belirt; D2/D3'ü tamamlayıcı olarak ayrı incele ve birlikte değerlendirmede kullan.
+- Her dokümanın teknik öğretisini gerçekten yüklenen metinden çıkar. Patentte bulunmayan unsur/işlev yazma.
 - Tarifname alıntıları spec metninde birebir geçen tam cümle/pasaj olsun.
-- Müşteri bilgisinin dayanağı yoksa doğrudan kullanma.
-- İnceleme raporuysa önceki görüşteki savunmaların neden ikna etmemiş olabileceğini değerlendir ve farklı teknik hat geliştir.
+- Buluş basamağı zincirinde teknik fark → teknik etki → objektif teknik problem → birleştirme motivasyonu/yönlendirme → gereken ilave yapısal/işlevsel değişiklikler → geriye dönük değerlendirme riskini açıkça kur.
+- `Dokümanların birlikte değerlendirilmesi` en az birkaç güçlü paragraf olsun; yalnız dokümanları özetleme, uzmanı teknik katkı üzerinden ikna et.
+- Müşteri bilgisinin tarifname dayanağı yoksa kullanma.
 - Onaylı istem setine yeni değişiklik ekleme.
-- Metni ikinci kez kalite kontrolünden geçir.
 
 ÖN ANALİZ:\n{json.dumps(preanalysis or {}, ensure_ascii=False, indent=2)}\n
 RAPOR:\n{report_text}\n
@@ -3013,97 +3050,191 @@ TARİFNAME / ONAYLI NİHAİ İSTEM SETİ:\n{spec_text}\n
 BENZER DOKÜMANLAR:\n{similar_text}\n
 MÜŞTERİ BİLGİLERİ:\n{customer_text}\n"""
 
-
 def validate_quotes(opinion: dict[str, Any], spec_text: str) -> None:
     normalized_spec = re.sub(r"\s+", " ", spec_text).strip()
     for section in opinion.get("sections") or []:
+        for block in section.get("blocks") or []:
+            if str(block.get("type", "")).lower() != "quote":
+                continue
+            text = re.sub(r"\s+", " ", str(block.get("text", ""))).strip()
+            if text and text not in normalized_spec:
+                raise ValueError(f"Tarifname alıntısı birebir doğrulanamadı: {text[:120]}...")
         for quote in section.get("quotes") or []:
             text = re.sub(r"\s+", " ", str(quote.get("text", ""))).strip()
             if text and text not in normalized_spec:
                 raise ValueError(f"Tarifname alıntısı birebir doğrulanamadı: {text[:120]}...")
 
 
-def build_gorus_docx(opinion: dict[str, Any]) -> bytes:
-    # 696809 is the binding opinion template. Keep its section geometry,
-    # header/footer, logo, margins and page setup exactly as stored in the
-    # template. The first-page title, metadata table and salutation are cloned
-    # from the template so their positions/column widths do not drift.
+def _clone_paragraph_with_text(doc: Document, template_para, text: str, *, bold: bool | None = False, italic: bool | None = False):
+    p_el = deepcopy(template_para._p)
+    # Keep only paragraph properties; rebuild runs so dynamic content cannot inherit stale text.
+    for child in list(p_el):
+        if child.tag != qn("w:pPr"):
+            p_el.remove(child)
+    body = doc._element.body
+    body.insert(-1, p_el)
+    p = doc.paragraphs[-1]
+    r = p.add_run(str(text or ""))
+    r.font.name = "Arial"
+    r.font.size = Pt(11)
+    r.bold = bold
+    r.italic = italic
+    # Opinion body is always 1.5 spaced and justified; institutional title archetypes are not passed here.
+    p.paragraph_format.line_spacing = 1.5
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    return p
+
+
+def _clone_blank(doc: Document, template_para):
+    p_el = deepcopy(template_para._p)
+    for child in list(p_el):
+        if child.tag != qn("w:pPr"):
+            p_el.remove(child)
+    doc._element.body.insert(-1, p_el)
+    return doc.paragraphs[-1]
+
+
+def _add_quote_with_location(doc: Document, template_para, block: dict[str, Any]):
+    lead = str(block.get("lead", "")).strip()
+    quote = str(block.get("text", "")).strip()
+    p = _clone_paragraph_with_text(doc, template_para, "", bold=False)
+    r1 = p.add_run((lead + " ") if lead else "")
+    r1.font.name = "Arial"; r1.font.size = Pt(11); r1.bold = False
+    r2 = p.add_run(f'“{quote}”')
+    r2.font.name = "Arial"; r2.font.size = Pt(11); r2.bold = True
+    return p
+
+
+def _add_original_figure_table(doc: Document, template: Document, caption: str, png_data: bytes):
+    tbl_xml = deepcopy(template.tables[1]._tbl)
+    doc._element.body.insert(-1, tbl_xml)
+    table = doc.tables[-1]
+    # Caption row: same table geometry and border archetype as binding template.
+    cell = table.rows[0].cells[0]
+    cell.text = ""
+    p = cell.paragraphs[0]
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.line_spacing = 1.5
+    r = p.add_run(caption)
+    r.font.name = "Arial"; r.font.size = Pt(11); r.bold = False
+    # Figure row: original patent figure/page only.
+    fig_cell = table.rows[1].cells[0]
+    fig_cell.text = ""
+    p2 = fig_cell.paragraphs[0]
+    p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p2.paragraph_format.line_spacing = 1.0
+    img = Image.open(io.BytesIO(png_data))
+    max_w = 15.2
+    max_h = 15.8
+    ratio = img.width / max(1, img.height)
+    width_cm = min(max_w, max_h * ratio)
+    height_cm = width_cm / ratio
+    if height_cm > max_h:
+        height_cm = max_h
+        width_cm = height_cm * ratio
+    run = p2.add_run()
+    run.add_picture(io.BytesIO(png_data), width=Cm(width_cm), height=Cm(height_cm))
+    return table
+
+
+def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | None = None) -> bytes:
+    """Build opinion by cloning binding 696809 paragraph/table archetypes.
+
+    The body is rebuilt only from template archetypes so paragraph spacing, figure
+    table geometry, header/footer and page setup remain bound to the template.
+    """
+    template = Document(str(GORUS_TEMPLATE))
     doc = Document(str(GORUS_TEMPLATE))
-
-    title_1 = deepcopy(doc.paragraphs[0]._p)
-    title_2 = deepcopy(doc.paragraphs[1]._p)
-    blank_after_meta = deepcopy(doc.paragraphs[2]._p)
-    salutation = deepcopy(doc.paragraphs[3]._p)
-    metadata_table = deepcopy(doc.tables[0]._tbl)
-
+    title_1 = deepcopy(template.paragraphs[0]._p)
+    title_2 = deepcopy(template.paragraphs[1]._p)
+    metadata_table = deepcopy(template.tables[0]._tbl)
+    blank_meta = deepcopy(template.paragraphs[2]._p)
+    salutation = deepcopy(template.paragraphs[3]._p)
     clear_body(doc)
     body = doc._element.body
-    body.insert(-1, title_1)
-    body.insert(-1, title_2)
-    body.insert(-1, metadata_table)
-    body.insert(-1, blank_after_meta)
-    body.insert(-1, salutation)
+    body.insert(-1, title_1); body.insert(-1, title_2); body.insert(-1, metadata_table); body.insert(-1, blank_meta); body.insert(-1, salutation)
 
-    # Update the cloned 3-column metadata table while preserving the exact
-    # 696809 column widths and layout. Labels remain bold; values remain normal.
     table = doc.tables[0]
-    values = [
-        opinion.get("application_no", ""),
-        opinion.get("applicant", ""),
-        opinion.get("reference", ""),
-    ]
+    values = [opinion.get("application_no", ""), opinion.get("applicant", ""), opinion.get("reference", "")]
     for row, value in zip(table.rows, values):
-        # Col 0 and col 1 already contain the template label and colon.
         set_cell_text(row.cells[2], str(value), bold=False, size=11)
         row.cells[2].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
-        # Preserve/force the label semantics requested for the template.
         for run in row.cells[0].paragraphs[0].runs:
-            run.bold = True
-            run.font.name = "Arial"
-            run.font.size = Pt(11)
+            run.bold = True; run.font.name = "Arial"; run.font.size = Pt(11)
         for run in row.cells[1].paragraphs[0].runs:
-            run.bold = False
-            run.font.name = "Arial"
-            run.font.size = Pt(11)
+            run.bold = False; run.font.name = "Arial"; run.font.size = Pt(11)
 
-    add_text(doc, opinion.get("intro", ""))
-
+    # Template p4 intro, p5 blank, p6/7 cited-document rows, p8 blank.
+    _clone_paragraph_with_text(doc, template.paragraphs[4], opinion.get("intro", ""), bold=False)
+    _clone_blank(doc, template.paragraphs[5])
     docs = opinion.get("cited_documents") or []
-    if docs:
-        doc.add_paragraph()
-        for d in docs:
-            add_text(doc, f"{d.get('label','')}: {d.get('number','')} {d.get('title','')}")
-        doc.add_paragraph()
+    for i, d in enumerate(docs):
+        cat = str(d.get("category", "")).strip()
+        suffix = f" ({cat})" if cat else ""
+        txt = f"{d.get('label','')}: {d.get('number','')}"
+        title = str(d.get("title", "")).strip()
+        if title:
+            txt += f' - “{title}”'
+        txt += suffix
+        archetype = template.paragraphs[6 if i == 0 else 7]
+        _clone_paragraph_with_text(doc, archetype, txt, bold=False)
+    _clone_blank(doc, template.paragraphs[8])
 
-    for section in opinion.get("sections") or []:
-        add_heading(doc, section.get("heading", ""))
-        paras = list(section.get("paragraphs") or [])
-        quotes = list(section.get("quotes") or [])
-        for p in paras:
-            add_text(doc, p)
-        for q in quotes:
-            add_text(doc, q.get("lead", "Tarifnamede bu durum şu şekilde belirtilmektedir:"))
-            add_quote(doc, q.get("text", ""))
-            if q.get("following"):
-                add_text(doc, q["following"])
+    figure_images = figure_images or {}
+    sections = opinion.get("sections") or []
+    for si, section in enumerate(sections):
+        heading_tpl = template.paragraphs[9 if si == 0 else 24]
+        _clone_paragraph_with_text(doc, heading_tpl, section.get("heading", ""), bold=True)
+        blocks = section.get("blocks") or []
+        first_para_inserted = False
+        figure_inserted = False
+        for block in blocks:
+            typ = str(block.get("type", "paragraph")).lower()
+            if typ == "quote":
+                _add_quote_with_location(doc, template.paragraphs[10], block)
+            else:
+                _clone_paragraph_with_text(doc, template.paragraphs[10], block.get("text", ""), bold=False)
+                if not first_para_inserted:
+                    first_para_inserted = True
+                    label = str(section.get("label", "")).upper()
+                    if label in figure_images:
+                        _clone_blank(doc, template.paragraphs[11])
+                        _clone_blank(doc, template.paragraphs[12])
+                        caption = str(section.get("figure_caption", "")).strip() or f"{label} dokümanı - Şekil"
+                        _add_original_figure_table(doc, template, caption, figure_images[label])
+                        figure_inserted = True
+        if not figure_inserted:
+            label = str(section.get("label", "")).upper()
+            if label in figure_images:
+                _clone_blank(doc, template.paragraphs[11]); _clone_blank(doc, template.paragraphs[12])
+                caption = str(section.get("figure_caption", "")).strip() or f"{label} dokümanı - Şekil"
+                _add_original_figure_table(doc, template, caption, figure_images[label])
+        _clone_blank(doc, template.paragraphs[20])
+        inv_heading = str(section.get("inventive_step_heading", "")).strip()
+        inv_paras = list(section.get("inventive_step_paragraphs") or [])
+        if inv_heading:
+            _clone_paragraph_with_text(doc, template.paragraphs[21], inv_heading, bold=True)
+            for par in inv_paras:
+                _clone_paragraph_with_text(doc, template.paragraphs[22], par, bold=False)
+        _clone_blank(doc, template.paragraphs[23])
 
     combined = opinion.get("combined_assessment") or {}
     if combined:
-        add_heading(doc, combined.get("heading", "Dokümanların birlikte değerlendirilmesi"))
-        for p in combined.get("paragraphs") or []:
-            add_text(doc, p)
+        _clone_paragraph_with_text(doc, template.paragraphs[33], combined.get("heading", "Dokümanların birlikte değerlendirilmesi"), bold=True)
+        for par in combined.get("paragraphs") or []:
+            _clone_paragraph_with_text(doc, template.paragraphs[34], par, bold=False)
+        _clone_blank(doc, template.paragraphs[35])
 
-    for p in opinion.get("conclusion") or []:
-        add_text(doc, p)
+    for par in opinion.get("conclusion") or []:
+        _clone_paragraph_with_text(doc, template.paragraphs[36], par, bold=False)
+    _clone_blank(doc, template.paragraphs[37])
+    # Exact signoff archetypes from template.
+    lines = str(opinion.get("signoff", "Saygılarımızla,\nDESTEK PATENT A.Ş.")).splitlines()
+    _clone_paragraph_with_text(doc, template.paragraphs[38], lines[0] if lines else "Saygılarımızla,", bold=False)
+    _clone_paragraph_with_text(doc, template.paragraphs[39], lines[1] if len(lines) > 1 else "DESTEK PATENT A.Ş.", bold=False)
 
-    doc.add_paragraph()
-    for line in str(opinion.get("signoff", "Saygılarımızla,\nDESTEK PATENT A.Ş.")).splitlines():
-        add_text(doc, line, bold=True)
-
-    out = io.BytesIO()
-    doc.save(out)
+    out = io.BytesIO(); doc.save(out)
     return out.getvalue()
-
 
 
 
@@ -4365,11 +4496,15 @@ elif work_type == "Görüş hazırlama":
     st.caption("Akış: dosyaları yükle → raporu analiz et → gerekiyorsa istem revizyonunda mutabakat/Markup → görüşü oluştur.")
 
     report_type = st.selectbox("Görüş türü", ["Araştırma raporuna karşı görüş", "İnceleme raporuna karşı görüş"])
+    opinion_language = st.selectbox("Görüş dili", ["Türkçe", "İngilizce"], key="gor_language")
     report_file = st.file_uploader("Araştırma / inceleme raporu", type=["pdf", "docx", "doc", "txt"], key="gor_report")
 
     prior_file = None
+    prior_yes = "Hayır"
     if report_type == "İnceleme raporuna karşı görüş":
-        prior_file = st.file_uploader("Önceki sunulan görüş", type=["pdf", "docx", "doc", "txt"], key="gor_prior")
+        prior_yes = st.radio("Önceki sunulan görüş var mı?", ["Hayır", "Evet"], horizontal=True, key="gor_prior_yes")
+        if prior_yes == "Evet":
+            prior_file = st.file_uploader("Önceki sunulan görüş", type=["pdf", "docx", "doc", "txt"], key="gor_prior")
 
     customer_yes = st.radio("Müşteriden bilgi var mı?", ["Hayır", "Evet"], horizontal=True)
     customer_files = []
@@ -4383,12 +4518,13 @@ elif work_type == "Görüş hazırlama":
 
     spec_file = st.file_uploader("Tarifname", type=["pdf", "docx", "doc", "txt"], key="gor_spec")
     similar_files = st.file_uploader(
-        "Rapordaki X/Y benzer dokümanlar (D1, D2 vb.)",
+        "Rapordaki ilgili dokümanlar (D1, D2 vb.)",
         type=["pdf", "docx", "doc", "txt", "zip"],
         accept_multiple_files=True,
         key="gor_sim",
     )
     reference = st.text_input("Ana dosya referansı nedir?", value="")
+    applicant_override = st.text_input("Başvuru sahibi (raporda yoksa girin)", value="", key="gor_applicant")
     output_name = st.text_input("Çıktı dosyasının adı", value="Görüş Metni_XXXXXX.docx")
 
     for key, default in {
@@ -4406,8 +4542,8 @@ elif work_type == "Görüş hazırlama":
     if st.button("1. Raporu analiz et", type="primary", use_container_width=True):
         if not all([reference.strip(), report_file, spec_file]) or not similar_files:
             st.error("Referans, rapor, tarifname ve X/Y dokümanlarını yükleyin.")
-        elif report_type == "İnceleme raporuna karşı görüş" and prior_file is None:
-            st.error("İnceleme raporu için önceki sunulan görüşü yükleyin.")
+        elif report_type == "İnceleme raporuna karşı görüş" and prior_yes == "Evet" and prior_file is None:
+            st.error("Önceki sunulan görüş var seçildi; önceki görüşü yükleyin.")
         elif customer_yes == "Evet" and not customer_files:
             st.error("Müşteriden bilgi var seçildi; müşteri bilgilerini yükleyin.")
         else:
@@ -4443,7 +4579,9 @@ elif work_type == "Görüş hazırlama":
                 st.session_state.gorus_analysis = analysis
                 st.session_state.gorus_source = {
                     "report_type": report_type,
+                    "language": opinion_language,
                     "reference": reference,
+                    "applicant_override": applicant_override.strip(),
                     "output_name": output_name,
                     "report_text": report_text,
                     "spec_text": spec_text,
@@ -4451,6 +4589,7 @@ elif work_type == "Görüş hazırlama":
                     "spec_bytes": spec_bytes,
                     "prior_text": prior_text,
                     "sim_text": sim_text,
+                    "sim_assets": sim_assets,
                     "cust_text": cust_text,
                     "model_images": model_images,
                 }
@@ -4631,11 +4770,34 @@ elif work_type == "Görüş hazırlama":
                             source_state["cust_text"],
                             preanalysis=analysis,
                             revision_status=revision_status,
+                            output_language=source_state.get("language") or "Türkçe",
+                            applicant_override=source_state.get("applicant_override") or "",
                         ),
                         images=source_state.get("model_images") or [],
                     )
+                    if source_state.get("applicant_override"):
+                        opinion["applicant"] = source_state["applicant_override"]
                     validate_quotes(opinion, final_spec_text)
-                    data = build_gorus_docx(opinion)
+                    validate_opinion_payload(opinion, source_state["report_text"], final_spec_text)
+                    # Sayfa/satır numaraları modelden alınmaz; fiziksel tarifname üzerinden burada hesaplanır.
+                    if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_clean_data:
+                        final_spec_bytes = st.session_state.gorus_clean_data
+                        final_spec_name = "revize_tarifname.docx"
+                    else:
+                        final_spec_bytes = source_state["spec_bytes"]
+                        final_spec_name = source_state["spec_name"]
+                    annotate_quote_locations(opinion, final_spec_name, final_spec_bytes)
+                    figure_images = extract_cited_original_figure_pages(
+                        opinion.get("cited_documents") or [],
+                        source_state.get("sim_assets") or [],
+                    )
+                    required_figure_labels = [str(d.get("label", "")) for d in opinion.get("cited_documents") or [] if d.get("number")]
+                    missing_figs = [x for x in required_figure_labels if str(x).upper() not in figure_images]
+                    if missing_figs:
+                        raise ValueError("Özgün patent şekli çıkarılamayan dokümanlar: " + ", ".join(missing_figs))
+                    data = build_gorus_docx(opinion, figure_images=figure_images)
+                    validate_gorus_template_fidelity(data, GORUS_TEMPLATE, opinion, required_figure_labels)
+                    render_gorus_docx_smoke_test(data)
                     st.session_state.gorus_opinion_data = data
                     st.session_state.gorus_opinion_status = revision_status
                     progress.progress(100, text="Görüş metni hazır")
