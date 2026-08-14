@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.22
+# Patent Atölyesi v5.4.23
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 14.08.2026 tarihli güncel tam sürümüdür.
 
@@ -255,3 +255,11 @@ Tarifname üretiminde header/footer yeniden kurulmaz; bağlayıcı şablondan ay
 - BBF + ek teknik müşteri belgeleri ham metin pasajlarına deterministik olarak ayrılır. Her pasaj bir kez teknik fact'e bağlanır veya gerekçeli teknik-dışı olarak işaretlenir; teknik pasaj sessizce dışarıda bırakılamaz.
 - ZIP/ek teknik belge akışı `.svg` müşteri şekillerini kabul eder. SVG, model/Word için rasterize edilse de özgün müşteri şekli olarak envanterde kalır. Kullanılabilir kaynak şekillerin tamamı nihai Şekiller dosyasına girmeden şekil kapısı geçmez.
 - GitHub dağıtımı düz ana-dizin ZIP'idir; testler köktedir ve gereksiz `download`/`.gitignore` dosyaları pakete alınmaz.
+
+
+## 2026-08-14.v13 — Formül + renkli şablon run + uzman “NASIL?” kapıları
+
+- Kaynakta açık matematiksel bağıntı bulunduğunda tarifname Word çıktısında denklem düz metin olarak bırakılmaz. `formulas[].expression` gerçek Word OMML denklem nesnesi olarak oluşturulur; istem içinde açık bağıntı kullanılacaksa `[[EQ: ...]]` işaretleyicisi inline OMML denkleme çevrilir. Nihai `.docx` içinde beklenen ve gerçek denklem nesnesi sayıları karşılaştırılır.
+- `Tarifname_181176_template.docx` içindeki giriş talimatı ile İSTEMLER altındaki üç sabit talimat paragrafının kırmızı/mavi kelime dağılımı run düzeyinde bağlayıcıdır. Sabit metnin tamamını tek kırmızı run'a yazıp mavi run'ları boş bırakmak artık tam şablon kontrolünden geçmez.
+- Bağımsız sistem istemindeki yazılım/modül unsurları deterministik uzman “NASIL?” kontrolünden geçer. `X modülü (N), ... yapan bir modül` biçimindeki İngilizce claim sırası reddedilir; Türkçe istemde kaynak destekli teknik işlev/mekanizma önce, unsur adı ve referansı sonra yazılır. Sınıflandırma ve hesaplama modüllerinde kaynak kriter/ilişki açıklıyorsa yalnız sonuç fiili yeterli değildir.
+- Bu kontroller yalnız prompt kuralı değildir: taslak validasyonu, Word üretimi ve çıktı sonrası kalite kapısında çalışır.

@@ -37,7 +37,7 @@ def _clear_body(doc):
 
 def _copy(doc, tpl, idx, text=None):
     el = deepcopy(tpl.paragraphs[idx]._p)
-    if text is not None:
+    if text is not None and text != tpl.paragraphs[idx].text:
         nodes = list(el.iter(qn("w:t")))
         nodes[0].text = text
         for n in nodes[1:]:

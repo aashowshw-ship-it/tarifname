@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.22"
-RULESET_VERSION = "2026-08-14.v12"
+APP_VERSION = "v5.4.23"
+RULESET_VERSION = "2026-08-14.v13"
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI
@@ -17,6 +17,7 @@ A. KAYNAK SADAKATİ VE İÇERİK TAMLIĞI
 6B. BBF tamlık kontrolü yalnız modelin “tam” beyanına dayanamaz. Önce kaynaklardan `technical_facts` adıyla atomik bir teknik bilgi envanteri oluşturulur; ardından nihai taslakta her madde `source_coverage_map` içinde kaynak bilgi kimliği, karşılık bulunduğu bölüm ve kısa kanıt metni ile eşleştirilir. `technical_facts` içindeki zorunlu bir madde karşılıksızsa, `covered=false` ise veya karşılık bölümü/kanıtı boşsa kalite kapısı başarısız sayılır ve taslak otomatik düzeltme turuna gönderilir.
 6C. Form alanı, kişi adı, sicil/ödül payı, imza, idari proje bilgisi, boş standartlaşma/yayın alanları, kullanıcıya yönelik form talimatları ve yalnız patent araştırmasında kullanılmak üzere verilmiş anahtar kelime listeleri teknik bilgi sayılmaz ve sırf “tüm bilgiler” kuralı nedeniyle tarifname gövdesine taşınmaz. Bununla birlikte bu alanların içinde gerçek teknik açıklama bulunuyorsa söz konusu teknik açıklama technical_facts envanterine alınır.
 6D. Kaynakta açıkça belirtilen avantaj/fayda da teknik bağlamı varsa atlanamaz. Örneğin gecikmenin düşmesi, bağlantının kararlı hale gelmesi, pil ömrünün uzaması, fiyat-performans dengesinin iyileşmesi, üretim süresinin azalması veya belirli bir katmanın cihaz/işletim sistemi/operatör altyapısından bağımsızlaşması gibi kaynakta açıkça verilen sonuçlar uygun bölümde korunmalıdır; model bunları “benzer anlam zaten var” gerekçesiyle sessizce silemez.
+6E. Kaynakta açık matematiksel bağıntı/formül varsa nihai Word'de denklem düz paragraf metni olarak bırakılmaz. Detaylı açıklamadaki formüller gerçek Word OMML denklem nesnesi olarak, tercihen ortalı biçimde yazılır; alt indis/kesir gibi matematiksel yapı mümkün olduğunca denklem yapısıyla gösterilir. İstem içinde açık bağıntı kullanılması gerekiyorsa `[[EQ: ...]]` işaretleyicisi üzerinden gerçek inline Word denklemi üretilir. Formül zorunlu çekirdek değilse bağımsız istemi gereksiz daraltmamak için bağımlı istem veya detaylı açıklamada tutulur. Nihai `.docx` içinde beklenen formül sayısı ile gerçek OMML denklem nesnesi sayısı ayrıca doğrulanır.
 
 B. BULUŞUN YAPISINI BELİRLEME
 7. Her buluş aynı istem mimarisiyle ele alınamaz. Önce şu ayrım yapılmalıdır: zorunlu teknik çekirdek, zorunlu işlem sırası, paralel/tekrarlanan işlem kolları, yalnızca belirli gerçekleştirmelere ait ayrıntılar, alternatifler ve sonuç/çıktılar.
@@ -24,6 +25,7 @@ B. BULUŞUN YAPISINI BELİRLEME
 9. Başlık, teknik alan, kısa açıklama, referans numaraları, detaylı açıklama, istemler ve özet seçilen istem yapısıyla tutarlı olmalıdır.
 9A. Tarifname oluşturma ekranında çıktı dili Türkçe veya İngilizce seçilebilir. Dil seçimi yalnız dili değiştirir; kaynak sadakati, BBF tamlığı, istem kurgusu, referans senkronizasyonu, şekil kuralları, donanımsal taşıyıcı kuralı, bağımlı istem stratejisi ve şablon biçimi aynen korunur. İngilizce seçildiğinde nihai tarifnamenin başlıkları, açıklama metni, istemleri ve özeti İngilizce olmalı; Türkçe patent kalıpları nihai metinde bırakılmamalıdır. Aynı Tarifname_181176_template.docx şablonunun biçim, boşluk, font ve sayfa düzeni kullanılır.
 10. Ana istem, buluşun vazgeçilmez teknik çekirdeğini açık, sıralı, teknik taşıyıcılara bağlı ve gereksiz tekrarsız biçimde kapsamalıdır. Kısa kaldığında teknik ilişki ve işlem sırası açıklığa kavuşturularak genişletilmelidir; ancak kaynakta olmayan detay eklenmemelidir.
+10A. Özellikle yazılım/modül ağırlıklı bağımsız sistem isteminde teknikte uzman kişinin “nasıl gerçekleştiriliyor?” sorusuna cevap verilebilmelidir. Her zorunlu modül için kaynakta dayanak bulunduğu ölçüde en az girdi/veri veya önceki unsur ilişkisi, uygulanan teknik işlem/mekanizma ve üretilen çıktı/sonraki unsur bağlantısı görünür olmalıdır. `X modülü (N), ... yapan bir modül` gibi İngilizce claim sırasını taklit eden yapı kullanılmaz; Türkçe istemde önce işlev/mekanizma yazılır, sonra `... hesaplayan X modülü (N),` benzeri unsur tanımı gelir. Kaynak sınıflandırma kriteri veya hesaplama ilişkisi açıklıyorsa yalnız `sınıflandıran`/`hesaplayan` demek yeterli değildir; ana istemde gerekli temel teknik ilişki görünür olmalı, tercihli sayısal ayrıntılar ise bağımlı isteme bırakılabilir.
 11. Aynı teknik işlemin birinci, ikinci ve k'ıncı metrik/kanal/modül için tekrarlanması gibi paralel adımlar ana istemde kapsayıcı biçimde yazılabilir. Örneğin "birbirinden farklı k adet görüntü kalite metriğine göre k adet ara gerçekçilik skorunun üretilmesi" şeklindeki zorunlu çoklu yapı ana istemde korunabilir.
 12. Paralel analizlerin ayrı ayrı gerçekleştirilmesi ile bunlara karşılık gelen ayrı çıktıların elde edilmesi aynı alt teknik akışa aitse, bu ayrıntılar tek bir bağımlı istemde birlikte verilebilir. Gereksiz yere her bir paralel kol için ayrı bağımlı istem oluşturma.
 13. Bir analiz işlemi ile bu işlemin çıktısı aynı şey değildir. Örneğin analiz adımları ve bunların skor çıktıları ayrı teknik kavramlardır; ancak aynı alt akışa aitlerse aynı bağımlı istem içinde beraber sınırlandırılabilir.
@@ -95,6 +97,7 @@ E. DİL, PARAGRAF VE BİÇİM
 44. "Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:" ifadesinden sonraki madde işaretli işlem adımlarında ara adımlar virgül ile, son adım nokta ile bitirilir. Bağımsız yöntem istemindeki ara işlem adımları virgülle biter; son işlem adımının sonunda virgül, noktalı virgül veya nokta kullanılmaz ve hemen ardından ayrı satırda "işlem adımlarını içermesidir." yazılır.
 45. ŞEKİLLERİN KISA AÇIKLAMASI bölümündeki açıklamalar kısa ve işlevsel tutulur. "Şekil 1, ...", "Şekil 2, ...", "Şekil 3, ..." açıklamaları aralarında boş paragraf olmadan alt alta sıralanır. Akış diyagramı açıklamasında gerekli değilse "1001-1004 numaralı" gibi adım numarası aralıkları tekrarlanmaz; "işlem adımlarını gösteren temsili akış diyagramıdır" türü ifade yeterlidir.
 46. `Tarifname_181176_template.docx` yalnız font ve başlık açısından değil; boş paragraf düzeni, paragraf aralıkları, 1,5 satır aralığı, gerçek Word madde işareti/otomatik numaralandırma yapısı, istem numaralarının kalınlığı, istemler arası boşluklar, sayfa geçişleri, başlık hizalamaları ve özet yerleşimi bakımından bağlayıcıdır. Çıktı sonradan şablona benzetilmez; ilgili şablon paragraf ve numaralandırma özellikleri doğrudan kopyalanarak şablonun görsel ritmi birebir takip edilir.
+46A. Şablondaki sabit renkli talimat paragrafları yalnız paragraf düzeyinde değil run düzeyinde de bağlayıcıdır. Tarifname girişindeki talimat paragrafında ve İSTEMLER başlığı altındaki üç sabit açıklama paragrafında kırmızı/mavi kelime dağılımı, kalınlık ve sabit metin şablondaki run bölünmeleriyle birebir korunmalıdır. Tüm metni tek kırmızı run'a toplayıp mavi run'ları boş bırakmak şablon uyumu sayılmaz ve Word çıktı kapısını durdurur.
 
 F. SON KALİTE KONTROLÜ
 47. Çıktıdan önce şu kontroller birlikte yapılmalıdır: BBF'deki tüm bilgilerin aktarımı, referans tablosu tamlığı, detaylı açıklama–referans–istem uyumu, yöntem adımı sırası, ana istemin buluşu gerçekten yansıtması, bağımlı istemlerin gerçek daraltma sağlaması, formüller, tablolar ve deneysel sonuçların korunması.
@@ -272,3 +275,5 @@ ARAŞTIRMA GÜNCELLEME – TİP 3 EK KURALLARI
 
 # 2026-08-14.v11 — Tam şablon sadakati: section/header/footer, sayfa numarası konumu ve bütün bölüm geçiş boşlukları deterministik olarak doğrulanır.
 # 2026-08-14.v12 — Ham kaynak pasaj tamlığı + deterministik Sistem/Yöntem modu + SVG müşteri şekli tamlığı + bağımlı yöntem istemi kapanış kapısı.
+
+# 2026-08-14.v13 — Word OMML formül kapısı + sabit kırmızı/mavi run sadakati + deterministik ana istem uzman-NASIL/modül sıra kapısı.

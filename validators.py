@@ -225,6 +225,54 @@ def _semantic_repeat_findings(base_text: str, dependents: list[str], label: str)
     return out
 
 
+
+EQ_MARKER_RE = re.compile(r"\[\[(?:EQ|FORMULA)\s*:\s*(.+?)\]\]", re.I | re.S)
+
+
+def _main_claim_how_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    sc = draft.get("system_claim") or {}
+    if not sc:
+        return out
+    items = _system_claim_all_texts(sc)
+    software_like = re.compile(r"(?:modül|birim|kontrolör|mekanizma|arayüz|simülatör|motor|üretici|alt sistem|yazılım|algoritma|yönetici)", re.I)
+    action = re.compile(r"(?:tanımlayan|hesaplayan|belirleyen|oluşturan|seçen|güncelleyen|sınıflandıran|dönüştüren|değerlendiren|üreten|izleyen|sağlayan|uygulayan|kaydeden|sunan|örnekleyen|birleştiren|karşılaştıran|aktaran|yöneten|çalıştıran|gerçekleştiren|simüle\s+eden|haritalandıran|işleyen)", re.I)
+    relation = re.compile(r"(?:kullanarak|üzerinden|göre|vasıtasıyla|birleştirerek|karşılaştırarak|parametre|değer|veri|çıktı|sonuç|eşik|koordinat|oran|indeks|sinyal|hedef|görev|enerji|karıştırma|aldatma|hız|mesafe|Q\s+değer)", re.I)
+    for element in draft.get("elements") or []:
+        n = str(element.get("number", "") or "").strip()
+        name = str(element.get("name", "") or "").strip()
+        if not n or not name or not software_like.search(name):
+            continue
+        candidates = [t for t in items if re.search(r"\(\s*" + re.escape(n) + r"\s*\)", t)]
+        if not candidates:
+            continue
+        item = candidates[0].strip()
+        if re.match(re.escape(name) + r"\s*\(\s*" + re.escape(n) + r"\s*\)\s*,", item, re.I):
+            out.append({"level":"Hata","message":f"Ana istemde {name} ({n}) `X modülü (N), ... yapan bir modül` İngilizce claim sırasıyla yazılmış; işlev/mekanizma önce, unsur adı ve referansı sonra gelmelidir."})
+            continue
+        m = re.search(re.escape(name) + r"\s*\(\s*" + re.escape(n) + r"\s*\)", item, re.I)
+        prefix = item[:m.start()] if m else item
+        if not action.search(prefix) or not relation.search(prefix):
+            out.append({"level":"Hata","message":f"Ana istemde {name} ({n}) teknikte uzman kişinin 'nasıl?' sorusuna yeterli girdi/işlem/ilişki cevabı vermiyor."})
+            continue
+        low = item.casefold()
+        if re.search(r"\bsınıflandır(?:an|ır|ma)\b", low, re.I) and not re.search(r"(?:karşılaştır|kriter|koşul|eşik|\bgöre\b|mesafe|yarıçap|nedenine\s+göre)", prefix, re.I):
+            out.append({"level":"Hata","message":f"Ana istemde {name} ({n}) sınıflandırma kriterini/mekanizmasını göstermiyor."})
+        if "hesaplayan" in low and re.search(r"(?:indeks|skor|metrik)", prefix, re.I) and not re.search(r"(?:oran|değişim|toplam|fark|ağırl|birleştir|üzerinden|\bgöre\b|kullan|bölün|bölerek|sayıs(?:ı|ının|al)|başarılı\s+görev|toplam\s+görev)", prefix, re.I):
+            out.append({"level":"Hata","message":f"Ana istemde {name} ({n}) hesaplama sonucunu söylüyor fakat temel hesaplama ilişkisini göstermiyor."})
+    return out
+
+
+def _formula_marker_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    texts = [*_system_claim_all_texts(draft.get("system_claim") or {}), *map(str, draft.get("dependent_system_claims") or []), *map(str, (draft.get("method_claim") or {}).get("steps") or []), *map(str, draft.get("dependent_method_claims") or [])]
+    formula_like = re.compile(r"\b[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü0-9_]{0,30}\s*(?:=|≤|≥|<|>)\s*[-+()0-9A-Za-zÇĞİÖŞÜçğıöşü_]", re.I)
+    for text in texts:
+        raw = str(text or "")
+        if formula_like.search(EQ_MARKER_RE.sub("", raw)):
+            out.append({"level":"Hata","message":"İstem içindeki açık matematik bağıntısı düz metin bırakılmış; `[[EQ: ...]]` ile gerçek Word denklemine dönüştürülmelidir."})
+    return out
+
 def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     elements = draft.get("elements") or []
@@ -366,6 +414,8 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     findings.extend(_common_carrier_scope_findings(draft))
     findings.extend(_generic_claim_term_findings(draft))
     findings.extend(_method_step_language_findings(draft))
+    findings.extend(_main_claim_how_findings(draft))
+    findings.extend(_formula_marker_findings(draft))
 
     for claim in draft.get("dependent_system_claims") or []:
         if re.search(r"sistemin[,\s].*?(?:çalışmaya|kullanılmaya) uygun bir sistem olmasıdır\.?$", str(claim), re.I):

@@ -66,6 +66,29 @@ def _run_signature(p) -> tuple:
     return tuple(out)
 
 
+def _exact_colored_run_signature(p) -> tuple:
+    """Sabit renkli şablon metinlerinde run metni + renk + vurgu birebir korunmalıdır."""
+    out = []
+    for r in p.runs:
+        if not r.text:
+            continue
+        out.append((
+            r.text,
+            None if r.font.color is None or r.font.color.rgb is None else str(r.font.color.rgb),
+            r.bold, r.italic, r.underline,
+            r.font.name,
+            None if r.font.size is None else int(r.font.size),
+        ))
+    return tuple(out)
+
+
+def _assert_exact_colored_runs(out_p, tpl_p, message: str) -> None:
+    if out_p.text != tpl_p.text or _exact_colored_run_signature(out_p) != _exact_colored_run_signature(tpl_p):
+        raise ValueError(
+            f"TAM ŞABLON KONTROLÜ: {message} sabit kırmızı/mavi run metni ve renk dağılımı şablonla birebir aynı değil."
+        )
+
+
 def _xml_part_signature(data: bytes, prefix: str) -> dict[str, tuple]:
     out: dict[str, tuple] = {}
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
@@ -210,6 +233,8 @@ def validate_full_tarifname_template_fidelity(
     _assert_fmt(paras[2], tpl.paragraphs[2], "buluş başlığı")
     _assert_fmt(paras[3], tpl.paragraphs[3], "buluş başlığı sonrası boşluk", compare_runs=False)
     _assert_fmt(paras[4], tpl.paragraphs[4], "giriş talimatı")
+    if not en:
+        _assert_exact_colored_runs(paras[4], tpl.paragraphs[4], "giriş talimatı")
     _assert_fmt(paras[5], tpl.paragraphs[5], "giriş talimatı sonrası boşluk", compare_runs=False)
 
     # Her ana başlıktan sonra şablon boşluğu zorunlu.
@@ -319,12 +344,15 @@ def validate_full_tarifname_template_fidelity(
     _assert_fmt(paras[ci - 1], tpl.paragraphs[76], "İSTEMLER öncesi ikinci boşluk", compare_runs=False)
 
     # İstem açıklama blokları arasında tek boşluk.
-    tpl_notes = [tpl.paragraphs[79].text.strip(), tpl.paragraphs[81].text.strip(), tpl.paragraphs[83].text.strip()]
-    for note in tpl_notes:
+    tpl_note_indices = [79, 81, 83]
+    tpl_notes = [tpl.paragraphs[i].text.strip() for i in tpl_note_indices]
+    for note, tpl_i in zip(tpl_notes, tpl_note_indices):
         if note in texts:
             ni = texts.index(note)
             if _count_blanks_after(texts, ni) != 1:
                 raise ValueError("TAM ŞABLON KONTROLÜ: İSTEMLER açıklama paragrafları arasındaki boşluk ritmi şablona uymuyor.")
+            if not en:
+                _assert_exact_colored_runs(paras[ni], tpl.paragraphs[tpl_i], "İSTEMLER açıklama paragrafı")
 
     # Bağımsız istem kapanışları arketip 93; istemler arasında boşluk.
     ai = indices["abstract"]

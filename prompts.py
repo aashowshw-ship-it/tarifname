@@ -134,7 +134,7 @@ BULUŞ VERİSİ:
 """
 
 
-# v5.4.22 five-gate + source/SVG claim/reference/template guardrails (also enforced deterministically in app.py/validators.py)
+# v5.4.23 five-gate + formula/color/how/source/SVG claim/reference/template guardrails (also enforced deterministically in app.py/validators.py)
 V5419_GUARDRAILS = """
 - Ortak elektronik işlem birimi/yazılım taşıyıcı grubu yalnız yürütülebilir yazılım/modül/kontrolör/arayüz/yığınları kapsar; VERİTABANI/bellek/veri deposu kaynak açıkça yürütülebilir değilse ayrı unsurdur.
 - Sistem/cihaz bağımlı istemi `bulunmasıdır` ile bitemez; `olmasıdır` veya `içermesidir` kullanılır.
@@ -142,7 +142,7 @@ V5419_GUARDRAILS = """
 - Word üretiminden sonra 3 kapı tekrar çalışır: BBF tamlığı, istem/alt istem kalite-tekrar-gereklilik kontrolü, referans numarası tamlığı.
 """
 
-# v5.4.22 ek katı kurallar:
+# v5.4.23 ek katı kurallar:
 # - Word üretiminden sonra 5 kapı: BBF tamlığı, istem/alt istem, referans, şablon, unsur+işlem-adımı dili.
 
 # - 4. şablon kapısı FULL TEMPLATE AUDIT'tir: section/header/footer/PAGE alanı + bütün ana bölüm geçiş boşlukları + istem/özet paragraf arketipleri Tarifname_181176_template.docx ile deterministik karşılaştırılır.
@@ -151,8 +151,13 @@ V5419_GUARDRAILS = """
 # - İstemde teknik eleman yerine “unsur” placeholder'ı kullanılamaz; gerçek teknik tür yazılır.
 # - İSTEMLER/ÖZET hizası, boşluk ritmi ve istem kapanış girintisi Tarifname_181176_template.docx ile eşleşmelidir.
 
-# v5.4.22:
+# v5.4.23:
 # - Otomatik modda hem açık sistem/modül hem yöntem dayanağı varsa istem yapısı zorunlu olarak Sistem ve yöntemdir.
 # - Türkçe bağımlı yöntem istemi tek ek adımda `işlem adımını içermesidir.`, çoklu ek adımda `işlem adımlarını içermesidir.` ile kapanır.
 # - Ham BBF + ek teknik kaynak pasajlarının tamamı technical_fact veya gerekçeli nontechnical sınıfına deterministik audit ile bağlanır.
 # - SVG teknik müşteri şekilleri ZIP/ek dosyadan çıkarılır ve kaynak şekil envanterinden düşürülemez.
+
+# v5.4.23:
+# - Kaynaktaki açık matematiksel bağıntılar Word'de düz metin değil gerçek OMML equation olarak yazılır; istem içindeki açık formül `[[EQ: ...]]` ile işaretlenir ve nihai Word denklem nesnesi sayısı doğrulanır.
+# - Tarifname giriş ve İSTEMLER altındaki sabit şablon talimatlarında kırmızı/mavi run metni, renk dağılımı ve kalınlık şablonla birebir korunur.
+# - Ana sistem istemindeki modül yazımları deterministik uzman-NASIL testinden geçer; `X modülü (N), ... yapan bir modül` İngilizce claim sırası reddedilir ve kaynak destekli girdi/işlem/çıktı ilişkisi aranır.

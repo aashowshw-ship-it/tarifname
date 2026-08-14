@@ -43,6 +43,7 @@ from pypdf import PdfReader
 from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES
 from template_audit import validate_full_tarifname_template_fidelity
 from source_guards import build_source_passage_registry, validate_source_passage_audit, resolve_tarifname_claim_mode
+from word_math import EQ_MARKER_RE, append_text_with_equations as _append_text_with_equations, add_display_equation
 
 BASE_DIR = Path(__file__).resolve().parent
 TARIFNAME_TEMPLATE = BASE_DIR / "Tarifname_181176_template.docx"
@@ -872,8 +873,17 @@ def copy_template_paragraph(doc: Document, template: Document, index: int):
 
 
 def copy_template_paragraph_with_text(doc: Document, template: Document, index: int, text: str):
-    """Şablon paragraf biçimini/runs formatını koruyup metni değiştir."""
+    """Şablon paragraf biçimini koruyup metni değiştir.
+
+    Metin şablondaki sabit metinle aynıysa paragrafı *aynen* kopyalar. Böylece
+    sabit uyarı paragraflarındaki kırmızı/mavi run bölünmeleri, kalınlıklar ve
+    diğer run düzeyi biçimler kaybolmaz. Dinamik metinde ise paragraf arketipi
+    korunur ve yeni metin ilk run üzerinden yazılır.
+    """
     if not (0 <= index < len(template.paragraphs)):
+        return
+    if str(text) == template.paragraphs[index].text:
+        copy_template_paragraph(doc, template, index)
         return
     p_el = deepcopy(template.paragraphs[index]._p)
     text_nodes = list(p_el.iter(qn("w:t")))
@@ -913,7 +923,7 @@ def _copy_list_properties(target, source):
 def add_template_list_item(doc: Document, template: Document, prototype_index: int, text: str):
     p = doc.add_paragraph()
     _copy_list_properties(p, template.paragraphs[prototype_index])
-    p.add_run(text)
+    _append_text_with_equations(p, text)
     return format_paragraph(p)
 
 
@@ -929,7 +939,7 @@ def add_nested_claim_list_item(doc: Document, template: Document, text: str):
         ppr.append(ind)
     ind.set(qn("w:left"), "2136")
     ind.set(qn("w:hanging"), "360")
-    p.add_run(text)
+    _append_text_with_equations(p, text)
     return format_paragraph(p)
 
 
@@ -1189,7 +1199,8 @@ KRİTİK TALİMATLAR:
 - Ana istemde zorunlu teknik çekirdeği kapsayıcı biçimde ver. Aynı işlemin birinci/ikinci/k'ıncı tekrarlarını ana istemde gereksiz yere ayrı satırlara bölme. Bu ayrıntıları, aynı alt akışa aitse tek bağımlı istemde topla.
 - Buluş ağırlıklı olarak yazılım/algoritma/modül/birimlerden oluşuyorsa bağımsız istemleri soyut yazılım olarak bırakma. Kaynakta özel donanım zorunlu değilse geniş bir donanımsal taşıyıcı kullan. Türkçede “bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...”, İngilizcede “software executed on an electronic device ...” veya eşdeğer teknik taşıyıcı dili kullanılabilir. Gereksiz sunucu, cep telefonu/phone veya kişisel bilgisayar daraltması yapma; özel donanım uydurma.
 - AYNI referanssız elektronik işlem birimi/cihaz taşıyıcısı üzerinde AYNI çalışma ilişkisine sahip birden fazla ARDIŞIK yürütülebilir yazılım/modül/kontrolör/arayüz/yığın varsa taşıyıcı ifadesini her birinde tekrar etmek zorunda değilsin. Türkçe sistem isteminde `elements` listesine bir grup nesnesi koyabilirsin: `{{"lead":"bir elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ve;","subelements":["... modülü (2),","... kontrolörü (3),"]}}`. Lead referans taşımaz; her subelement ayrı bir yeni referanslı unsuru ilk-tanım sırasıyla tanımlar. VERİTABANI, bellek, veri deposu, profil tablosu veya salt veri yapısı kaynak açıkça yürütülebilir yazılım/modül olduğunu söylemiyorsa bu ortak grubun altına ALINMAZ; ayrı unsur yazılır. Bu grup yalnız aynı taşıyıcı gerçekten bütün alt unsurlar için ortaksa kullanılır ve Word'de gerçek iç içe bullet olarak yazılır.
-- İstemleri yalnız hedeflenen sonuç veya fonksiyonla bırakma. Özellikle bağımsız istemde teknikte uzman kişinin “nasıl gerçekleştiriliyor?” sorusuna cevap verecek şekilde, kaynakta açık dayanağı bulunduğu ölçüde işlemi yapan teknik unsur/taşıyıcıyı, kullanılan girdiyi veya önceki unsurdan gelen veriyi, teknik işlem/mekanizmayı ve ortaya çıkan teknik çıktının sonraki unsurla bağlantısını yaz. “tespit eden / dönüştüren / optimize eden / classifying / transforming / determining” gibi sonuç bildiren fiiller kaynak mekanizmayı açıklıyorsa tek başına yeterli sayılmaz. Buna karşılık tercihli uygulama ayrıntılarıyla ana istemi gereksiz daraltma.
+- İstemleri yalnız hedeflenen sonuç veya fonksiyonla bırakma. Özellikle bağımsız istemde teknikte uzman kişinin “nasıl gerçekleştiriliyor?” sorusuna cevap verecek şekilde, kaynakta açık dayanağı bulunduğu ölçüde işlemi yapan teknik unsur/taşıyıcıyı, kullanılan girdiyi veya önceki unsurdan gelen veriyi, teknik işlem/mekanizmayı ve ortaya çıkan teknik çıktının sonraki unsurla bağlantısını yaz. “tespit eden / dönüştüren / optimize eden / classifying / transforming / determining” gibi sonuç bildiren fiiller kaynak mekanizmayı açıklıyorsa tek başına yeterli sayılmaz. Buna karşılık tercihli uygulama ayrıntılarıyla ana istemi gereksiz daraltma. Yazılım/modül unsurlarını İngilizce claim sırasını taklit ederek `X modülü (N), ... yapan bir modül` biçiminde kurma; Türkçe istemde önce kaynak destekli teknik işlev/mekanizma yazılır, unsur adı ve `(N)` referansı bu işlevi tanımlayan sıfat-fiil yapısının sonunda gelir: `... verilerini birlikte değerlendirerek ... değerini hesaplayan X modülü (N),`.
+- Kaynakta açık matematiksel bağıntı/formül varsa `formulas[].expression` alanında formül metnini koru. Aynı bağıntının bağımlı istemde açıkça yazılması gerekiyorsa düz `x = ...` metni kullanma; bağıntıyı `[[EQ: x = ...]]` işaretleyicisi içinde yaz. Word üreticisi bunu gerçek OMML denklem nesnesine dönüştürecektir. Formül zorunlu teknik çekirdek değilse ana istemi gereksiz daraltma; bağımlı istem/detaylı açıklamada tut.
 - Bağımlı istemleri kaynakta geçen her ayrıntı için çoğaltma. Yalnız ana isteme gerçek teknik daraltma/geri çekilme konumu sağlayan seçilmiş özellikleri kullan; istem bağımlılığı ana donanımsal taşıyıcıyı zaten taşıyorsa alt istemde elektronik cihaz/yazılım ifadesini gereksiz yere tekrar etme.
 - Eğitim/genel aşama ile test aşamasındaki paralel akışları aynı mantıkla fakat ayrı teknik aşamalar olarak kur.
 - REFERANS NUMARALARI bölümünde müşteri tarafından sistem/cihaz unsurları veya yöntem işlem adımları için verilmiş açık referansları AYNEN koru; 10, 20..., S101..., M1... veya başka bir referans ailesini sırf standartlaştırmak için değiştirme. Sistem/cihaz modüllerinde hiç referans yoksa kaynak sırasıyla 1, 2, 3... ver. Yöntem işlem adımlarında hiç referans yoksa varsayılan 1001, 1002, 1003... ailesini kullan. Kısmen numaralandırılmış kaynakta mevcut müşteri işaretlerini koru, yalnız boş kalanlara çakışmayacak varsayılan referans ata. Word'deki yöntem referans satırı `1001. ...` biçiminde başlar; bu satırın içinde sistem/cihaz unsur işaretleri `(1)`, `(2)` vb. yazılmaz. Parantezli unsur referansları BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren başlar.
@@ -1372,7 +1383,7 @@ def add_numbered_claim(doc: Document, template: Document, text: str):
     """İstem numarasını şablondaki gerçek Word otomatik numaralandırmasıyla oluştur."""
     p = doc.add_paragraph()
     _copy_list_properties(p, template.paragraphs[85])
-    p.add_run(_strip_claim_number(text))
+    _append_text_with_equations(p, _strip_claim_number(text))
     return format_paragraph(p)
 
 
@@ -1943,6 +1954,123 @@ def _validate_no_generic_unsur_in_claims(draft: dict[str, Any], language: str = 
             raise ValueError("İstemlerde teknik eleman türü yerine belirsiz 'unsur' kullanılamaz; anten/modül/birim/eleman/sunucu/veritabanı gibi gerçek teknik tür yazılmalıdır.")
 
 
+def _validate_main_claim_how_test(draft: dict[str, Any], extracted: dict[str, Any] | None = None) -> None:
+    """Bağımsız sistem istemindeki modül yazımlarını teknikte uzman kişinin 'nasıl?' testiyle denetler.
+
+    Özellikle yazılım/modül ağırlıklı unsurlarda İngilizce claim kalıbını andıran
+    `X modülü (N), ... yapan bir modül` yapısı reddedilir. İşlev/mekanizma önce,
+    teknik unsur adı ve referansı sonra kurulmalıdır. Ayrıca kaynak mekanizma
+    açıklıyorsa salt sonuç fiili yeterli sayılmaz; girdi/ilişki + işlem + çıktı
+    bağlantısından en azından yeniden üretilebilir teknik çekirdek görünmelidir.
+    """
+    system_claim = draft.get("system_claim") or {}
+    if not system_claim:
+        return
+    all_items = _system_claim_all_texts(system_claim)
+    elements = {str(x.get("number", "") or "").strip(): x for x in (draft.get("elements") or [])}
+    source_functions = {
+        str(x.get("number", "") or "").strip(): str(x.get("function", "") or "")
+        for x in ((extracted or {}).get("elements") or [])
+    }
+    software_like = re.compile(r"(?:modül|birim|kontrolör|mekanizma|arayüz|simülatör|motor|üretici|alt sistem|yazılım|algoritma|yönetici)", re.I)
+    action = re.compile(r"(?:tanımlayan|hesaplayan|belirleyen|oluşturan|seçen|güncelleyen|sınıflandıran|dönüştüren|değerlendiren|üreten|izleyen|sağlayan|uygulayan|kaydeden|sunan|örnekleyen|birleştiren|karşılaştıran|aktaran|yöneten|çalıştıran|gerçekleştiren|simüle\s+eden|haritalandıran|işleyen)", re.I)
+    relation = re.compile(r"(?:kullanarak|üzerinden|göre|vasıtasıyla|birleştirerek|karşılaştırarak|parametre|değer|veri|çıktı|sonuç|eşik|koordinat|oran|indeks|sinyal|hedef|görev|enerji|karıştırma|aldatma|hız|mesafe|Q\s+değer)", re.I)
+
+    for number, element in elements.items():
+        name = str(element.get("name", "") or "").strip()
+        if not number or not name or not software_like.search(name):
+            continue
+        ref_re = re.compile(r"\(\s*" + re.escape(number) + r"\s*\)")
+        candidates = [t for t in all_items if ref_re.search(t)]
+        if not candidates:
+            continue  # referans varlığı başka sert kapıda denetlenir
+        item = candidates[0].strip()
+
+        # Kullanıcının istem dilinde istemediği İngilizce-claim benzeri sıra.
+        if re.match(re.escape(name) + r"\s*\(\s*" + re.escape(number) + r"\s*\)\s*,", item, re.I):
+            raise ValueError(
+                f"Ana istemde {name} ({number}) İngilizce claim benzeri `X modülü (N), ... yapan bir modül` sırasıyla yazılmış. "
+                "Önce kaynak destekli teknik işlev/mekanizma, sonra unsur adı ve referansı yazılmalıdır."
+            )
+
+        name_match = re.search(re.escape(name) + r"\s*\(\s*" + re.escape(number) + r"\s*\)", item, re.I)
+        prefix = item[:name_match.start()] if name_match else item[:ref_re.search(item).start()]
+        if not action.search(prefix):
+            raise ValueError(
+                f"Ana istemde {name} ({number}) için işlevi gerçekleştiren aktif teknik ilişki görünmüyor. "
+                "Teknik uzman 'nasıl gerçekleştiriliyor?' sorusunun cevabını istemden görebilmelidir."
+            )
+        if not relation.search(prefix):
+            raise ValueError(
+                f"Ana istemde {name} ({number}) yalnız sonuç/fonksiyon düzeyinde kalmış. "
+                "Kaynakta dayanak bulunduğu ölçüde girdi/veri, teknik işlem veya önceki/sonraki unsur ilişkisi yazılmalıdır."
+            )
+
+        low = item.casefold()
+        # Sınıflandırma kaynağı kriter açıklıyorsa yalnız 'sınıflandıran' demek yeterli değildir.
+        if re.search(r"\bsınıflandır(?:an|ır|ma)\b", low, re.I) and not re.search(r"(?:karşılaştır|kriter|koşul|eşik|\bgöre\b|mesafe|yarıçap|nedenine\s+göre)", prefix, re.I):
+            raise ValueError(
+                f"Ana istemde {name} ({number}) sınıflandırma sonucunu söylüyor fakat sınıflandırmanın hangi teknik kriter/karşılaştırma üzerinden yapıldığı görünmüyor."
+            )
+        # Hesaplama kaynağı bir matematik/ilişki açıklıyorsa hesaplamanın en az temel ilişkisi görünmeli.
+        source_fn = source_functions.get(number, "")
+        if "hesaplayan" in low:
+            has_calc_relation = re.search(r"(?:oran|değişim|toplam|fark|ağırl|birleştir|üzerinden|\bgöre\b|kullan|bölün|bölerek|sayıs(?:ı|ının|al)|başarılı\s+görev|toplam\s+görev|parametre.*değişim|çıktılardan.*oran)", prefix, re.I)
+            source_has_calc_detail = re.search(r"(?:formül|bağıntı|oran|ağırl|katsayı|değişim|eşik|=|/)", source_fn, re.I)
+            # Kaynak fonksiyon alanı zayıf doldurulmuş olsa bile salt metrik isimlerini saymak
+            # 'nasıl hesaplanıyor?' sorusunu cevaplamaz. En az temel ilişki görünmelidir.
+            if not has_calc_relation and (source_has_calc_detail or re.search(r"(?:indeks|skor|metrik)", prefix, re.I)):
+                raise ValueError(
+                    f"Ana istemde {name} ({number}) için 'hesaplayan' sonucu var ancak hesaplamanın temel teknik ilişkisi görünmüyor."
+                )
+
+
+def _validate_claim_formula_markers(draft: dict[str, Any], language: str = "Türkçe") -> None:
+    """İstemlerde yazılan açık matematik bağıntılarının düz metin bırakılmasını engeller."""
+    if _english_spec(language):
+        return
+    texts = [
+        *_system_claim_all_texts(draft.get("system_claim") or {}),
+        *map(str, draft.get("dependent_system_claims") or []),
+        *map(str, (draft.get("method_claim") or {}).get("steps") or []),
+        *map(str, draft.get("dependent_method_claims") or []),
+    ]
+    formula_like = re.compile(r"\b[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü0-9_]{0,30}\s*(?:=|≤|≥|<|>)\s*[-+()0-9A-Za-zÇĞİÖŞÜçğıöşü_]", re.I)
+    for text in texts:
+        raw = str(text or "")
+        without_marked = EQ_MARKER_RE.sub("", raw)
+        if formula_like.search(without_marked):
+            raise ValueError(
+                "İstemde açık matematik bağıntısı düz metin olarak yazılmış. Bağıntıyı `[[EQ: ...]]` biçiminde işaretleyin; Word çıktısında gerçek OMML denklem nesnesi olarak oluşturulacaktır."
+            )
+
+
+def _validate_word_math_format(data: bytes, draft: dict[str, Any]) -> None:
+    """Nihai Word'de kaynak/draft formüllerinin gerçek OMML denklem nesnesi olmasını doğrular."""
+    expected_display = sum(1 for f in (draft.get("formulas") or []) if str(f.get("expression", "") or "").strip())
+    claim_texts = [
+        *_system_claim_all_texts(draft.get("system_claim") or {}),
+        *map(str, draft.get("dependent_system_claims") or []),
+        *map(str, (draft.get("method_claim") or {}).get("steps") or []),
+        *map(str, draft.get("dependent_method_claims") or []),
+    ]
+    expected_inline = sum(len(EQ_MARKER_RE.findall(str(t or ""))) for t in claim_texts)
+    expected = expected_display + expected_inline
+    if expected <= 0:
+        return
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        root = ET.fromstring(zf.read("word/document.xml"))
+    m_ns = {"m": "http://schemas.openxmlformats.org/officeDocument/2006/math"}
+    actual = len(root.findall(".//m:oMath", m_ns))
+    if actual < expected:
+        raise ValueError(
+            f"ÇIKTI FORMÜL KONTROLÜ başarısız: {expected} matematiksel ifade beklenirken Word'de yalnız {actual} gerçek denklem nesnesi bulundu."
+        )
+    all_text = "".join((x.text or "") for x in root.iter())
+    if "[[EQ:" in all_text or "[[FORMULA:" in all_text:
+        raise ValueError("ÇIKTI FORMÜL KONTROLÜ başarısız: denklem işaretleyicisi nihai Word'de düz metin olarak kalmış.")
+
+
 def validate_tarifname_draft(
     draft: dict[str, Any],
     claim_mode: str,
@@ -2120,6 +2248,8 @@ def validate_tarifname_draft(
             _validate_reference_identity(draft)
             _validate_reference_presence(draft)
             _validate_common_carrier_scope(draft)
+            _validate_main_claim_how_test(draft, extracted)
+            _validate_claim_formula_markers(draft, language)
 
         dependents = [str(x or "").strip() for x in (draft.get("dependent_system_claims") or []) if str(x or "").strip()]
         bad_ending_re = re.compile(r"(?:yapmasıdır|etmesidir|belirlemesidir|bulunmasıdır|oluşturulmasıdır|bağlanmasıdır|sağlanmasıdır|gerçekleştirilmesidir|yapılmasıdır|edilmesidir)\.?$", re.IGNORECASE)
@@ -2142,6 +2272,7 @@ def validate_tarifname_draft(
         )
         _validate_no_generic_unsur_in_claims(draft, language)
         _validate_method_step_action_language(draft, language)
+        _validate_claim_formula_markers(draft, language)
         _validate_abstract_shape(str(draft.get("abstract", "") or ""), language)
 
     audit = draft.get("coverage_audit") or {}
@@ -2393,7 +2524,10 @@ def validate_tarifname_post_generation_quality(
     _validate_no_generic_unsur_in_claims(draft, language)
     _validate_method_step_action_language(draft, language)
 
-    return {"source_completeness": True, "claims": True, "references": True, "template": True, "element_step_language": True}
+    # Ek sert alt-kapı: formüller nihai .docx içinde düz metin değil gerçek Word matematik nesnesidir.
+    _validate_word_math_format(data, draft)
+
+    return {"source_completeness": True, "claims": True, "references": True, "template": True, "element_step_language": True, "formula_format": True, "how_test": True}
 
 
 def render_tarifname_docx_smoke_test(data: bytes) -> None:
@@ -2581,8 +2715,7 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
                 if r.text:
                     r.bold = True
         if formula.get("expression"):
-            p = tpl_text(61, str(formula.get("expression", "")))
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            add_display_equation(doc, template, 61, str(formula.get("expression", "")))
         if formula.get("explanation"):
             tpl_text(61, str(formula.get("explanation", "")))
         tpl_blank(62)

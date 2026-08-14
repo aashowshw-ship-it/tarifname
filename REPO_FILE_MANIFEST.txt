@@ -25,3 +25,5 @@ test_v5420_five_gates.py
 test_v5421_full_template_audit.py
 test_v5422_source_svg_claims.py
 validators.py
+test_v5423_formula_color_how.py
+word_math.py

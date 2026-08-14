@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-14.v12**
+Kural sürümü: **2026-08-14.v13**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -331,3 +331,10 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Bütün Türkçe bağımlı yöntem istemleri gerçek ek işlem adımı diliyle kurulur ve son cümle tek işlem için `işlem adımını içermesidir.`, çoklu işlem için `işlem adımlarını içermesidir.` şeklinde biter.
 - BBF ve açık ek teknik belgeler deterministik ham-pasaj kayıtlarına ayrılır. Her kayıt exactly-once mantığıyla bir veya daha fazla teknik fact'e bağlanır ya da yalnız açık idari/form niteliğinde gerekçeli teknik-dışı sınıflandırılır. Böylece modelin eksik `technical_facts` listesi üretip kendi eksik listesini 100% karşılaması artık yeterli değildir.
 - `.svg` dosyaları ZIP, ek teknik belge ve şekil yükleme akışlarında birinci sınıf kaynak görselidir. Raster dönüşüm yalnız görüntüleme/Word yerleşimi içindir; özgün müşteri şekli başka model çizimiyle ikame edilemez. Kaynak şekil envanterindeki her kullanılabilir müşteri şekli nihai şekil setinde yer almalıdır.
+
+
+## 2026-08-14.v13 — Formül, renkli run ve uzman-NASIL sert kontrolleri
+
+- Kaynakta açık formül/bağıntı varsa nihai Word'de düz metin denklem kullanılmaz; gerçek OMML denklem nesnesi zorunludur. Detay formülleri ortalı denklem, istem içindeki açık bağıntılar `[[EQ: ...]]` üzerinden inline denklem olarak üretilir. Çıktı sonrası denklem nesnesi sayısı doğrulanır.
+- Tarifname girişindeki sabit talimat ve İSTEMLER altındaki üç sabit talimatta şablondaki kırmızı/mavi run bölünmeleri, metin, renk ve kalınlık birebir korunur.
+- Yazılım/modül ağırlıklı ana sistem isteminde uzman “nasıl?” testi deterministiktir: İngilizce claim benzeri `X modülü (N), ... yapan bir modül` sırası yasaktır; işlev/mekanizma önce, unsur adı `(N)` sonra gelir. Kaynakta mevcutsa girdi/veri + işlem/mekanizma + çıktı/sonraki unsur ilişkisi görünmelidir. Salt `hesaplayan/sınıflandıran/dönüştüren` sonucu yeterli değildir.
