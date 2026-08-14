@@ -8,7 +8,7 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from template_audit import validate_full_tarifname_template_fidelity
 
@@ -55,7 +55,7 @@ def _make_good_bytes():
         (6, "TEKNİK ALAN"), (7, None), (8, "Buluş, test sistemleri ile ilgilidir."), (9, None),
         (8, "Buluş, özellikle test haberleşmesi alanına yöneliktir."), (9, None),
         (10, "ÖNCEKİ TEKNİK"), (11, None), (12, "Mevcut sistemlerde teknik sorun bulunmaktadır."), (13, None),
-        (16, "Sonuçta yukarıda bahsedilen ve mevcut teknik ışığında çözülemeyen sorunlar, ilgili teknik alanda bir yenilik yapmayı zorunlu kılmıştır."),
+        (16, "Sonuçta yukarıda bahsedilen ve mevcut teknik ışığında çözülemeyen sorunlar, ilgili teknik alanda bir yenilik yapmayı zorunlu kılmıştır."), (15, None),
         (17, "BULUŞUN KISA AÇIKLAMASI"), (18, None), (19, "Buluş, test sistemi ile ilgilidir."), (20, None),
         (21, "Buluşun ana amacı, test işlevini sağlamaktır."), (22, None),
         (29, "Yukarıdaki amaçları gerçekleştirmek üzere buluş, bir test sistemi olup, özelliği;"),
@@ -104,11 +104,11 @@ def test_missing_figure_heading_gap_is_rejected():
         validate_full_tarifname_template_fidelity(out.getvalue(), TPL, DRAFT, "Türkçe")
 
 
-def test_short_description_visual_gap_is_rejected():
+def test_missing_short_description_physical_gap_is_rejected():
     doc = Document(io.BytesIO(_make_good_bytes()))
     texts = [p.text.strip() for p in doc.paragraphs]
     i = texts.index("BULUŞUN KISA AÇIKLAMASI")
-    doc.paragraphs[i-1].paragraph_format.space_after = 0
+    doc._element.body.remove(doc.paragraphs[i-1]._p)
     out = io.BytesIO(); doc.save(out)
-    with pytest.raises(ValueError, match="BULUŞUN KISA AÇIKLAMASI öncesindeki görsel boşluk"):
+    with pytest.raises(ValueError, match="BULUŞUN KISA AÇIKLAMASI öncesinde"):
         validate_full_tarifname_template_fidelity(out.getvalue(), TPL, DRAFT, "Türkçe")

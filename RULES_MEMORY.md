@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-13.v7**
+Kural sürümü: **2026-08-14.v12**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -323,3 +323,11 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Sistem referansları ve yöntem referansları birlikteyse REFERANS NUMARALARI içinde aralarında tek boş paragraf bulunur; son yöntem adımından sonra detaylı açıklama başlığına geçmeden tek boş paragraf bulunur.
 - Sabit/dinamik Word paragrafları yaklaşık biçimlendirmeyle sıfırdan kurulmak yerine mümkün olduğunca bağlayıcı şablondaki karşılık paragraf arketipinden kopyalanır.
 - Tam şablon kapısı başarısızsa render alınmış olsa bile dosya kullanıcıya sunulmaz.
+
+
+## 2026-08-14.v12 — Ham Kaynak, SVG ve İstem Türü Ek Sert Kapıları
+
+- Otomatik istem türü seçiminde açık sistem/modül dayanağı ile açık yöntem adımları birlikte varsa `Sistem ve yöntem` zorunludur; modelin `yalnız yöntem`/`yalnız sistem` önerisi kaynak dayanağını düşüremez.
+- Bütün Türkçe bağımlı yöntem istemleri gerçek ek işlem adımı diliyle kurulur ve son cümle tek işlem için `işlem adımını içermesidir.`, çoklu işlem için `işlem adımlarını içermesidir.` şeklinde biter.
+- BBF ve açık ek teknik belgeler deterministik ham-pasaj kayıtlarına ayrılır. Her kayıt exactly-once mantığıyla bir veya daha fazla teknik fact'e bağlanır ya da yalnız açık idari/form niteliğinde gerekçeli teknik-dışı sınıflandırılır. Böylece modelin eksik `technical_facts` listesi üretip kendi eksik listesini 100% karşılaması artık yeterli değildir.
+- `.svg` dosyaları ZIP, ek teknik belge ve şekil yükleme akışlarında birinci sınıf kaynak görselidir. Raster dönüşüm yalnız görüntüleme/Word yerleşimi içindir; özgün müşteri şekli başka model çizimiyle ikame edilemez. Kaynak şekil envanterindeki her kullanılabilir müşteri şekli nihai şekil setinde yer almalıdır.

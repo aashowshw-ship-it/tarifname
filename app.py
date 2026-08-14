@@ -30,6 +30,11 @@ from openai import OpenAI
 from PIL import Image
 
 try:
+    import cairosvg  # SVG müşteri şekillerini teknik içerik değiştirmeden PNG önizlemeye/Word yerleşimine dönüştürmek için
+except ImportError:  # pragma: no cover
+    cairosvg = None
+
+try:
     import fitz  # PyMuPDF: PDF içindeki şekilleri çıkarmak için
 except ImportError:  # pragma: no cover - bağımlılık Render üzerinde requirements ile kurulur
     fitz = None
@@ -37,6 +42,7 @@ from pypdf import PdfReader
 
 from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES
 from template_audit import validate_full_tarifname_template_fidelity
+from source_guards import build_source_passage_registry, validate_source_passage_audit, resolve_tarifname_claim_mode
 
 BASE_DIR = Path(__file__).resolve().parent
 TARIFNAME_TEMPLATE = BASE_DIR / "Tarifname_181176_template.docx"
@@ -88,7 +94,28 @@ def extract_json(text: str) -> dict[str, Any]:
         raise ValueError("Yapay zekâ yanıtı geçerli JSON olarak okunamadı.")
 
 
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
+RASTER_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+
+def _svg_to_png(data: bytes, *, output_width: int = 2200) -> bytes:
+    if cairosvg is None:
+        raise ValueError("SVG müşteri şekli işlendi ancak CairoSVG kurulu değil. requirements.txt içindeki CairoSVG bağımlılığını kurun.")
+    try:
+        # Bazı headless Cairo/Pango kurulumlarında Matplotlib SVG'lerindeki Unicode
+        # eksi/en-dash glifleri kare olarak rasterize olabiliyor. Geometri/veri
+        # değiştirilmeden yalnız eşdeğer ASCII çizgi karakterine normalize edilir.
+        svg_bytes = data.replace("−".encode("utf-8"), b"-").replace("–".encode("utf-8"), b"-")
+        return cairosvg.svg2png(bytestring=svg_bytes, output_width=output_width)
+    except Exception as exc:
+        raise ValueError("SVG müşteri şekli PNG önizlemeye dönüştürülemedi; özgün SVG teknik kaynak olarak korunamadı.") from exc
+
+def _model_ready_image(asset: UploadedAsset) -> UploadedAsset:
+    if Path(asset.name).suffix.lower() == ".svg":
+        return UploadedAsset(asset.name, _svg_to_png(asset.data), "image/png")
+    return asset
+
 def image_content(asset: UploadedAsset) -> dict[str, Any]:
+    asset = _model_ready_image(asset)
     b64 = base64.b64encode(asset.data).decode("ascii")
     mime = asset.mime or "image/png"
     return {"type": "input_image", "image_url": f"data:{mime};base64,{b64}", "detail": "high"}
@@ -197,8 +224,8 @@ def extract_text_from_asset(asset: UploadedAsset) -> str:
         text = pdf_text(asset.data)
     elif suffix in {".txt", ".md"}:
         text = asset.data.decode("utf-8", errors="replace")
-    elif suffix in {".png", ".jpg", ".jpeg", ".webp"}:
-        text = f"[GÖRSEL DOSYASI: {asset.name}]"
+    elif suffix in IMAGE_SUFFIXES:
+        text = f"[TEKNİK GÖRSEL DOSYASI: {asset.name}]"
     else:
         text = ""
     return text.replace("\x00", " ").strip()[:MAX_TEXT_PER_FILE]
@@ -216,7 +243,7 @@ def assets_from_uploads(files: Iterable[Any] | None) -> list[UploadedAsset]:
                         continue
                     inner_name = Path(info.filename).name
                     inner_suffix = Path(inner_name).suffix.lower()
-                    if inner_suffix not in {".pdf", ".docx", ".doc", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp"}:
+                    if inner_suffix not in {".pdf", ".docx", ".doc", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp", ".svg"}:
                         continue
                     out.append(UploadedAsset(inner_name, zf.read(info)))
         else:
@@ -230,9 +257,9 @@ def combine_asset_text(label: str, assets: list[UploadedAsset]) -> tuple[str, li
     total = 0
     for asset in assets:
         suffix = Path(asset.name).suffix.lower()
-        if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
-            images.append(asset)
-            blocks.append(f"\n--- {label}: {asset.name} (görsel ayrıca eklenmiştir) ---\n")
+        if suffix in IMAGE_SUFFIXES:
+            images.append(_model_ready_image(asset))
+            blocks.append(f"\n--- {label}: {asset.name} (teknik görsel ayrıca eklenmiştir; dosya adı ve görsel içeriği kaynak envanterine dahildir) ---\n")
             continue
         text = extract_text_from_asset(asset)
         if not text:
@@ -260,8 +287,15 @@ def extract_embedded_images(asset: UploadedAsset) -> list[UploadedAsset]:
     suffix = Path(asset.name).suffix.lower()
     images: list[UploadedAsset] = []
 
-    if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
+    if suffix in RASTER_IMAGE_SUFFIXES:
         return [asset] if _valid_figure_image(asset.data, min_width=1, min_height=1) else []
+
+    if suffix == ".svg":
+        try:
+            png = _svg_to_png(asset.data)
+        except Exception:
+            return []
+        return [UploadedAsset(asset.name, png, "image/png")] if _valid_figure_image(png, min_width=1, min_height=1) else []
 
     if suffix == ".docx":
         try:
@@ -272,9 +306,18 @@ def extract_embedded_images(asset: UploadedAsset) -> list[UploadedAsset]:
                 )
                 for index, name in enumerate(media, 1):
                     data = zf.read(name)
+                    ext = Path(name).suffix.lower() or ".png"
+                    if ext == ".svg":
+                        try:
+                            rendered = _svg_to_png(data)
+                        except Exception:
+                            continue
+                        if not _valid_figure_image(rendered):
+                            continue
+                        images.append(UploadedAsset(f"{Path(asset.name).stem}_sekil_{index}.svg", rendered, "image/png"))
+                        continue
                     if not _valid_figure_image(data):
                         continue
-                    ext = Path(name).suffix.lower() or ".png"
                     mime = "image/jpeg" if ext in {".jpg", ".jpeg"} else f"image/{ext.lstrip('.')}"
                     images.append(UploadedAsset(f"{Path(asset.name).stem}_sekil_{index}{ext}", data, mime))
         except Exception:
@@ -1051,6 +1094,7 @@ def tarifname_extraction_quality_prompt(
     source_text: str,
     technical_supplement_text: str,
     extracted: dict[str, Any],
+    source_passage_registry: list[dict[str, str]],
     language: str = "Türkçe",
 ) -> str:
     return f"""{TARIFNAME_RULES}
@@ -1062,7 +1106,9 @@ Kişi/sicil/ödül/imza, form talimatları, boş idari alanlar ve yalnız araşt
 Her technical fact tek bir atomik teknik anlam taşısın, `id` alanları T001, T002... biçiminde benzersiz ve sıralı olsun, mandatory teknik bilgiler `mandatory=true` olsun.
 Mevcut elements/method_steps/formulas/tables/alternatives/use_cases/figure audit alanlarını kaynakla karşılaştır ve eksik teknik içerik varsa tamamla; kaynakta olmayan bilgi ekleme.
 
-JSON dışında hiçbir şey yazma. Mevcut JSON yapısını koruyarak düzeltilmiş TAM envanteri döndür.
+HAM KAYNAK PASAJ KAPISI: Aşağıdaki SOURCE_PASSAGE_REGISTRY yerel kod tarafından ham dosyalardan deterministik çıkarılmıştır. HER passage_id `source_passage_audit` içinde TAM BİR KEZ yer almalıdır. Teknik pasaj classification=`technical` olmalı ve en az bir geçerli technical_facts id'sine bağlanmalıdır. Gerçekten idari/form niteliğindeki pasaj classification=`nontechnical` olabilir ancak reason boş bırakılamaz. Teknik içerikli pasajı nontechnical işaretleyerek atlamak yasaktır.
+
+JSON dışında hiçbir şey yazma. Mevcut JSON yapısını koruyarak düzeltilmiş TAM envanteri döndür ve `source_passage_audit` alanını ekle.
 
 HAM BBF:
 ---
@@ -1074,8 +1120,14 @@ EK TEKNİK BELGELER:
 {technical_supplement_text}
 ---
 
+SOURCE_PASSAGE_REGISTRY:
+{json.dumps(source_passage_registry, ensure_ascii=False, indent=2)}
+
 MEVCUT ENVANTER:
 {json.dumps(extracted, ensure_ascii=False, indent=2)}
+
+ZORUNLU EK ALAN ŞEMASI:
+"source_passage_audit":[{{"passage_id":"B0001","classification":"technical/nontechnical","fact_ids":["T001"],"reason":""}}]
 """
 
 
@@ -1165,7 +1217,7 @@ KRİTİK TALİMATLAR:
 - Aynı olmayan fiziksel unsurları “ve/veya” ile tek unsur gibi birleştirme. Gerçek alternatifleri teknik kimlikleri ve işlevleriyle açık ayrı maddelerde tanımla.
 - “vidalanan/kaynaklanan/yapıştırılan” ve belirli çap/diş/ölçü gibi daraltıcı ifadeleri yalnız zorunlu teknik çekirdek veya farklılaştırıcı mekanizma ise ana istemde tut. Değilse kaynakla uyumlu daha geniş bağlantı dili kullan.
 - Ana istemde tanımlanan bir özelliği başka bullet'ta tekrar etme. Sonraki unsur yalnız kendi ilişkisi ve işleviyle tanımlansın.
-- Sistem ve yöntem bağımlı istemlerinin HER BİRİNİ semantik olarak ana/üst istemle ve önceki bağımlı istemlerle karşılaştır; aynı teknik özelliği farklı kelimelerle tekrar eden bağımlı istem üretme. Her alt istem gerçek ek teknik sınırlama getirmelidir. Bir istem silinir/değişirse sonraki bağımlılık numaralarını yeniden kur.
+- Sistem ve yöntem bağımlı istemlerinin HER BİRİNİ semantik olarak ana/üst istemle ve önceki bağımlı istemlerle karşılaştır; aynı teknik özelliği farklı kelimelerle tekrar eden bağımlı istem üretme. Her alt istem gerçek ek teknik sınırlama getirmelidir. Bir istem silinir/değişirse sonraki bağımlılık numaralarını yeniden kur. Türkçe bağımlı YÖNTEM istemleri eylem sonucu ile bitmez; tek ek adım varsa `işlem adımını içermesidir.`, birden fazla ek adım varsa `işlem adımlarını içermesidir.` şeklinde kapanır.
 - Örnek ölçü/çap/diş değerlerini zorunlu değilse istemlere taşıma; detaylı açıklamada örnek yapılanma olarak koru ve kaynak destekliyorsa farklı ölçülere uygulanabilirliği açıkla.
 - Referans adı koruma kapsamını gereksiz daraltmasın: özel bir örnek (örn. O-ring) daha genel kaynak destekli teknik işlevin gerçekleştirmesiyse unsur adını genel teknik kavramla (örn. sızdırmazlık elemanı) kur; özel örneği detaylı açıklamada parantez içinde ver.
 - Her teknik ayrıntıya zorla referans verme; yapıştırıcı/malzeme/kaplama gibi özellikler ayrı referans gerektirmiyorsa numarasız olarak detaylı açıklama ve uygun bağımlı istemde kullanılabilir.
@@ -2079,6 +2131,10 @@ def validate_tarifname_draft(
             semicolons = claim.count(";")
             if semicolons > 1 or (semicolons == 1 and not re.search(r"olup,\s*özelliği;", claim, re.IGNORECASE)):
                 raise ValueError(f"İstem {idx} içinde standart ‘olup, özelliği;’ kalıbı dışında noktalı virgül kullanılmış.")
+        method_dependents = [str(x or "").strip() for x in (draft.get("dependent_method_claims") or []) if str(x or "").strip()]
+        for dep_index, claim in enumerate(method_dependents, start=1):
+            if not re.search(r"işlem adım(?:ını|larını)\s+içermesidir\.?$", claim, re.IGNORECASE):
+                raise ValueError(f"Bağımlı yöntem istemi {dep_index}, `işlem adımını içermesidir.` veya `işlem adımlarını içermesidir.` ile bitmelidir.")
         _validate_dependent_claim_semantic_repetition(system_claim, dependents)
         _validate_dependent_method_claim_semantic_repetition(
             draft.get("method_claim") or {},
@@ -2438,6 +2494,9 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
     # Son içerik paragrafından sonra eklenen normal boşluğu kaldır; şablonda sonuç paragrafının kendi after-space'i vardır.
     trim_trailing_blanks()
     tpl_text(16, "Consequently, the problems described above, which remain unresolved in view of the prior art, have created a need for an improvement in the relevant technical field." if en else "Sonuçta yukarıda bahsedilen ve mevcut teknik ışığında çözülemeyen sorunlar, ilgili teknik alanda bir yenilik yapmayı zorunlu kılmıştır.")
+    # Kullanıcı tarafından bağlayıcı hale getirilen ek şablon kuralı: sonuç paragrafı
+    # ile BULUŞUN KISA AÇIKLAMASI arasında fiziksel olarak tam bir boş paragraf bulunur.
+    tpl_blank(15)
 
     # BULUŞUN KISA AÇIKLAMASI
     tpl_text(17, labels["short"])
@@ -2486,7 +2545,9 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
     tpl_blank(48)
     elements = draft.get("elements") or []
     for element in elements:
-        tpl_text(49, f"{element.get('number','')}. {_reference_sentence_case(element.get('name',''))}")
+        # Referans listesinde unsur adı draft.elements ile karakter-karakter aynıdır;
+        # sentence-case dönüşümü teknik kısaltma/proper-case adlarını (örn. Monte Carlo) bozabilir.
+        tpl_text(49, f"{element.get('number','')}. {str(element.get('name','') or '').strip()}")
     method_steps = draft.get("method_steps") or []
     if elements and method_steps:
         tpl_blank(56)
@@ -2567,7 +2628,15 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
             add_template_list_item(doc, template, 30, f"{text} ({number}){punctuation}")
         tpl_blank(73)
     if draft.get("working_principle"):
-        tpl_text(74, str(draft.get("working_principle", "")))
+        # Şablonun 74. paragrafında metnin sonunda eski bir manuel sayfa sonu bulunur.
+        # Aktif üretimde İSTEMLER başlığını page_break_before ile yeni sayfaya aldığımız için
+        # bu manuel kırılmayı taşımak çift sayfa sonu ve boş sayfa üretir. Biçimi koruyup
+        # yalnız sayfa sonu kontrolünü kaldırıyoruz.
+        working_p = tpl_text(74, str(draft.get("working_principle", "")))
+        for run in working_p.runs:
+            for br in list(run._r.findall(qn("w:br"))):
+                if br.get(qn("w:type")) == "page":
+                    run._r.remove(br)
 
     # İSTEMLER öncesi TAM iki boş paragraf. Önceki içerikten kalan boşluklar temizlenir.
     trim_trailing_blanks()
@@ -2640,11 +2709,16 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
         tpl_blank(94)
         for dependent in draft.get("dependent_method_claims") or []:
             add_numbered_claim(doc, template, str(dependent))
-            tpl_blank(98)
+            # 98 numaralı şablon paragrafı ÖZET öncesindeki manuel sayfa sonunu içerir;
+            # istemler arasında kullanılması her bağımlı yöntem istemini yeni sayfaya atar.
+            # İstemler arasındaki normal boşluk arketipi 96 kullanılır.
+            tpl_blank(96)
 
     # ÖZET öncesi tam bir boşluk ve yeni sayfa.
     trim_trailing_blanks()
-    tpl_blank(98)
+    # Yeni sayfa kontrolü ÖZET başlığının page_break_before özelliğindedir; burada
+    # manuel sayfa sonu içermeyen normal bir şablon boşluğu kullanılır.
+    tpl_blank(96)
     tpl_text(99, labels["abstract"])
     summary_heading = doc.paragraphs[-1]
     summary_heading.paragraph_format.page_break_before = True
@@ -3890,7 +3964,7 @@ if work_type == "Tarifname oluşturma":
 
         extra_technical_files = st.file_uploader(
             "Ek teknik müşteri belgeleri/notları (varsa)",
-            type=["pdf", "docx", "doc", "txt", "md", "png", "jpg", "jpeg", "webp", "zip"],
+            type=["pdf", "docx", "doc", "txt", "md", "png", "jpg", "jpeg", "webp", "svg", "zip"],
             accept_multiple_files=True,
             key="tar_extra_technical",
         )
@@ -3909,7 +3983,7 @@ if work_type == "Tarifname oluşturma":
         with fc2:
             figure_files = st.file_uploader(
                 "Ayrıca kullanılacak şekil dosyaları",
-                type=["png", "jpg", "jpeg", "webp", "docx", "pdf"],
+                type=["png", "jpg", "jpeg", "webp", "svg", "docx", "pdf"],
                 accept_multiple_files=True,
                 key="tar_figures",
                 disabled=not separate_figures,
@@ -3941,6 +4015,9 @@ if work_type == "Tarifname oluşturma":
 
                 technical_assets = assets_from_uploads(extra_technical_files)
                 technical_text, technical_images = combine_asset_text("EK TEKNİK BELGE", technical_assets)
+                technical_figure_assets: list[UploadedAsset] = []
+                for asset in technical_assets:
+                    technical_figure_assets.extend(extract_embedded_images(asset))
                 example_assets = assets_from_uploads(example_files)
                 example_text, _ = combine_asset_text("ÖRNEK TARİFNAME - YALNIZCA KURGU", example_assets)
 
@@ -3952,7 +4029,7 @@ if work_type == "Tarifname oluşturma":
                         provided_figure_assets.extend(extract_embedded_images(fig_asset))
 
                 # Nihai şekil dosyaları ayrıca yüklenmişse model bunları da görerek referans senkronizasyonunu denetler.
-                model_images = [*provided_figure_assets, *technical_images, *embedded_images][:12]
+                model_images = [*provided_figure_assets, *technical_images, *embedded_images][:24]
 
                 progress.progress(15, text="BBF içeriği, referans tablosu, şekiller ve istem çekirdeği çıkarılıyor...")
                 extracted = ask_json(
@@ -3960,25 +4037,17 @@ if work_type == "Tarifname oluşturma":
                     images=model_images,
                 )
 
-                progress.progress(22, text="BBF teknik bilgi envanteri ikinci kez, madde madde doğrulanıyor...")
+                progress.progress(22, text="BBF teknik bilgi envanteri ham kaynak pasajlarıyla ikinci kez, madde madde doğrulanıyor...")
+                source_passage_registry = build_source_passage_registry(source, technical_text)
                 extracted = ask_json(
-                    tarifname_extraction_quality_prompt(source, technical_text, extracted, language_choice),
+                    tarifname_extraction_quality_prompt(source, technical_text, extracted, source_passage_registry, language_choice),
                     images=model_images,
                 )
                 _validate_technical_fact_inventory(extracted)
+                validate_source_passage_audit(extracted, source_passage_registry)
 
                 progress.progress(28, text="İstem yapısı belirleniyor...")
-                mode = claim_choice
-                if mode == "BBF'ye göre otomatik belirle":
-                    recommended = str(extracted.get("recommended_claim_mode", "")).strip()
-                    if recommended in {"Yalnızca sistem", "Yalnızca yöntem", "Sistem ve yöntem"}:
-                        mode = recommended
-                    elif extracted.get("has_system_basis") and extracted.get("has_method_basis"):
-                        mode = "Sistem ve yöntem"
-                    elif extracted.get("has_method_basis"):
-                        mode = "Yalnızca yöntem"
-                    else:
-                        mode = "Yalnızca sistem"
+                mode = resolve_tarifname_claim_mode(extracted, claim_choice)
                 st.info(f"Kullanılan istem yapısı: {mode}")
 
                 lit_docs: list[dict[str, Any]] = []
@@ -4067,7 +4136,7 @@ if work_type == "Tarifname oluşturma":
                     data, draft, extracted, mode, lit_docs, language_choice
                 )
                 render_tarifname_docx_smoke_test(data)
-                st.success("Son kalite kapıları: ✅ 1/3 BBF/Kaynak tamlığı  ✅ 2/3 Ana istem + alt istemler  ✅ 3/3 Referans numaraları")
+                st.success("Son kalite kapıları: ✅ 1/5 Ham kaynak/BBF tamlığı  ✅ 2/5 Ana + alt istemler  ✅ 3/5 Referanslar  ✅ 4/5 Tam şablon  ✅ 5/5 Unsur/yöntem dili")
 
                 figure_data = None
                 figure_reports: list[dict[str, Any]] = []
@@ -4076,8 +4145,8 @@ if work_type == "Tarifname oluşturma":
                     # BBF içindeki kullanılabilir özgün teknik şekiller ZORUNLU kaynak şekildir.
                     # Ayrıca yüklenen müşteri şekilleri bunlara eklenir; salt ayrı şekil yüklenmiş olması BBF şekillerini düşürmez.
                     # Aynı görsel bayt düzeyinde yineleniyorsa aşağıdaki deduplikasyon tek kopya bırakır.
-                    all_figure_assets: list[UploadedAsset] = [*embedded_images, *provided_figure_assets]
-                    source_figure_inventory = [asset.name for asset in embedded_images]
+                    all_figure_assets: list[UploadedAsset] = [*embedded_images, *technical_figure_assets, *provided_figure_assets]
+                    source_figure_inventory = [asset.name for asset in [*embedded_images, *technical_figure_assets, *provided_figure_assets]]
                     # Aynı görselin birden fazla kez eklenmesini engelle.
                     deduplicated: list[UploadedAsset] = []
                     seen_images: set[int] = set()

@@ -5,3 +5,4 @@ pypdf>=5,<7
 Pillow>=11,<13
 
 pymupdf>=1.24,<2
+CairoSVG>=2.7,<3

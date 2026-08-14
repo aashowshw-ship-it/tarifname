@@ -351,6 +351,11 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
         elif not re.search(r"(?:olmasıdır|içermesidir)\.?$", claim.strip(), re.I):
             findings.append({"level": "Hata", "message": "Yöntem dışındaki alt istem ‘olmasıdır.’ veya ‘içermesidir.’ ile bitmeli."})
 
+    for dep_index, claim in enumerate(draft.get("dependent_method_claims") or [], 1):
+        text = str(claim or "").strip()
+        if not re.search(r"işlem adım(?:ını|larını)\s+içermesidir\.?$", text, re.I):
+            findings.append({"level": "Hata", "message": f"Bağımlı yöntem istemi {dep_index}, `işlem adımını içermesidir.` veya `işlem adımlarını içermesidir.` ile bitmelidir."})
+
     for claim in [*(draft.get("dependent_system_claims") or []), *(draft.get("dependent_method_claims") or [])]:
         if re.search(r"önceki\s+istemlerden\s+herhangi\s+birine", str(claim), re.I):
             findings.append({"level": "Hata", "message": "Bağımlı istemde ‘Önceki istemlerden herhangi birine’ kullanılmış; ek özelliğin dayandığı doğrudan istem numarası seçilmeli."})

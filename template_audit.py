@@ -237,18 +237,22 @@ def validate_full_tarifname_template_fidelity(
     _assert_fmt(paras[ti + 4], tpl.paragraphs[8], "TEKNİK ALAN ikinci paragrafı")
     _assert_fmt(paras[ti + 5], tpl.paragraphs[9], "TEKNİK ALAN son boşluğu", compare_runs=False)
 
-    # Önceki teknik: paragraflar arasında boşluk; sonuç paragrafı şablondaki space-after boşluğunu taşımalı.
+    # Önceki teknik: paragraflar arasında boşluk; sonuç paragrafından sonra kullanıcı tarafından
+    # bağlayıcı hale getirilen tam bir fiziksel boş paragraf bulunmalıdır.
     pri, shi = indices["prior"], indices["short"]
-    if shi <= pri + 2:
+    if shi <= pri + 3:
         raise ValueError("TAM ŞABLON KONTROLÜ: ÖNCEKİ TEKNİK içeriği eksik.")
-    conclusion_p = paras[shi - 1]
-    if texts[shi - 1] == "":
-        raise ValueError("TAM ŞABLON KONTROLÜ: BULUŞUN KISA AÇIKLAMASI öncesindeki boşluk şablonda fiziksel boş paragraf değil, sonuç paragrafının space-after değeridir; şablon paragrafı kullanılmalıdır.")
+    if _count_blanks_before(texts, shi) != 1:
+        raise ValueError("TAM ŞABLON KONTROLÜ: BULUŞUN KISA AÇIKLAMASI öncesinde tam bir şablon boş paragrafı bulunmalıdır.")
+    _assert_fmt(paras[shi - 1], tpl.paragraphs[15], "BULUŞUN KISA AÇIKLAMASI öncesi boşluk", compare_runs=False)
+    conclusion_p = paras[shi - 2]
+    if not conclusion_p.text.strip():
+        raise ValueError("TAM ŞABLON KONTROLÜ: ÖNCEKİ TEKNİK sonuç paragrafı eksik.")
     if _emu(conclusion_p.paragraph_format.space_after) != _emu(tpl.paragraphs[16].paragraph_format.space_after):
-        raise ValueError("TAM ŞABLON KONTROLÜ: BULUŞUN KISA AÇIKLAMASI öncesindeki görsel boşluk şablondaki sonuç paragrafı kadar değil.")
+        raise ValueError("TAM ŞABLON KONTROLÜ: ÖNCEKİ TEKNİK sonuç paragrafının biçimi şablondan sapmış.")
     _assert_fmt(conclusion_p, tpl.paragraphs[16], "ÖNCEKİ TEKNİK sonuç paragrafı")
     # Önceki teknik gövdesindeki bütün normal paragraflar arasında bir boş paragraf olmalı.
-    prior_body = texts[pri + 2:shi - 1]
+    prior_body = texts[pri + 2:shi - 2]
     for j in range(len(prior_body) - 1):
         if prior_body[j] and prior_body[j + 1]:
             raise ValueError("TAM ŞABLON KONTROLÜ: ÖNCEKİ TEKNİK ana paragrafları arasında şablon boşluğu eksik.")
