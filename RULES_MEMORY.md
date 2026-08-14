@@ -305,3 +305,11 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Ortak `elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ve;` üst maddesi yalnız yürütülebilir yazılım/modül/kontrolör/arayüz/yığın gibi teknik birimleri gruplayabilir. Veritabanı, bellek, veri deposu veya salt veri yapısı kaynakta açıkça yürütülebilir yazılım/modül olarak tanımlanmıyorsa bu grubun altına alınmaz.
 - Sistem/cihaz bağımlı istemlerinde `bulunmasıdır` artık açıkça yasaktır. Profil gibi veri içeriği “veritabanında profil bulunmasıdır” diye değil, ilgili teknik unsurun `... profilini barındıran bir veritabanı olmasıdır` veya uygun biçimde `içermesidir` diliyle yazılır.
 - Yöntem işlem adımlarının referans listesi görünümü sistem `(N)` işaretlerini içermez; aynı adım detaylı açıklama ve bağımsız yöntem isteminde referanslı unsur adlarıyla birlikte yazılır.
+
+
+## 2026-08-14.v10 — Şablon ve İşlem-Adımı Dil Kapısı
+
+- Tarifname sonrası kontrol artık 5 kapıdır: BBF tamlığı; ana/alt istem; referans; bağlayıcı şablon; unsur ve yöntem-adımı dili.
+- `İSTEMLER` ve `ÖZET` yeni sayfa ve ortalı başlık, şablondaki boş paragraf ritmi ve bağımsız istem kapanışlarının şablondaki girinti/hiza özellikleri zorunludur.
+- İstemlerde teknik eleman türü yerine `unsur` placeholder'ı kullanılmaz; `eleman` veya daha spesifik anten/modül/birim/sunucu/veritabanı adı kullanılır.
+- Yöntem adımları salt `takibi`, `orkestrasyonu`, `kontrolü` gibi isimlerle bitemez; `takibinin yapılması`, `orkestrasyonunun gerçekleştirilmesi` gibi gerçek işlem sonu gerekir ve 3 görünümde birebir senkron tutulur.

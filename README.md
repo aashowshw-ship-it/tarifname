@@ -1,10 +1,10 @@
-# Patent Atölyesi v5.4.19
+# Patent Atölyesi v5.4.20
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 14.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `Patent_Atolyesi_v5.4.19_GitHub` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `Patent_Atolyesi_v5.4.20_GitHub` klasörünü ikinci bir alt klasör olarak yüklemeyin.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -226,3 +226,8 @@ Tarifname oluşturma akışında Word üretimi artık işlemin sonu değildir. �
 3. **Referans kullanım kontrolü:** REFERANS NUMARALARI bölümündeki unsur adları BULUŞUN DETAYLI AÇIKLAMASI ve İSTEMLER içinde geçtiği her yerde doğru `(N)` işaretiyle kullanılmalıdır. Yöntem istemlerindeki gNodeB/modül/veritabanı/yığın/cihaz gibi unsur kullanımları da bu kontrole dahildir. Referans listesi yöntem satırlarında ise önceki kural gereği sistem `(1)`, `(2)` işaretleri gösterilmez.
 
 Ayrıca ortak `elektronik işlem birimi üzerinde koşturulan yazılım` üst bullet'ı yalnız gerçekten yürütülebilir yazılım/modül/kontrolör/arayüz/yığınlar için kullanılır. Veritabanı, bellek veya salt veri yapısı kaynak açıkça yürütülebilir bir yazılım birimi olduğunu söylemiyorsa bu ortak grubun altına alınmaz.
+
+
+## 2026-08-14.v10 — Beşli Son Kalite Kapısı
+
+Tarifname Word üretildikten sonra indirme sunulmadan önce beş zorunlu kontrol çalışır: (1) BBF/kaynak teknik bilgi tamlığı, (2) ana istem ve alt istem kalite/tekrar/gereklilik kontrolü, (3) detaylı açıklama ve istemlerde referans numarası tamlığı, (4) `Tarifname_181176_template.docx` ile boşluk-hiza-sayfa kırılımı-numaralandırma-kapanış girintisi uygunluğu, (5) istemlerde belirsiz `unsur` placeholder'ı ve yöntem adımlarında salt isimle bitiş kontrolü. Yöntem adımları `... yapılması/edilmesi/aktarılması/belirlenmesi` gibi gerçek işlem fiilimsileriyle biter.

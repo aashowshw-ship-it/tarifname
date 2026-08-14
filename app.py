@@ -1861,6 +1861,35 @@ def _validate_abstract_shape(abstract: str, language: str) -> None:
         raise ValueError("ÖZET tek paragraf ve tek cümle olmalıdır; ayrı cümlelere bölünmemelidir.")
 
 
+
+
+def _validate_method_step_action_language(draft: dict[str, Any], language: str = "Türkçe") -> None:
+    if _english_spec(language):
+        return
+    action_end_re = re.compile(r"(?:ması|mesi)\s*$", re.IGNORECASE)
+    for step in draft.get("method_steps") or []:
+        number = str(step.get("number", "") or "").strip()
+        text = str(step.get("text", "") or "").strip()
+        clean = re.sub(rf"\s*\(\s*{re.escape(number)}\s*\)\s*$", "", text).strip().rstrip(".,;:") if number else text.rstrip(".,;:")
+        if clean and not action_end_re.search(clean):
+            raise ValueError(f"Yöntem işlem adımı {number or '?'} salt isimle veya işlem-sonu olmayan ifadeyle bitiyor: '{clean}'. '... yapılması/edilmesi/aktarılması/belirlenmesi' gibi gerçek işlem fiilimsisi kullanın.")
+    method = draft.get("method_claim") or {}
+    for raw in method.get("steps") or []:
+        text = str(raw or "").strip().rstrip(".,;:")
+        text = re.sub(r"\s*\(\s*[^()]+\s*\)\s*$", "", text).strip()
+        if text and not action_end_re.search(text):
+            raise ValueError(f"Bağımsız yöntem istemindeki adım gerçek işlem fiilimsisiyle bitmiyor: '{text}'.")
+
+
+def _validate_no_generic_unsur_in_claims(draft: dict[str, Any], language: str = "Türkçe") -> None:
+    if _english_spec(language):
+        return
+    texts = [*_system_claim_all_texts(draft.get("system_claim") or {}), *map(str, draft.get("dependent_system_claims") or []), *map(str, (draft.get("method_claim") or {}).get("steps") or []), *map(str, draft.get("dependent_method_claims") or [])]
+    for text in texts:
+        if re.search(r"\bbir\s+unsur\b|\bunsur\s+olmasıdır|\bunsur\s+içermesidir", str(text), re.IGNORECASE):
+            raise ValueError("İstemlerde teknik eleman türü yerine belirsiz 'unsur' kullanılamaz; anten/modül/birim/eleman/sunucu/veritabanı gibi gerçek teknik tür yazılmalıdır.")
+
+
 def validate_tarifname_draft(
     draft: dict[str, Any],
     claim_mode: str,
@@ -2054,6 +2083,8 @@ def validate_tarifname_draft(
             draft.get("method_claim") or {},
             [str(x or "").strip() for x in (draft.get("dependent_method_claims") or []) if str(x or "").strip()],
         )
+        _validate_no_generic_unsur_in_claims(draft, language)
+        _validate_method_step_action_language(draft, language)
         _validate_abstract_shape(str(draft.get("abstract", "") or ""), language)
 
     audit = draft.get("coverage_audit") or {}
@@ -2212,6 +2243,32 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
     if numbered_count < expected_claims:
         raise ValueError("Word şablon kontrolü: İstemlerin tamamında gerçek Word otomatik numaralandırması uygulanmamış.")
 
+    # Bağlayıcı şablonla istem kapanış konumu ve boşluk ritmi karşılaştırması.
+    template = Document(str(TARIFNAME_TEMPLATE))
+    template_close = template.paragraphs[93]
+    def _indent_signature(p):
+        pf = p.paragraph_format
+        return (pf.left_indent, pf.right_indent, pf.first_line_indent, p.alignment, pf.line_spacing)
+
+    claim_region = paras[ci + 1:ai]
+    closings = [p for p in claim_region if p.text.strip() in {"içermesidir.", "işlem adımlarını içermesidir."}]
+    expected_closings = (1 if draft.get("system_claim") else 0) + (1 if draft.get("method_claim") else 0)
+    if len(closings) != expected_closings:
+        raise ValueError("Word şablon kontrolü: bağımsız istem kapanış paragraflarının sayısı beklenenle uyuşmuyor.")
+    for p in closings:
+        if _indent_signature(p) != _indent_signature(template_close):
+            raise ValueError("Word şablon kontrolü: 'içermesidir.' / 'işlem adımlarını içermesidir.' kapanış paragrafı şablondaki girinti ve hizaya uymuyor.")
+
+    # Şablonda detaylı açıklama ile İSTEMLER arasında iki boş paragraf vardır.
+    if ci < 2 or texts[ci-1] != "" or texts[ci-2] != "":
+        raise ValueError("Word şablon kontrolü: İSTEMLER öncesindeki iki boş paragraf ritmi korunmamış.")
+    # İstem açıklama metinleri ve istemler arasında tek boş paragraf korunur.
+    note_texts = [template.paragraphs[79].text.strip(), template.paragraphs[81].text.strip(), template.paragraphs[83].text.strip()]
+    for note in note_texts:
+        if note in texts:
+            ni = texts.index(note)
+            if ni + 1 >= len(texts) or texts[ni + 1] != "":
+                raise ValueError("Word şablon kontrolü: İSTEMLER açıklama paragrafları arasındaki boşluk şablona uymuyor.")
 
 
 def validate_tarifname_post_generation_quality(
@@ -2222,7 +2279,7 @@ def validate_tarifname_post_generation_quality(
     literature: list[dict[str, Any]] | None = None,
     language: str = "Türkçe",
 ) -> dict[str, bool]:
-    """Word üretildikten sonra 3 zorunlu kalite kapısını nihai çıktı üzerinde yeniden çalıştırır."""
+    """Word üretildikten sonra 5 zorunlu kalite kapısını nihai çıktı üzerinde yeniden çalıştırır."""
     doc = Document(io.BytesIO(data))
     final_text = "\n".join(p.text for p in doc.paragraphs)
 
@@ -2240,7 +2297,7 @@ def validate_tarifname_post_generation_quality(
         if row.get("covered") is not True or not (row.get("sections") or []) or len(evidence) < 20 or evidence not in final_text:
             missing.append(fid)
     if missing:
-        raise ValueError("ÇIKTI SONRASI KAPI 1/3 — BBF/KAYNAK TAMLIK başarısız: " + ", ".join(sorted(missing)))
+        raise ValueError("ÇIKTI SONRASI KAPI 1/5 — BBF/KAYNAK TAMLIK başarısız: " + ", ".join(sorted(missing)))
 
     # 2) Ana istem + alt istem kapısı: taslak denetimini Word üretiminden sonra tekrar çalıştır.
     validate_tarifname_draft(draft, claim_mode, literature or [], language, extracted)
@@ -2256,7 +2313,7 @@ def validate_tarifname_post_generation_quality(
     try:
         di, ai = texts.index(detail_label), texts.index(abstract_label)
     except ValueError as exc:
-        raise ValueError("ÇIKTI SONRASI KAPI 3/3 — referans denetimi için bölüm sınırları bulunamadı.") from exc
+        raise ValueError("ÇIKTI SONRASI KAPI 3/5 — referans denetimi için bölüm sınırları bulunamadı.") from exc
     segment = "\n".join(texts[di + 1:ai])
     for element in (draft.get("elements") or []):
         number = str(element.get("number", "") or "").strip()
@@ -2267,9 +2324,16 @@ def validate_tarifname_post_generation_quality(
         ref_re = re.compile(r"^\s*(?:\([^)]{1,40}\)\s*)?\(\s*" + re.escape(number) + r"\s*\)")
         for m in mention_re.finditer(segment):
             if not ref_re.match(segment[m.end():m.end() + 70]):
-                raise ValueError(f"ÇIKTI SONRASI KAPI 3/3 — '{name}' kullanımı ({number}) referansı olmadan nihai Word'e girmiş.")
+                raise ValueError(f"ÇIKTI SONRASI KAPI 3/5 — '{name}' kullanımı ({number}) referansı olmadan nihai Word'e girmiş.")
 
-    return {"source_completeness": True, "claims": True, "references": True}
+    # 4) Şablon kapısı: nihai Word'ü bağlayıcı Tarifname_181176 şablon yapısıyla karşılaştır.
+    validate_tarifname_docx_structure(data, draft, language)
+
+    # 5) Unsur + işlem adımı dili kapısı: generic 'unsur' ve salt-isim yöntem adımları yasaktır.
+    _validate_no_generic_unsur_in_claims(draft, language)
+    _validate_method_step_action_language(draft, language)
+
+    return {"source_completeness": True, "claims": True, "references": True, "template": True, "element_step_language": True}
 
 
 def render_tarifname_docx_smoke_test(data: bytes) -> None:
@@ -2470,24 +2534,27 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
         add_text(doc, draft.get("working_principle", ""))
         add_blank(doc)
 
-    # Şablonda istemler öncesindeki boşluk korunur; başlığın kendisinde zorunlu sayfa kırılımı kullanılır.
-    add_blank(doc)
-    claims_heading = add_heading(doc, labels["claims"], center=True)
+    # Şablonda detaylı açıklama ile İSTEMLER arasında iki boş paragraf vardır.
+    copy_template_paragraph(doc, template, 75)
+    copy_template_paragraph(doc, template, 76)
+    copy_template_paragraph_with_text(doc, template, 77, labels["claims"])
+    claims_heading = doc.paragraphs[-1]
     claims_heading.paragraph_format.page_break_before = True
-    add_blank(doc)
+    claims_heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    copy_template_paragraph(doc, template, 78)
     if en:
         english_claim_notes = {
             79: "If you consider that an important and novel element and/or process step is missing from the claims, please indicate your comments without changing the text, using highlighted text, and return them by e-mail.",
             81: "If the system can operate without one or more features recited in claim 1, or if a feature that must necessarily be present is not recited in claim 1, identifying that feature is important for determining the desired scope of protection.",
             83: "A system that implements the invention without using even one feature recited in claim 1 may fall outside the scope of that claim. Please evaluate the claims in light of this information.",
         }
-        for index in (79, 81, 83):
+        for index, blank_index in ((79,80),(81,82),(83,84)):
             copy_template_paragraph_with_text(doc, template, index, english_claim_notes[index])
-            add_blank(doc)
+            copy_template_paragraph(doc, template, blank_index)
     else:
-        for index in (79, 81, 83):
+        for index, blank_index in ((79,80),(81,82),(83,84)):
             copy_template_paragraph(doc, template, index)
-            add_blank(doc)
+            copy_template_paragraph(doc, template, blank_index)
 
     system_claim = draft.get("system_claim")
     if system_claim:
@@ -2513,12 +2580,11 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
                         add_nested_claim_list_item(doc, template, str(sub))
                 else:
                     add_template_list_item(doc, template, 86, str(entry))
-            closing = add_text(doc, system_claim.get("closing", "içermesidir."))
-            closing.paragraph_format.first_line_indent = Cm(0.5)
-        add_blank(doc)
+            copy_template_paragraph_with_text(doc, template, 93, system_claim.get("closing", "içermesidir."))
+        copy_template_paragraph(doc, template, 94)
         for dependent in draft.get("dependent_system_claims") or []:
             add_numbered_claim(doc, template, dependent)
-            add_blank(doc)
+            copy_template_paragraph(doc, template, 96)
 
     method_claim = draft.get("method_claim")
     if method_claim:
@@ -2535,20 +2601,21 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
                 step_text = base_step if idx == len(claim_steps) - 1 else base_step + ","
             add_template_list_item(doc, template, 86, step_text)
         if not en:
-            closing = add_text(doc, method_claim.get("closing", "işlem adımlarını içermesidir."))
-            closing.paragraph_format.first_line_indent = Cm(0.5)
-        add_blank(doc)
+            copy_template_paragraph_with_text(doc, template, 93, method_claim.get("closing", "işlem adımlarını içermesidir."))
+        copy_template_paragraph(doc, template, 94)
         for dependent in draft.get("dependent_method_claims") or []:
             add_numbered_claim(doc, template, dependent)
-            add_blank(doc)
+            copy_template_paragraph(doc, template, 98)
 
-    summary_heading = add_heading(doc, labels["abstract"], center=True)
+    copy_template_paragraph_with_text(doc, template, 99, labels["abstract"])
+    summary_heading = doc.paragraphs[-1]
     summary_heading.paragraph_format.page_break_before = True
-    add_blank(doc)
-    add_text(doc, draft.get("title", ""), bold=True, center=True)
-    add_blank(doc)
-    add_text(doc, draft.get("abstract", ""))
-    add_blank(doc)
+    summary_heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    copy_template_paragraph(doc, template, 100)
+    copy_template_paragraph_with_text(doc, template, 101, draft.get("title", ""))
+    copy_template_paragraph(doc, template, 102)
+    copy_template_paragraph_with_text(doc, template, 103, draft.get("abstract", ""))
+    copy_template_paragraph(doc, template, 104)
 
     out = io.BytesIO()
     doc.save(out)

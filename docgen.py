@@ -63,6 +63,16 @@ def _copy_template_paragraph(doc: Document, template: Document, index: int):
     doc._element.body.insert(-1, deepcopy(template.paragraphs[index]._p))
 
 
+def _copy_template_paragraph_with_text(doc: Document, template: Document, index: int, text: str):
+    p_el = deepcopy(template.paragraphs[index]._p)
+    text_nodes = list(p_el.iter('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t'))
+    if text_nodes:
+        text_nodes[0].text = text
+        for node in text_nodes[1:]:
+            node.text = ''
+    doc._element.body.insert(-1, p_el)
+
+
 def _numbered_claim(doc: Document, number: int, text: str):
     p = doc.add_paragraph()
     p.paragraph_format.line_spacing = 1.5
@@ -177,9 +187,13 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
         doc.add_paragraph()
         _add_text(doc, para)
 
-    claims_p = _add_heading(doc, "İSTEMLER")
+    _copy_template_paragraph(doc, template, 75)
+    _copy_template_paragraph(doc, template, 76)
+    _copy_template_paragraph_with_text(doc, template, 77, "İSTEMLER")
+    claims_p = doc.paragraphs[-1]
     claims_p.paragraph_format.page_break_before = True
-    doc.add_paragraph()
+    claims_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _copy_template_paragraph(doc, template, 78)
     for idx in (79, 81, 83):
         _copy_template_paragraph(doc, template, idx)
         doc.add_paragraph()
@@ -195,7 +209,7 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
                 _add_nested_dash(doc, str(sub))
         else:
             _add_bullet(doc, str(el))
-    _add_text(doc, sc.get("closing", "içermesidir."))
+    _copy_template_paragraph_with_text(doc, template, 93, sc.get("closing", "içermesidir."))
     claim_no += 1
 
     for dep in draft.get("dependent_system_claims") or []:
@@ -208,18 +222,20 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
         for step in mc.get("steps") or []:
             step_text = str(step).rstrip().rstrip(".;,") + ","
             _add_bullet(doc, step_text)
-        _add_text(doc, mc.get("closing", "işlem adımlarını içermesidir."))
+        _copy_template_paragraph_with_text(doc, template, 93, mc.get("closing", "işlem adımlarını içermesidir."))
         claim_no += 1
         for dep in draft.get("dependent_method_claims") or []:
             _numbered_claim(doc, claim_no, dep)
             claim_no += 1
 
-    doc.add_page_break()
-    _add_heading(doc, "ÖZET")
-    doc.add_paragraph()
-    _add_text(doc, draft["title"], bold=True, center=True)
-    doc.add_paragraph()
-    _add_text(doc, draft.get("abstract", ""))
+    _copy_template_paragraph_with_text(doc, template, 99, "ÖZET")
+    summary_p = doc.paragraphs[-1]
+    summary_p.paragraph_format.page_break_before = True
+    summary_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _copy_template_paragraph(doc, template, 100)
+    _copy_template_paragraph_with_text(doc, template, 101, draft["title"])
+    _copy_template_paragraph(doc, template, 102)
+    _copy_template_paragraph_with_text(doc, template, 103, draft.get("abstract", ""))
 
     out = io.BytesIO()
     doc.save(out)

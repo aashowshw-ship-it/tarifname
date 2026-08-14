@@ -134,10 +134,16 @@ BULUŞ VERİSİ:
 """
 
 
-# v5.4.19 claim/reference guardrails (also enforced deterministically in app.py/validators.py)
+# v5.4.20 five-gate claim/reference/template guardrails (also enforced deterministically in app.py/validators.py)
 V5419_GUARDRAILS = """
 - Ortak elektronik işlem birimi/yazılım taşıyıcı grubu yalnız yürütülebilir yazılım/modül/kontrolör/arayüz/yığınları kapsar; VERİTABANI/bellek/veri deposu kaynak açıkça yürütülebilir değilse ayrı unsurdur.
 - Sistem/cihaz bağımlı istemi `bulunmasıdır` ile bitemez; `olmasıdır` veya `içermesidir` kullanılır.
 - BULUŞUN DETAYLI AÇIKLAMASI ve İSTEMLER içinde referans-listesi unsur adları her kullanımda doğru `(N)` işaretini taşır.
 - Word üretiminden sonra 3 kapı tekrar çalışır: BBF tamlığı, istem/alt istem kalite-tekrar-gereklilik kontrolü, referans numarası tamlığı.
 """
+
+# v5.4.20 ek katı kurallar:
+# - Word üretiminden sonra 5 kapı: BBF tamlığı, istem/alt istem, referans, şablon, unsur+işlem-adımı dili.
+# - Türkçe yöntem adımı salt isimle (örn. “takibi”, “orkestrasyonu”) bitemez; yapılması/edilmesi/aktarılması vb. fiilimsi işlem sonu gerekir.
+# - İstemde teknik eleman yerine “unsur” placeholder'ı kullanılamaz; gerçek teknik tür yazılır.
+# - İSTEMLER/ÖZET hizası, boşluk ritmi ve istem kapanış girintisi Tarifname_181176_template.docx ile eşleşmelidir.

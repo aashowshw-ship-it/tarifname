@@ -180,6 +180,37 @@ def _main_claim_first_definition_findings(draft: dict[str, Any]) -> list[dict[st
     return out
 
 
+
+
+def _method_step_language_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
+    """Türkçe yöntem adımı gerçek işlem fiilimsisiyle bitmeli; salt isim/adlandırma kabul edilmez."""
+    out: list[dict[str, str]] = []
+    action_end_re = re.compile(r"(?:ması|mesi)\s*$", re.IGNORECASE)
+    for step in draft.get("method_steps") or []:
+        number = str(step.get("number", "") or "").strip()
+        text = str(step.get("text", "") or "").strip()
+        clean = re.sub(r"\s*\(\s*" + re.escape(number) + r"\s*\)\s*$", "", text).strip().rstrip(".,;:") if number else text.rstrip(".,;:")
+        if clean and not action_end_re.search(clean):
+            out.append({"level":"Hata","message":f"Yöntem işlem adımı {number or '?'} gerçek bir işlem fiilimsisiyle bitmiyor: '{clean}'. Adım '... yapılması/edilmesi/aktarılması/belirlenmesi' gibi bir işlem sonucu ile bitmelidir."})
+    method = draft.get("method_claim") or {}
+    for item in method.get("steps") or []:
+        text = str(item or "").strip().rstrip(".,;:")
+        text = re.sub(r"\s*\(\s*[^()]+\s*\)\s*$", "", text).strip()
+        if text and not action_end_re.search(text):
+            out.append({"level":"Hata","message":f"Bağımsız yöntem istemindeki işlem adımı gerçek bir işlem fiilimsisiyle bitmiyor: '{text}'."})
+    return out
+
+
+def _generic_claim_term_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
+    """İstemde teknik eleman türü yerine belirsiz 'unsur' placeholder'ı kullanılmasını engeller."""
+    out: list[dict[str, str]] = []
+    texts = [*_system_claim_all_texts(draft.get("system_claim") or {}), *map(str, draft.get("dependent_system_claims") or []), *map(str, (draft.get("method_claim") or {}).get("steps") or []), *map(str, draft.get("dependent_method_claims") or [])]
+    for text in texts:
+        if re.search(r"\bbir\s+unsur\b|\bunsur\s+olmasıdır|\bunsur\s+içermesidir", str(text), re.IGNORECASE):
+            out.append({"level":"Hata","message":"İstemde teknik eleman türü yerine belirsiz 'unsur' ifadesi kullanılmış. Kaynağa göre anten/modül/birim/eleman/sunucu/veritabanı gibi gerçek teknik tür yazılmalıdır."})
+    return out
+
+
 def _semantic_repeat_findings(base_text: str, dependents: list[str], label: str) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     previous = [_normalize_semantics(base_text)]
@@ -328,6 +359,8 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     findings.extend(_reference_presence_findings(draft))
     findings.extend(_main_claim_first_definition_findings(draft))
     findings.extend(_common_carrier_scope_findings(draft))
+    findings.extend(_generic_claim_term_findings(draft))
+    findings.extend(_method_step_language_findings(draft))
 
     for claim in draft.get("dependent_system_claims") or []:
         if re.search(r"sistemin[,\s].*?(?:çalışmaya|kullanılmaya) uygun bir sistem olmasıdır\.?$", str(claim), re.I):
