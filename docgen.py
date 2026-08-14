@@ -109,12 +109,8 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
     doc = Document(str(template_path))
     _clear_body(doc)
 
-    for section in doc.sections:
-        section.top_margin = Cm(3)
-        section.bottom_margin = Cm(2)
-        section.left_margin = Cm(3)
-        section.right_margin = Cm(2)
-        _add_page_number(section)
+    # Section geometrisi ve header/footer bağlayıcı şablondan aynen korunur.
+    # Footer'a ayrıca PAGE alanı EKLENMEZ; sayfa numarası yalnız şablondaki üst konumda kalır.
 
     _add_text(doc, "TARİFNAME", bold=True, center=True)
     doc.add_paragraph()

@@ -1,10 +1,18 @@
-# Patent Atölyesi v5.4.20
+# Patent Atölyesi v5.4.21
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 14.08.2026 tarihli güncel tam sürümüdür.
 
-## GitHub'a yükleme
+## GitHub'a yükleme — ESKİ DOSYALARIN KALMAMASI ÖNEMLİ
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `Patent_Atolyesi_v5.4.20_GitHub` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinine** koyun. `Patent_Atolyesi_v5.4.21_GitHub` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+
+**GitHub web arayüzündeki `Add file → Upload files` işlemi yalnız aynı adlı dosyaları günceller; yeni pakette artık bulunmayan eski dosyaları SİLMEZ.** Bu nedenle önceki sürümde daha fazla dosya varsa, doğrudan upload sonrasında bu fazla dosyaların depoda kalması normaldir; GitHub bunları kendiliğinden silmez.
+
+Bu pakette `REPO_FILE_MANIFEST.txt` bulunur. Güncellemeden sonra uygulamaya ait depo kökü ve `tests/` klasörünü bu manifest ile karşılaştırın; manifestte olmayan eski Patent Atölyesi dosyalarını silin. Kendi özel `.github/` workflow dosyalarınız varsa bunlar manifest dışında olsa bile bilinçli olarak korunabilir.
+
+**Yalnız GitHub web kullanıyorsanız:** yeni dosyaları ana dizine yükleyip commit edin; ardından manifestte bulunmayan eski uygulama dosyalarını GitHub'da `Delete file` ile kaldırıp ikinci commit yapın.
+
+**Git kullanabiliyorsanız en temiz yöntem:** depoyu klonlayın, depo içinde `git rm -r .` çalıştırın, bu ZIP'in içindeki temiz dosya setini repo köküne kopyalayın, ardından `git add -A`, `git commit` ve `git push` yapın. Böylece önceki sürümden artık kullanılmayan takip edilen dosyalar kesin olarak silinir.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -231,3 +239,9 @@ Ayrıca ortak `elektronik işlem birimi üzerinde koşturulan yazılım` üst bu
 ## 2026-08-14.v10 — Beşli Son Kalite Kapısı
 
 Tarifname Word üretildikten sonra indirme sunulmadan önce beş zorunlu kontrol çalışır: (1) BBF/kaynak teknik bilgi tamlığı, (2) ana istem ve alt istem kalite/tekrar/gereklilik kontrolü, (3) detaylı açıklama ve istemlerde referans numarası tamlığı, (4) `Tarifname_181176_template.docx` ile boşluk-hiza-sayfa kırılımı-numaralandırma-kapanış girintisi uygunluğu, (5) istemlerde belirsiz `unsur` placeholder'ı ve yöntem adımlarında salt isimle bitiş kontrolü. Yöntem adımları `... yapılması/edilmesi/aktarılması/belirlenmesi` gibi gerçek işlem fiilimsileriyle biter.
+
+## 2026-08-14.v11 — Tam Tarifname Şablon Sadakati
+
+Tarifname Word çıktısındaki 4. kalite kapısı artık seçili başlıkları kontrol eden dar bir kontrol değildir. Nihai `.docx`, `Tarifname_181176_template.docx` ile deterministik olarak karşılaştırılır. Kontrol; section/sayfa geometrisini, header ve footer parçalarını, PAGE alanlarının yalnız şablondaki üst konumda kalmasını, ana başlıkların paragraf biçimini, bölüm geçişlerindeki boşlukları, `BULUŞUN KISA AÇIKLAMASI` öncesindeki şablon `space-after` boşluğunu, `ŞEKİLLERİN KISA AÇIKLAMASI` öncesini, son şekil açıklaması ile `Çizimlerin...` paragrafı arasını, `REFERANS NUMARALARI` içindeki sistem/yöntem ayrımını, `BULUŞUN DETAYLI AÇIKLAMASI` öncesini, `İSTEMLER` öncesindeki iki boşluğu, istem kapanışlarını ve `ÖZET` bölümünün başlık/buluş adı/metin/son boşluk ritmini kapsar.
+
+Tarifname üretiminde header/footer yeniden kurulmaz; bağlayıcı şablondan aynen korunur. Footer'a ayrıca sayfa numarası eklenmesi yasaktır. Sabit/dinamik paragraflar mümkün olduğunca şablondaki paragraf arketiplerinden kopyalanarak üretilir. Bu tam şablon kontrolü başarısızsa çıktı kullanıcıya sunulmaz.

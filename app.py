@@ -36,6 +36,7 @@ except ImportError:  # pragma: no cover - bağımlılık Render üzerinde requir
 from pypdf import PdfReader
 
 from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES
+from template_audit import validate_full_tarifname_template_fidelity
 
 BASE_DIR = Path(__file__).resolve().parent
 TARIFNAME_TEMPLATE = BASE_DIR / "Tarifname_181176_template.docx"
@@ -2270,6 +2271,9 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
             if ni + 1 >= len(texts) or texts[ni + 1] != "":
                 raise ValueError("Word şablon kontrolü: İSTEMLER açıklama paragrafları arasındaki boşluk şablona uymuyor.")
 
+    # 4. kapının tam sürümü: bütün bölüm geçişleri, paragraf arketipleri, header/footer ve sayfa numarası konumu.
+    validate_full_tarifname_template_fidelity(data, TARIFNAME_TEMPLATE, draft, language)
+
 
 def validate_tarifname_post_generation_quality(
     data: bytes,
@@ -2367,6 +2371,11 @@ def render_tarifname_docx_smoke_test(data: bytes) -> None:
 
 
 def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> bytes:
+    """Bağlayıcı Tarifname_181176 şablonunu gövde arketipi olarak kullanarak DOCX üretir.
+
+    Şablon yalnız font kaynağı değildir: başlık/boşluk ritmi, paragraf arketipleri,
+    istem girintileri, header/footer ve sayfa numarası konumu şablondan korunur.
+    """
     template = Document(str(TARIFNAME_TEMPLATE))
     doc = Document(str(TARIFNAME_TEMPLATE))
     clear_body(doc)
@@ -2382,121 +2391,148 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
         "claims": "CLAIMS" if en else "İSTEMLER",
         "abstract": "ABSTRACT" if en else "ÖZET",
     }
-    for section in doc.sections:
-        section.top_margin = Cm(3)
-        section.bottom_margin = Cm(2)
-        section.left_margin = Cm(3)
-        section.right_margin = Cm(2)
 
-    # Şablondaki boş paragraf ritmi birebir korunur.
-    add_heading(doc, labels["spec"], center=True)
-    add_blank(doc)
-    add_text(doc, draft.get("title", ""), bold=True, center=True)
-    add_blank(doc)
-    copy_template_paragraph_with_text(doc, template, 4, "For preparation of the search report, the information provided in the specification and claims should be sufficiently clear and detailed to enable a person skilled in the art to carry out the subject product/method. If questions have been raised to clarify any issue, please provide the requested information. If you consider that an important element, process step or feature has not been stated before the claims section, please indicate your comments without changing the text, using highlighted text, and return them by e-mail." if en else template.paragraphs[4].text)
-    add_blank(doc)
+    # Section geometrisi ve header/footer şablondan aynen gelir; burada yeniden sayfa numarası eklenmez.
+    # Özellikle footer'a PAGE alanı eklemek yasaktır.
 
-    add_heading(doc, labels["technical"])
-    add_blank(doc)
-    technical_field_parts = [
-        x.strip() for x in re.split(r"\n\s*\n", str(draft.get("technical_field", "") or "")) if x.strip()
-    ]
+    def tpl_text(index: int, text: str):
+        copy_template_paragraph_with_text(doc, template, index, text)
+        return doc.paragraphs[-1]
+
+    def tpl_blank(index: int):
+        copy_template_paragraph(doc, template, index)
+        return doc.paragraphs[-1]
+
+    def trim_trailing_blanks():
+        body = doc._element.body
+        while doc.paragraphs and not doc.paragraphs[-1].text.strip():
+            body.remove(doc.paragraphs[-1]._p)
+
+    # 0-5: tarifname başlığı, buluş adı ve sabit talimat; biçim şablondan birebir.
+    tpl_text(0, labels["spec"])
+    tpl_blank(1)
+    tpl_text(2, str(draft.get("title", "") or ""))
+    tpl_blank(3)
+    tpl_text(4, "For preparation of the search report, the information provided in the specification and claims should be sufficiently clear and detailed to enable a person skilled in the art to carry out the subject product/method. If questions have been raised to clarify any issue, please provide the requested information. If you consider that an important element, process step or feature has not been stated before the claims section, please indicate your comments without changing the text, using highlighted text, and return them by e-mail." if en else template.paragraphs[4].text)
+    tpl_blank(5)
+
+    # TEKNİK ALAN: iki paragraf; aralarında ve bölüm sonunda şablon boşluğu.
+    tpl_text(6, labels["technical"])
+    tpl_blank(7)
+    technical_field_parts = [x.strip() for x in re.split(r"\n\s*\n", str(draft.get("technical_field", "") or "")) if x.strip()]
     for idx, paragraph in enumerate(technical_field_parts):
-        add_text(doc, paragraph)
-        if idx < len(technical_field_parts) - 1:
-            add_blank(doc)
-    add_blank(doc)
+        tpl_text(8, paragraph)
+        tpl_blank(9)
 
-    add_heading(doc, labels["prior"])
-    add_blank(doc)
-    prior = draft.get("prior_art_general_paragraphs") or []
-    for paragraph in prior:
-        add_text(doc, paragraph)
-        add_blank(doc)
-    literature = draft.get("literature_paragraphs") or []
-    for paragraph in literature:
-        add_text(doc, paragraph)
-        add_blank(doc)
-    add_text(doc, "Consequently, the problems described above, which remain unresolved in view of the prior art, have created a need for an improvement in the relevant technical field." if en else "Sonuçta yukarıda bahsedilen ve mevcut teknik ışığında çözülemeyen sorunlar, ilgili teknik alanda bir yenilik yapmayı zorunlu kılmıştır.")
+    # ÖNCEKİ TEKNİK: her ana paragraf arasında bir boşluk; sonuç paragrafı şablonun space-after boşluğunu taşır.
+    tpl_text(10, labels["prior"])
+    tpl_blank(11)
+    prior = [str(x or "").strip() for x in (draft.get("prior_art_general_paragraphs") or []) if str(x or "").strip()]
+    literature = [str(x or "").strip() for x in (draft.get("literature_paragraphs") or []) if str(x or "").strip()]
+    if not prior and not literature:
+        # Eski/ara taslak şemalarıyla geriye uyumluluk; aktif şemada iki alan ayrıdır.
+        prior = [str(x or "").strip() for x in (draft.get("prior_art_paragraphs") or []) if str(x or "").strip()]
+    for paragraph in [*prior, *literature]:
+        tpl_text(12, paragraph)
+        tpl_blank(13)
+    # Son içerik paragrafından sonra eklenen normal boşluğu kaldır; şablonda sonuç paragrafının kendi after-space'i vardır.
+    trim_trailing_blanks()
+    tpl_text(16, "Consequently, the problems described above, which remain unresolved in view of the prior art, have created a need for an improvement in the relevant technical field." if en else "Sonuçta yukarıda bahsedilen ve mevcut teknik ışığında çözülemeyen sorunlar, ilgili teknik alanda bir yenilik yapmayı zorunlu kılmıştır.")
 
-    add_heading(doc, labels["short"])
-    add_blank(doc)
-    add_text(doc, draft.get("short_description_intro", ""))
-    add_blank(doc)
+    # BULUŞUN KISA AÇIKLAMASI
+    tpl_text(17, labels["short"])
+    tpl_blank(18)
+    tpl_text(19, str(draft.get("short_description_intro", "") or ""))
+    tpl_blank(20)
     for index, objective in enumerate(draft.get("objectives") or []):
-        objective = str(objective).strip()
+        objective = str(objective or "").strip()
         if en:
-            # English objectives are drafted as complete sentences.
-            add_text(doc, objective)
+            text = objective
         else:
             prefix = "Buluşun ana amacı, " if index == 0 else "Buluşun diğer bir amacı, "
-            add_text(doc, prefix + (objective[:1].lower() + objective[1:] if objective else ""))
-        add_blank(doc)
+            text = prefix + (objective[:1].lower() + objective[1:] if objective else "")
+        tpl_text(21, text)
+        tpl_blank(22)
+
     invention_definition = draft.get("unumbered_invention_definition") or draft.get("unumbered_system_definition")
     if invention_definition:
-        add_text(doc, invention_definition)
+        tpl_text(29, str(invention_definition))
     invention_features = draft.get("unumbered_invention_features") or draft.get("unumbered_system_elements") or []
     for item in invention_features:
-        add_template_list_item(doc, template, 30, item)
+        add_template_list_item(doc, template, 30, str(item))
     if invention_features:
         if en:
-            add_text(doc, "The invention comprises the foregoing technical features." if draft.get("system_claim") else "The method comprises the foregoing process steps.")
+            tpl_text(37, "The invention comprises the foregoing technical features." if draft.get("system_claim") else "The method comprises the foregoing process steps.")
         else:
-            add_text(doc, "işlem adımlarını içermesidir." if draft.get("method_claim") and not draft.get("system_claim") else "içermesidir.")
-    add_blank(doc)
-    add_text(doc, "For a better understanding of the configuration and advantages of the invention together with its additional elements, the invention should be considered with reference to the figures described below." if en else "Buluşun yapılanması ve ek elemanlarla birlikte avantajlarının en iyi şekilde anlaşılabilmesi için aşağıda açıklaması yapılan şekiller ile birlikte değerlendirilmesi gerekmektedir.")
-    add_blank(doc)
+            tpl_text(37, "işlem adımlarını içermesidir." if draft.get("method_claim") and not draft.get("system_claim") else "içermesidir.")
+    tpl_blank(38)
+    tpl_text(39, "For a better understanding of the configuration and advantages of the invention together with its additional elements, the invention should be considered with reference to the figures described below." if en else "Buluşun yapılanması ve ek elemanlarla birlikte avantajlarının en iyi şekilde anlaşılabilmesi için aşağıda açıklaması yapılan şekiller ile birlikte değerlendirilmesi gerekmektedir.")
+    tpl_blank(40)
 
-    add_heading(doc, labels["figures"])
-    add_blank(doc)
-    for figure in draft.get("figure_descriptions") or (["Figure 1 is a representative illustration of the configuration of the invention."] if en else ["Şekil 1, buluşa konu yapılanmanın temsili gösterimidir."]):
-        add_text(doc, figure)
-    add_blank(doc)
-    add_text(doc, "The drawings are not necessarily to scale, and details that are not required for understanding the invention may be omitted. Elements that are substantially identical or perform substantially identical functions may be indicated by the same reference numeral or sign." if en else "Çizimlerin mutlaka ölçeklendirilmesi gerekmemektedir ve buluşu anlamak için gerekli olmayan detaylar ihmal edilmiş olabilmektedir. Bundan başka, en azından önemli ölçüde özdeş elemanlar veya benzer fonksiyonlara sahip olan elemanlar aynı numara ile gösterilmektedir.")
-    add_blank(doc)
+    # ŞEKİLLERİN KISA AÇIKLAMASI: başlıktan sonra boşluk; şekiller kendi aralarında bitişik; yalnız son şekilden sonra boşluk.
+    tpl_text(41, labels["figures"])
+    tpl_blank(42)
+    figure_descriptions = [str(x or "").strip() for x in (draft.get("figure_descriptions") or []) if str(x or "").strip()]
+    if not figure_descriptions:
+        figure_descriptions = ["Figure 1 is a representative illustration of the configuration of the invention." if en else "Şekil 1, buluşa konu yapılanmanın temsili gösterimidir."]
+    for figure in figure_descriptions:
+        tpl_text(43, figure)
+    tpl_blank(44)
+    tpl_text(45, "The drawings are not necessarily to scale, and details that are not required for understanding the invention may be omitted. Elements that are substantially identical or perform substantially identical functions may be indicated by the same reference numeral or sign." if en else "Çizimlerin mutlaka ölçeklendirilmesi gerekmemektedir ve buluşu anlamak için gerekli olmayan detaylar ihmal edilmiş olabilmektedir. Bundan başka, en azından önemli ölçüde özdeş elemanlar veya benzer fonksiyonlara sahip olan elemanlar aynı numara ile gösterilmektedir.")
+    tpl_blank(46)
 
-    add_heading(doc, labels["refs"])
-    add_blank(doc)
-    for element in draft.get("elements") or []:
-        add_text(doc, f"{element.get('number','')}. {_reference_sentence_case(element.get('name',''))}")
+    # REFERANS NUMARALARI: sistem referansları bitişik; yöntem varsa arada tek boşluk; detay başlığından önce tek boşluk.
+    tpl_text(47, labels["refs"])
+    tpl_blank(48)
+    elements = draft.get("elements") or []
+    for element in elements:
+        tpl_text(49, f"{element.get('number','')}. {_reference_sentence_case(element.get('name',''))}")
     method_steps = draft.get("method_steps") or []
-    if draft.get("elements") and method_steps:
-        add_blank(doc)
-    element_numbers_for_refs = [str(x.get("number", "") or "").strip() for x in (draft.get("elements") or [])]
+    if elements and method_steps:
+        tpl_blank(56)
+    element_numbers_for_refs = [str(x.get("number", "") or "").strip() for x in elements]
     for step in method_steps:
         number = str(step.get("number", "") or "").strip()
         text = str(step.get("text", "") or "").strip()
         if number:
             text = re.sub(rf"\s*\(\s*{re.escape(number)}\s*\)\s*$", "", text).strip()
         text = _strip_known_element_reference_marks(text, element_numbers_for_refs).rstrip(".,;:")
-        # REFERANS NUMARALARI bir listedir: yöntem numarası önde, sistem/cihaz parantez referansları yoktur.
-        add_text(doc, f"{number}. {text}" if number else text)
-    add_blank(doc)
+        tpl_text(49, f"{number}. {text}" if number else text)
+    tpl_blank(56)
 
-    add_heading(doc, labels["detail"])
-    add_blank(doc)
-    title = str(draft.get("title", "buluş")).strip()
+    # BULUŞUN DETAYLI AÇIKLAMASI
+    tpl_text(57, labels["detail"])
+    tpl_blank(58)
+    title = str(draft.get("title", "buluş") or "buluş").strip()
     inline_title = title if en else _inline_invention_title(title)
-    add_text(doc, f"In this detailed description, {title} is described by way of examples solely for a better understanding of the subject matter, without imposing any limiting effect." if en else f"Bu detaylı açıklamada, buluş konusu olan {inline_title} sadece konunun daha iyi anlaşılmasına yönelik hiçbir sınırlayıcı etki oluşturmayacak örneklerle açıklanmaktadır.")
-    add_blank(doc)
+    tpl_text(59, f"In this detailed description, {title} is described by way of examples solely for a better understanding of the subject matter, without imposing any limiting effect." if en else f"Bu detaylı açıklamada, buluş konusu olan {inline_title} sadece konunun daha iyi anlaşılmasına yönelik hiçbir sınırlayıcı etki oluşturmayacak örneklerle açıklanmaktadır.")
+    tpl_blank(60)
+
     detailed = [str(x or "").strip() for x in (draft.get("detailed_paragraphs") or []) if str(x or "").strip()]
-    for idx, paragraph in enumerate(detailed):
-        add_text(doc, paragraph)
-        add_blank(doc)
+    for paragraph in detailed:
+        tpl_text(61, paragraph)
+        tpl_blank(62)
 
     for formula in draft.get("formulas") or []:
         if formula.get("label"):
-            add_text(doc, formula.get("label", ""), bold=True)
+            p = tpl_text(61, str(formula.get("label", "")))
+            for r in p.runs:
+                if r.text:
+                    r.bold = True
         if formula.get("expression"):
-            add_text(doc, formula.get("expression", ""), center=True)
+            p = tpl_text(61, str(formula.get("expression", "")))
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         if formula.get("explanation"):
-            add_text(doc, formula.get("explanation", ""))
-        add_blank(doc)
+            tpl_text(61, str(formula.get("explanation", "")))
+        tpl_blank(62)
 
     for table_data in draft.get("tables") or []:
-        caption = table_data.get("caption", "")
+        caption = str(table_data.get("caption", "") or "").strip()
         if caption:
-            add_text(doc, caption, bold=True)
+            p = tpl_text(61, caption)
+            for r in p.runs:
+                if r.text:
+                    r.bold = True
         headers = [str(x) for x in table_data.get("headers") or []]
         rows = table_data.get("rows") or []
         column_count = max(len(headers), max((len(row) for row in rows), default=0))
@@ -2510,17 +2546,17 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
                 cells = table.add_row().cells
                 for idx in range(column_count):
                     set_cell_text(cells[idx], str(row_data[idx]) if idx < len(row_data) else "")
-        add_blank(doc)
+        tpl_blank(62)
 
     for paragraph in draft.get("experimental_results") or []:
-        add_text(doc, paragraph)
-        add_blank(doc)
+        tpl_text(61, str(paragraph))
+        tpl_blank(62)
     for paragraph in draft.get("alternatives") or []:
-        add_text(doc, paragraph)
-        add_blank(doc)
+        tpl_text(61, str(paragraph))
+        tpl_blank(62)
 
     if method_steps:
-        add_text(doc, "The process steps performed by the method are as follows:" if en else "Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:")
+        tpl_text(65, "The process steps performed by the method are as follows:" if en else "Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:")
         for idx, step in enumerate(method_steps):
             number = str(step.get("number", "") or "").strip()
             text = str(step.get("text", "") or "").strip()
@@ -2529,19 +2565,19 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
             text = text.rstrip(".,;:")
             punctuation = "." if idx == len(method_steps) - 1 else ","
             add_template_list_item(doc, template, 30, f"{text} ({number}){punctuation}")
-        add_blank(doc)
+        tpl_blank(73)
     if draft.get("working_principle"):
-        add_text(doc, draft.get("working_principle", ""))
-        add_blank(doc)
+        tpl_text(74, str(draft.get("working_principle", "")))
 
-    # Şablonda detaylı açıklama ile İSTEMLER arasında iki boş paragraf vardır.
-    copy_template_paragraph(doc, template, 75)
-    copy_template_paragraph(doc, template, 76)
-    copy_template_paragraph_with_text(doc, template, 77, labels["claims"])
+    # İSTEMLER öncesi TAM iki boş paragraf. Önceki içerikten kalan boşluklar temizlenir.
+    trim_trailing_blanks()
+    tpl_blank(75)
+    tpl_blank(76)
+    tpl_text(77, labels["claims"])
     claims_heading = doc.paragraphs[-1]
     claims_heading.paragraph_format.page_break_before = True
     claims_heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    copy_template_paragraph(doc, template, 78)
+    tpl_blank(78)
     if en:
         english_claim_notes = {
             79: "If you consider that an important and novel element and/or process step is missing from the claims, please indicate your comments without changing the text, using highlighted text, and return them by e-mail.",
@@ -2549,12 +2585,12 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
             83: "A system that implements the invention without using even one feature recited in claim 1 may fall outside the scope of that claim. Please evaluate the claims in light of this information.",
         }
         for index, blank_index in ((79,80),(81,82),(83,84)):
-            copy_template_paragraph_with_text(doc, template, index, english_claim_notes[index])
-            copy_template_paragraph(doc, template, blank_index)
+            tpl_text(index, english_claim_notes[index])
+            tpl_blank(blank_index)
     else:
         for index, blank_index in ((79,80),(81,82),(83,84)):
-            copy_template_paragraph(doc, template, index)
-            copy_template_paragraph(doc, template, blank_index)
+            tpl_text(index, template.paragraphs[index].text)
+            tpl_blank(blank_index)
 
     system_claim = draft.get("system_claim")
     if system_claim:
@@ -2565,8 +2601,7 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
                 if isinstance(entry, dict):
                     lead = str(entry.get("lead", "") or "").strip().rstrip(";:") + ":"
                     add_template_list_item(doc, template, 86, lead)
-                    subs = [str(x or "").strip() for x in (entry.get("subelements") or []) if str(x or "").strip()]
-                    for sub in subs:
+                    for sub in [str(x or "").strip() for x in (entry.get("subelements") or []) if str(x or "").strip()]:
                         add_nested_claim_list_item(doc, template, sub.rstrip(".,;:") + ";")
                 else:
                     text = str(entry).rstrip(".,;:") + ("." if idx == len(entries) - 1 else ";")
@@ -2580,11 +2615,11 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
                         add_nested_claim_list_item(doc, template, str(sub))
                 else:
                     add_template_list_item(doc, template, 86, str(entry))
-            copy_template_paragraph_with_text(doc, template, 93, system_claim.get("closing", "içermesidir."))
-        copy_template_paragraph(doc, template, 94)
+            tpl_text(93, system_claim.get("closing", "içermesidir."))
+        tpl_blank(94)
         for dependent in draft.get("dependent_system_claims") or []:
-            add_numbered_claim(doc, template, dependent)
-            copy_template_paragraph(doc, template, 96)
+            add_numbered_claim(doc, template, str(dependent))
+            tpl_blank(96)
 
     method_claim = draft.get("method_claim")
     if method_claim:
@@ -2601,25 +2636,32 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
                 step_text = base_step if idx == len(claim_steps) - 1 else base_step + ","
             add_template_list_item(doc, template, 86, step_text)
         if not en:
-            copy_template_paragraph_with_text(doc, template, 93, method_claim.get("closing", "işlem adımlarını içermesidir."))
-        copy_template_paragraph(doc, template, 94)
+            tpl_text(93, method_claim.get("closing", "işlem adımlarını içermesidir."))
+        tpl_blank(94)
         for dependent in draft.get("dependent_method_claims") or []:
-            add_numbered_claim(doc, template, dependent)
-            copy_template_paragraph(doc, template, 98)
+            add_numbered_claim(doc, template, str(dependent))
+            tpl_blank(98)
 
-    copy_template_paragraph_with_text(doc, template, 99, labels["abstract"])
+    # ÖZET öncesi tam bir boşluk ve yeni sayfa.
+    trim_trailing_blanks()
+    tpl_blank(98)
+    tpl_text(99, labels["abstract"])
     summary_heading = doc.paragraphs[-1]
     summary_heading.paragraph_format.page_break_before = True
     summary_heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    copy_template_paragraph(doc, template, 100)
-    copy_template_paragraph_with_text(doc, template, 101, draft.get("title", ""))
-    copy_template_paragraph(doc, template, 102)
-    copy_template_paragraph_with_text(doc, template, 103, draft.get("abstract", ""))
-    copy_template_paragraph(doc, template, 104)
+    tpl_blank(100)
+    tpl_text(101, str(draft.get("title", "") or ""))
+    tpl_blank(102)
+    tpl_text(103, str(draft.get("abstract", "") or ""))
+    tpl_blank(104)
+    tpl_blank(105)
 
     out = io.BytesIO()
     doc.save(out)
-    return out.getvalue()
+    data = out.getvalue()
+    # Üretim fonksiyonunun kendi içinde de tam şablon kapısı çalışır; dış akışta tekrar edilir.
+    validate_full_tarifname_template_fidelity(data, TARIFNAME_TEMPLATE, draft, language)
+    return data
 
 
 # -----------------------------------------------------------------------------

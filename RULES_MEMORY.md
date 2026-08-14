@@ -313,3 +313,13 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - `İSTEMLER` ve `ÖZET` yeni sayfa ve ortalı başlık, şablondaki boş paragraf ritmi ve bağımsız istem kapanışlarının şablondaki girinti/hiza özellikleri zorunludur.
 - İstemlerde teknik eleman türü yerine `unsur` placeholder'ı kullanılmaz; `eleman` veya daha spesifik anten/modül/birim/sunucu/veritabanı adı kullanılır.
 - Yöntem adımları salt `takibi`, `orkestrasyonu`, `kontrolü` gibi isimlerle bitemez; `takibinin yapılması`, `orkestrasyonunun gerçekleştirilmesi` gibi gerçek işlem sonu gerekir ve 3 görünümde birebir senkron tutulur.
+
+
+## 2026-08-14.v11 — Tam Word Şablon Sadakati (Bağlayıcı)
+
+- Tarifname sonrası 4. kalite kapısı artık yalnız İSTEMLER/ÖZET hizası ve birkaç boşluğu kontrol etmez; `Tarifname_181176_template.docx` ile tam yapısal karşılaştırma yapar.
+- Section sayısı ve geometrisi, marjlar, sayfa boyutu/yönü, header/footer mesafeleri, header/footer içerikleri ve PAGE alanları şablonla aynı kalmalıdır. Sayfa numarası yalnız şablondaki üst/header konumunda bulunur; footer'a PAGE eklenemez.
+- `BULUŞUN KISA AÇIKLAMASI` öncesindeki görsel boşluk, şablondaki sonuç paragrafının `space-after` değeriyle; `ŞEKİLLERİN KISA AÇIKLAMASI` öncesindeki boş paragraf; son Şekil açıklamasından sonra `Çizimlerin...` paragrafı öncesindeki boşluk; `BULUŞUN DETAYLI AÇIKLAMASI` öncesindeki boşluk; `İSTEMLER` öncesindeki iki boşluk ve `ÖZET` ritmi deterministik olarak doğrulanır.
+- Sistem referansları ve yöntem referansları birlikteyse REFERANS NUMARALARI içinde aralarında tek boş paragraf bulunur; son yöntem adımından sonra detaylı açıklama başlığına geçmeden tek boş paragraf bulunur.
+- Sabit/dinamik Word paragrafları yaklaşık biçimlendirmeyle sıfırdan kurulmak yerine mümkün olduğunca bağlayıcı şablondaki karşılık paragraf arketipinden kopyalanır.
+- Tam şablon kapısı başarısızsa render alınmış olsa bile dosya kullanıcıya sunulmaz.
