@@ -47,8 +47,13 @@ from word_math import EQ_MARKER_RE, append_text_with_equations as _append_text_w
 from gorus_audit import (
     annotate_quote_locations,
     extract_cited_original_figure_pages,
+    detect_examiner_reasoned_documents,
     validate_gorus_template_fidelity,
     validate_opinion_payload,
+    validate_opinion_against_raw_sources,
+    validate_gorus_docx_content_flow,
+    validate_ai_quality_audit,
+    build_gorus_quality_report,
     render_gorus_docx_smoke_test,
 )
 
@@ -3004,7 +3009,7 @@ Kullanıcı tarafından girilmiş başvuru sahibi (varsa bağlayıcı): {applica
 {language_instruction}
 
 Bu aşama ilk teknik analizden SONRA çalışmaktadır. İstemlerde kendiliğinden yeni revizyon önerme veya onaylanmış istem setini değiştirme.
-Raporun sonucunu dürüstçe koru. Özellikle buluş basamağı itirazı varsa `Dokümanların birlikte değerlendirilmesi` bölümünü görüşün en güçlü ve en ayrıntılı ikna bölümü olarak yaz.
+Raporun sonucunu dürüstçe koru. Buluş basamağı itirazında genel değerlendirme bölümünü raporun gerçek doküman kapsamına göre kur. Uzman yalnız D1 kullanmışsa tek-D1 inceleme gerekçesi üzerinden değerlendir, birden fazla doküman fiilen kullanılmışsa birlikte değerlendirme yap.
 Tarifname alıntılarında sayfa/satır numarası YAZMA; yalnız birebir quote text döndür. Sayfa ve satırlar Word üretiminden önce fiziksel tarifname üzerinden deterministik olarak eklenecektir.
 Her D1/D2/D3 bölümünün `figure_caption` alanı şablondaki `D1 dokümanı - Şekil ...` biçiminde olsun; yalnız yüklenen özgün patentte gerçekten bulunan şekil numaralarını kullan.
 
@@ -3020,26 +3025,31 @@ JSON dışında yazma.
      "figure_caption":"D1 dokümanı - Şekil ...",
      "blocks":[
        {{"type":"paragraph","text":""}},
-       {{"type":"quote","text":""}},
+       {{"type":"quote","text":"","attach_to_previous":true}},
        {{"type":"paragraph","text":""}}
      ],
      "inventive_step_heading":"D1 karşısında buluş basamağı",
      "inventive_step_paragraphs":[""]
    }}
  ],
- "combined_assessment":{{"heading":"Dokümanların birlikte değerlendirilmesi","paragraphs":[""]}},
+ "combined_assessment":{{"heading":"","paragraphs":[""]}},
  "conclusion":[""], "signoff":"Saygılarımızla,\nDESTEK PATENT A.Ş."
 }}
 
 ÖZEL:
-- Şablon girişine uy: intro kısa olsun; teknik savunmayı girişe doldurma.
+- Şablon girişine uy: intro kısa olsun ve yalnız rapor tarihi/türü + istem/kriter sonucunu söylesin. Girişte D1/D2/D3 seçimini, `en yakın doküman` bilgisini veya hangi dokümana karşı savunma yapıldığını anlatma.
 - `applicant_override` boş değilse JSON `applicant` alanını aynen bu değer yap; değiştirme veya kısaltma. Boşsa yalnız rapor/tarifnameden güvenilir biçimde çıkar.
 - İnceleme raporunda X/Y etiketi yoksa category alanını boş bırak; uydurma kategori yazma.
-- Uzman buluş basamağını yalnız D1 üzerinden gerekçelendirmişse bunu dürüstçe belirt; D2/D3'ü tamamlayıcı olarak ayrı incele ve birlikte değerlendirmede kullan.
+- Uzman gerekçeli değerlendirmeyi yalnız D1 üzerinden kurmuşsa YALNIZ D1'i görüşe al. D2/D3 yalnız `ilgili dokümanlar` listesinde bulunuyor ancak gerekçede kullanılmıyorsa görüşe bölüm, şekil veya tamamlayıcı savunma olarak ekleme.
 - Her dokümanın teknik öğretisini gerçekten yüklenen metinden çıkar. Patentte bulunmayan unsur/işlev yazma.
 - Tarifname alıntıları spec metninde birebir geçen tam cümle/pasaj olsun.
-- Buluş basamağı zincirinde teknik fark → teknik etki → objektif teknik problem → birleştirme motivasyonu/yönlendirme → gereken ilave yapısal/işlevsel değişiklikler → geriye dönük değerlendirme riskini açıkça kur.
-- `Dokümanların birlikte değerlendirilmesi` en az birkaç güçlü paragraf olsun; yalnız dokümanları özetleme, uzmanı teknik katkı üzerinden ikna et.
+- Buluş basamağı zincirinde çekirdek sıra teknik fark → teknik etki → objektif teknik problem şeklinde görünür olsun. Ayrıca ayırt edici teknik katkıyı, motivasyon/yönlendirmeyi, gereken ilave yapısal/işlevsel değişiklikleri ve geriye dönük değerlendirme riskini açıkça kur.
+- Tek D1 gerekçesi varsa `combined_assessment.heading` alanını `D1 dokümanının inceleme gerekçesiyle birlikte değerlendirilmesi` mantığında kur. Birden çok doküman gerekçede kullanılmışsa `Dokümanların birlikte değerlendirilmesi` kullanılabilir.
+- Tarifname quote bloğunu hemen önceki teknik savunmanın doğal devamı yap ve `attach_to_previous=true` döndür. `Tarifname sayfa...` ayrı paragraf olmayacak.
+- `Bu teknik farkın...`, `Bu teknik etki...`, `Buna göre objektif teknik problem...` gibi bir önceki argümanın devamını gereksiz yeni paragrafa bölme.
+- Model tarafından yazılan görüş metninde noktalı virgül (`;`) kullanma. Virgül veya nokta kullan. Birebir kaynak alıntısı noktalı virgül içeriyorsa alıntıyı değiştirme.
+- Önceki teknik dokümanının unsur referans numaralarını (ör. piezoelektrik eleman 120, oturma tespit anahtarı 150) savunma için zorunlu olmadıkça yazma. Başvurunun kendi tarifname referansları gerektiğinde kullanılabilir.
+- Genel değerlendirme en az birkaç güçlü paragraf olsun, yalnız dokümanı özetleme, uzmanı teknik katkı üzerinden ikna et.
 - Müşteri bilgisinin tarifname dayanağı yoksa kullanma.
 - Onaylı istem setine yeni değişiklik ekleme.
 
@@ -3049,6 +3059,71 @@ TARİFNAME / ONAYLI NİHAİ İSTEM SETİ:\n{spec_text}\n
 ÖNCEKİ GÖRÜŞ:\n{prior_opinion_text}\n
 BENZER DOKÜMANLAR:\n{similar_text}\n
 MÜŞTERİ BİLGİLERİ:\n{customer_text}\n"""
+
+
+def gorus_quality_audit_prompt(
+    report_text: str,
+    spec_text: str,
+    prior_opinion_text: str,
+    similar_text: str,
+    customer_text: str,
+    preanalysis: dict[str, Any],
+    opinion: dict[str, Any],
+) -> str:
+    return f"""{GORUS_RULES}
+Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını ve önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını kontrol et.
+
+JSON dışında yazma.
+ŞEMA:
+{{
+  "overall_pass": true,
+  "checks": {{
+    "report_scope": {{"pass":true,"note":""}},
+    "examiner_ground_response": {{"pass":true,"note":""}},
+    "technical_contribution": {{"pass":true,"note":""}},
+    "technical_effect_problem": {{"pass":true,"note":""}},
+    "motivation_hindsight": {{"pass":true,"note":""}},
+    "spec_support_new_matter": {{"pass":true,"note":""}},
+    "intro_concision": {{"pass":true,"note":""}},
+    "paragraph_flow_inline_basis": {{"pass":true,"note":""}},
+    "punctuation": {{"pass":true,"note":""}},
+    "prior_art_reference_numbers": {{"pass":true,"note":""}},
+    "conclusion_consistency": {{"pass":true,"note":""}}
+  }},
+  "required_fixes": []
+}}
+
+RAPOR:\n{report_text}\n
+TARİFNAME / ONAYLI İSTEMLER:\n{spec_text}\n
+ÖNCEKİ GÖRÜŞ:\n{prior_opinion_text}\n
+SAVUNMA DOKÜMANLARI:\n{similar_text}\n
+MÜŞTERİ BİLGİLERİ:\n{customer_text}\n
+ÖN ANALİZ:\n{json.dumps(preanalysis or {}, ensure_ascii=False, indent=2)}\n
+GÖRÜŞ TASLAĞI JSON:\n{json.dumps(opinion or {}, ensure_ascii=False, indent=2)}\n"""
+
+
+def gorus_repair_prompt(
+    report_text: str,
+    spec_text: str,
+    prior_opinion_text: str,
+    similar_text: str,
+    customer_text: str,
+    preanalysis: dict[str, Any],
+    opinion: dict[str, Any],
+    audit: dict[str, Any],
+) -> str:
+    return f"""{GORUS_RULES}
+Aşağıdaki görüş JSON'u ikinci kalite kontrolünde başarısız oldu. Yalnız belirtilen sorunları düzelt ve AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu yeniden döndür. Metadata, onaylı istem seti, rapor sonucu ve kaynak dayanakları korunmalı. Yeni doküman veya yeni teknik özellik ekleme. Tarifname alıntıları birebir kalmalı. Model anlatımında noktalı virgül kullanma. Doğrudan tarifname dayanağını önceki savunma paragrafına `attach_to_previous=true` ile bağla.
+
+JSON dışında yazma.
+KALİTE RAPORU:\n{json.dumps(audit or {}, ensure_ascii=False, indent=2)}\n
+MEVCUT GÖRÜŞ:\n{json.dumps(opinion or {}, ensure_ascii=False, indent=2)}\n
+RAPOR:\n{report_text}\n
+TARİFNAME / ONAYLI İSTEMLER:\n{spec_text}\n
+ÖNCEKİ GÖRÜŞ:\n{prior_opinion_text}\n
+SAVUNMA DOKÜMANLARI:\n{similar_text}\n
+MÜŞTERİ BİLGİLERİ:\n{customer_text}\n
+ÖN ANALİZ:\n{json.dumps(preanalysis or {}, ensure_ascii=False, indent=2)}\n"""
 
 def validate_quotes(opinion: dict[str, Any], spec_text: str) -> None:
     normalized_spec = re.sub(r"\s+", " ", spec_text).strip()
@@ -3104,6 +3179,17 @@ def _add_quote_with_location(doc: Document, template_para, block: dict[str, Any]
     r2.font.name = "Arial"; r2.font.size = Pt(11); r2.bold = True
     return p
 
+
+
+def _append_quote_with_location(paragraph, block: dict[str, Any]):
+    lead = str(block.get("lead", "")).strip()
+    quote = str(block.get("text", "")).strip()
+    prefix = " " if paragraph.text and not paragraph.text.endswith((" ", "\n")) else ""
+    r1 = paragraph.add_run(prefix + ((lead + " ") if lead else ""))
+    r1.font.name = "Arial"; r1.font.size = Pt(11); r1.bold = False
+    r2 = paragraph.add_run(f'“{quote}”')
+    r2.font.name = "Arial"; r2.font.size = Pt(11); r2.bold = True
+    return paragraph
 
 def _add_original_figure_table(doc: Document, template: Document, caption: str, png_data: bytes):
     tbl_xml = deepcopy(template.tables[1]._tbl)
@@ -3191,7 +3277,10 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
         for block in blocks:
             typ = str(block.get("type", "paragraph")).lower()
             if typ == "quote":
-                _add_quote_with_location(doc, template.paragraphs[10], block)
+                if bool(block.get("attach_to_previous", True)) and doc.paragraphs and doc.paragraphs[-1].text.strip():
+                    _append_quote_with_location(doc.paragraphs[-1], block)
+                else:
+                    _add_quote_with_location(doc, template.paragraphs[10], block)
             else:
                 _clone_paragraph_with_text(doc, template.paragraphs[10], block.get("text", ""), bold=False)
                 if not first_para_inserted:
@@ -4493,7 +4582,7 @@ if work_type == "Tarifname oluşturma":
 # GÖRÜŞ
 elif work_type == "Görüş hazırlama":
     st.subheader("Görüş hazırlama")
-    st.caption("Akış: dosyaları yükle → raporu analiz et → gerekiyorsa istem revizyonunda mutabakat/Markup → görüşü oluştur.")
+    st.caption("Akış: rapor ve önceki görüş → tarifname → uzman gerekçesinde fiilen kullanılan savunma dokümanları → teknik analiz/revizyon kararı → ham-kaynak ikinci okuma → Word kalite kapıları → görüş çıktısı.")
 
     report_type = st.selectbox("Görüş türü", ["Araştırma raporuna karşı görüş", "İnceleme raporuna karşı görüş"])
     opinion_language = st.selectbox("Görüş dili", ["Türkçe", "İngilizce"], key="gor_language")
@@ -4517,17 +4606,13 @@ elif work_type == "Görüş hazırlama":
         )
 
     spec_file = st.file_uploader("Tarifname", type=["pdf", "docx", "doc", "txt"], key="gor_spec")
-    similar_files = st.file_uploader(
-        "Rapordaki ilgili dokümanlar (D1, D2 vb.)",
-        type=["pdf", "docx", "doc", "txt", "zip"],
-        accept_multiple_files=True,
-        key="gor_sim",
-    )
     reference = st.text_input("Ana dosya referansı nedir?", value="")
     applicant_override = st.text_input("Başvuru sahibi (raporda yoksa girin)", value="", key="gor_applicant")
     output_name = st.text_input("Çıktı dosyasının adı", value="Görüş Metni_XXXXXX.docx")
 
     for key, default in {
+        "gorus_required_docs": None,
+        "gorus_scope_report_text": None,
         "gorus_analysis": None,
         "gorus_source": None,
         "gorus_markup_data": None,
@@ -4535,17 +4620,50 @@ elif work_type == "Görüş hazırlama":
         "gorus_final_spec_text": None,
         "gorus_opinion_data": None,
         "gorus_opinion_status": None,
+        "gorus_quality_report": None,
     }.items():
         if key not in st.session_state:
             st.session_state[key] = default
 
-    if st.button("1. Raporu analiz et", type="primary", use_container_width=True):
-        if not all([reference.strip(), report_file, spec_file]) or not similar_files:
-            st.error("Referans, rapor, tarifname ve X/Y dokümanlarını yükleyin.")
+    if st.button("1. İnceleme gerekçesini analiz et ve savunmada gerekli dokümanları belirle", type="primary", use_container_width=True):
+        if not all([reference.strip(), report_file, spec_file]):
+            st.error("Referans, rapor ve tarifnameyi yükleyin.")
         elif report_type == "İnceleme raporuna karşı görüş" and prior_yes == "Evet" and prior_file is None:
             st.error("Önceki sunulan görüş var seçildi; önceki görüşü yükleyin.")
         elif customer_yes == "Evet" and not customer_files:
             st.error("Müşteriden bilgi var seçildi; müşteri bilgilerini yükleyin.")
+        else:
+            try:
+                report_text_scope = extract_text_from_asset(UploadedAsset(report_file.name, report_file.getvalue(), report_file.type))
+                required_docs = detect_examiner_reasoned_documents(report_text_scope)
+                if not required_docs:
+                    raise ValueError("Uzmanın gerekçeli değerlendirmesinde kullanılan D-doküman otomatik olarak kesinleştirilemedi. Raporu kontrol edin.")
+                st.session_state.gorus_required_docs = required_docs
+                st.session_state.gorus_scope_report_text = report_text_scope
+                st.session_state.gorus_analysis = None
+                st.session_state.gorus_source = None
+                st.session_state.gorus_opinion_data = None
+                st.session_state.gorus_quality_report = None
+            except Exception as exc:
+                st.exception(exc)
+
+    required_docs = st.session_state.gorus_required_docs
+    similar_files = []
+    if required_docs:
+        st.success("Savunmada kullanılacak doküman(lar) tespit edildi.")
+        for item in required_docs:
+            st.markdown(f"- **{item.get('label','')} — {item.get('number','')}**")
+        required_text = ", ".join(f"{x.get('label','')} {x.get('number','')}" for x in required_docs)
+        similar_files = st.file_uploader(
+            f"Savunma için gerekli doküman(lar): {required_text}. Lütfen yalnız bu dokümanları yükleyin.",
+            type=["pdf", "docx", "doc", "txt", "zip"],
+            accept_multiple_files=True,
+            key="gor_sim",
+        )
+
+    if required_docs and st.button("2. Raporu, istemleri ve savunma dokümanlarını teknik olarak analiz et", type="primary", use_container_width=True):
+        if not similar_files:
+            st.error("Yukarıda tespit edilen savunma dokümanlarını yükleyin.")
         else:
             try:
                 progress = st.progress(0, text="Dosyalar okunuyor...")
@@ -4561,7 +4679,7 @@ elif work_type == "Görüş hazırlama":
                 cust_text, cust_images = combine_asset_text("MÜŞTERİ BİLGİSİ", cust_assets)
                 model_images = [*sim_images, *cust_images]
 
-                progress.progress(35, text="Rapor itirazları, X/Y dokümanları ve mevcut istemler analiz ediliyor...")
+                progress.progress(35, text="Rapor itirazları, savunma dokümanları ve mevcut istemler analiz ediliyor...")
                 analysis = ask_json(
                     gorus_analysis_prompt(
                         report_type,
@@ -4598,7 +4716,8 @@ elif work_type == "Görüş hazırlama":
                 st.session_state.gorus_final_spec_text = None
                 st.session_state.gorus_opinion_data = None
                 st.session_state.gorus_opinion_status = None
-                progress.progress(100, text="İlk analiz tamamlandı")
+                st.session_state.gorus_quality_report = None
+                progress.progress(100, text="Teknik analiz tamamlandı")
             except Exception as exc:
                 st.exception(exc)
 
@@ -4608,10 +4727,10 @@ elif work_type == "Görüş hazırlama":
     ready_to_generate = False
     final_spec_text = None
     revision_status = ""
-    opinion_step = 2
+    opinion_step = 3
 
     if analysis and source_state:
-        st.success("İlk rapor analizi tamamlandı.")
+        st.success("Rapor ve savunma dokümanlarının teknik analizi tamamlandı.")
         if analysis.get("analysis_summary"):
             st.write(analysis.get("analysis_summary"))
 
@@ -4692,7 +4811,7 @@ elif work_type == "Görüş hazırlama":
                 if Path(source_state.get("spec_name", "")).suffix.lower() != ".docx":
                     st.error("Gerçek Word Track Changes/Markup üretimi için tarifnameyi .docx olarak yükleyin.")
                 else:
-                    if st.button("2. Onaylı revizyonlardan Markup ve temiz tarifnameyi oluştur", type="primary", use_container_width=True):
+                    if st.button("3. Onaylı revizyonlardan Markup ve temiz tarifnameyi oluştur", type="primary", use_container_width=True):
                         try:
                             progress = st.progress(0, text="İstem revizyonları Word dosyasına uygulanıyor...")
                             markup_data, clean_data = build_claim_revision_pair(
@@ -4736,7 +4855,7 @@ elif work_type == "Görüş hazırlama":
                             ready_to_generate = True
                             final_spec_text = st.session_state.gorus_final_spec_text
                             revision_status = "Kullanıcı tarafından onaylanmış revize istem seti"
-                            opinion_step = 3
+                            opinion_step = 4
 
             elif decision == "Revizyon yapmadan mevcut istemlerle devam et":
                 no_revision_confirm = st.checkbox(
@@ -4747,13 +4866,13 @@ elif work_type == "Görüş hazırlama":
                     ready_to_generate = True
                     final_spec_text = source_state["spec_text"]
                     revision_status = "Kullanıcının açık kararıyla mevcut istemlerle revizyonsuz devam"
-                    opinion_step = 2
+                    opinion_step = 3
         else:
             st.info(analysis.get("no_amendment_reason") or "İlk analizde istem revizyonu gerekli görülmedi. Mevcut istemlerle görüş hazırlanabilir.")
             ready_to_generate = True
             final_spec_text = source_state["spec_text"]
             revision_status = "İlk analizde revizyon gerekmiyor; mevcut istemler esas alındı"
-            opinion_step = 2
+            opinion_step = 3
 
         if ready_to_generate and final_spec_text:
             if st.button(f"{opinion_step}. Görüş metnini oluştur", type="primary", use_container_width=True):
@@ -4778,7 +4897,44 @@ elif work_type == "Görüş hazırlama":
                     if source_state.get("applicant_override"):
                         opinion["applicant"] = source_state["applicant_override"]
                     validate_quotes(opinion, final_spec_text)
-                    validate_opinion_payload(opinion, source_state["report_text"], final_spec_text)
+                    validate_opinion_against_raw_sources(
+                        opinion, source_state["report_text"], final_spec_text,
+                        source_state["prior_text"], source_state["sim_text"], source_state["cust_text"],
+                    )
+                    progress.progress(58, text="Ham kaynaklara karşı bağımsız ikinci okuma yapılıyor...")
+                    quality_audit = ask_json(
+                        gorus_quality_audit_prompt(
+                            source_state["report_text"], final_spec_text, source_state["prior_text"],
+                            source_state["sim_text"], source_state["cust_text"], analysis, opinion,
+                        ),
+                        images=source_state.get("model_images") or [],
+                    )
+                    try:
+                        validate_ai_quality_audit(quality_audit)
+                    except Exception:
+                        progress.progress(68, text="İkinci okuma bulgularına göre taslak bir kez düzeltiliyor...")
+                        opinion = ask_json(
+                            gorus_repair_prompt(
+                                source_state["report_text"], final_spec_text, source_state["prior_text"],
+                                source_state["sim_text"], source_state["cust_text"], analysis, opinion, quality_audit,
+                            ),
+                            images=source_state.get("model_images") or [],
+                        )
+                        if source_state.get("applicant_override"):
+                            opinion["applicant"] = source_state["applicant_override"]
+                        validate_quotes(opinion, final_spec_text)
+                        validate_opinion_against_raw_sources(
+                            opinion, source_state["report_text"], final_spec_text,
+                            source_state["prior_text"], source_state["sim_text"], source_state["cust_text"],
+                        )
+                        quality_audit = ask_json(
+                            gorus_quality_audit_prompt(
+                                source_state["report_text"], final_spec_text, source_state["prior_text"],
+                                source_state["sim_text"], source_state["cust_text"], analysis, opinion,
+                            ),
+                            images=source_state.get("model_images") or [],
+                        )
+                        validate_ai_quality_audit(quality_audit)
                     # Sayfa/satır numaraları modelden alınmaz; fiziksel tarifname üzerinden burada hesaplanır.
                     if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_clean_data:
                         final_spec_bytes = st.session_state.gorus_clean_data
@@ -4797,15 +4953,22 @@ elif work_type == "Görüş hazırlama":
                         raise ValueError("Özgün patent şekli çıkarılamayan dokümanlar: " + ", ".join(missing_figs))
                     data = build_gorus_docx(opinion, figure_images=figure_images)
                     validate_gorus_template_fidelity(data, GORUS_TEMPLATE, opinion, required_figure_labels)
+                    validate_gorus_docx_content_flow(data)
                     render_gorus_docx_smoke_test(data)
                     st.session_state.gorus_opinion_data = data
                     st.session_state.gorus_opinion_status = revision_status
-                    progress.progress(100, text="Görüş metni hazır")
+                    st.session_state.gorus_quality_report = build_gorus_quality_report()
+                    progress.progress(100, text="Görüş metni ve tüm kalite kapıları hazır")
                 except Exception as exc:
                     st.exception(exc)
 
         if st.session_state.gorus_opinion_data and st.session_state.gorus_opinion_status == revision_status:
-            st.success("Görüş metni oluşturuldu.")
+            st.success("Görüş metni oluşturuldu ve kalite kapılarının tamamı geçti.")
+            qr = st.session_state.get("gorus_quality_report") or {}
+            if qr.get("checks"):
+                with st.expander("Çıktı kalite kontrolü", expanded=True):
+                    for check in qr.get("checks") or []:
+                        st.write(f"✅ {check.get('name','')}")
             st.download_button(
                 "Word görüş metnini indir",
                 data=st.session_state.gorus_opinion_data,

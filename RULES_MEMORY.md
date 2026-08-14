@@ -345,8 +345,20 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Görüş arayüzünde `Görüş dili` ayrı girdidir. Başvuru sahibi kaynakta güvenilir biçimde bulunamıyorsa kullanıcıdan alınır; kullanıcı girdisi bağlayıcıdır. Başvuru No / Başvuru Sahibi / Referans boşsa çıktı verilmez.
 - İnceleme raporu önce okunur; ancak istem revizyonu gerekliliği tarifname ve istem seti görülmeden kesinleştirilemez. Kullanıcı revizyonsuz devam dediyse görüş mevcut istemlerle hazırlanır ve görüş sırasında kendiliğinden revizyon yapılmaz.
 - `Gorus_metni_696809_template.docx` bağlayıcıdır: iki kurum başlığı → metadata tablosu → fiziksel boş paragraf → `Sayın Uzman,` → kısa giriş → fiziksel boş paragraf sırası korunur. Font/punto/1,5 satır aralığı, section/marj/header/footer ve imza düzeni şablondan sapamaz.
-- D1/D2/D3 her biri objektif teknik içerikle ayrı incelenir. İlgili patent dokümanının özgün şekli kullanılır; model çizimi kullanılmaz. Her D-şekil tablosundan önce şablondaki iki fiziksel boş paragraf bulunmalıdır.
+- İnceleme raporunun gerekçeli değerlendirmesinde fiilen kullanılan D-dokümanları objektif teknik içerikle incelenir. Yalnız `ilgili dokümanlar` listesinde bulunup gerekçede kullanılmayan dokümanlar görüşe eklenmez. Kullanılan patent dokümanının özgün şekli kullanılır; model çizimi kullanılmaz. Her D-şekil tablosundan önce şablondaki iki fiziksel boş paragraf bulunmalıdır.
 - Tarifnameden her önemli teknik savunma için mümkün olduğunca birebir dayanak verilir. Model sayfa/satır numarası üretmez. Alıntı fiziksel tarifname sayfasında bulunur ve basılı satır numaraları deterministik hesaplanarak `Tarifname sayfa X, satır Y-Z’te bu durum şu şekilde belirtilmiştir: “...”` biçiminde yazılır. Tırnak içi metin kelimesi kelimesine tarifnameden olmalıdır.
-- Buluş basamağı itirazında en güçlü bölüm `Dokümanların birlikte değerlendirilmesi`dir. Teknik fark, teknik etki, objektif teknik problem, D1/D2/D3 birleştirme motivasyonu veya yokluğu, gerekli ilave yapısal/işlevsel değişiklikler ve geriye dönük (hindsight) değerlendirme riski açık zincirle tartışılır. Yalnız `D1'de yok / D2'de yok` listesi yeterli değildir.
+- Buluş basamağı itirazında ana ikna bölümü uzmanın fiilen kullandığı doküman kapsamına göre kurulur. Tek D1 gerekçesi varsa tek-doküman genel değerlendirmesi, gerçek kombinasyon gerekçesi varsa dokümanların birlikte değerlendirilmesi kullanılır. Teknik fark, teknik katkı/teknik etki, objektif teknik problem, motivasyon veya yokluğu, gerekli ilave yapısal/işlevsel değişiklikler ve geriye dönük (hindsight) değerlendirme riski açık zincirle tartışılır. Yalnız `D1'de yok / D2'de yok` listesi yeterli değildir.
 - Bağımlı istemde tekil olarak bilinen bir ek özellik varsa bu dürüstçe kabul edilir; savunma, bağımlı istemin ana istemdeki patentlenebilir çekirdeği de içerdiği gerçeğine dayanır.
 - Nihai görüş çıktı kapısı: rapor/kaynak sadakati, metadata, birebir alıntı, fiziksel sayfa-satır, istem kapsamını aşmama, özgün şekil, tam Word şablonu, buluş basamağı teknik derinliği ve render testi. Kapılardan biri başarısızsa Word indirmesi sunulmaz.
+
+
+## v5.4.25 — Görüş ham-kaynak ve ikinci okuma kalite kapısı
+
+- İnceleme raporunda yalnız listelenen D1/D2/D3 ile uzmanın gerekçeli değerlendirmede fiilen kullandığı dokümanlar ayrılır. Arayüz yalnız savunmada gerekli dokümanı ister.
+- Girişte doküman seçimi/usul anlatımı yapılmaz.
+- Türkçe görüş anlatımında noktalı virgül kullanılmaz.
+- Tarifname dayanağı desteklediği savunmanın aynı paragrafına bağlanır; `Tarifname sayfa ...` ayrı paragraf yapılmaz.
+- Teknik fark → teknik katkı/etki → objektif teknik problem → motivasyon/yönlendirme → ilave değişiklik → hindsight zinciri ham kaynaklara karşı doğrulanır.
+- Önceki teknik dokümanın gereksiz unsur referans numaraları görüş anlatımına taşınmaz.
+- İlk taslak, rapor + tarifname + önceki görüş + savunma dokümanları + müşteri bilgileri + onaylı istem seti karşısında bağımsız ikinci okumadan geçer. Başarısızsa bir kez otomatik düzeltilir ve yeniden denetlenir.
+- Word indirme öncesinde şablon, font/punto, 1,5 satır aralığı, fiziksel boşluk ritmi, özgün şekil, inline dayanak, noktalama, doküman kapsamı ve render kapıları görünür kalite raporuyla doğrulanır.

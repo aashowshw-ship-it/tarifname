@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.24
+# Patent Atölyesi v5.4.25
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 14.08.2026 tarihli güncel tam sürümüdür.
 
@@ -273,6 +273,18 @@ Görüş hazırlama akışında dil seçimi arayüzün bağlayıcı girdisidir. 
 
 Tarifname dayanaklarında model sayfa/satır numarası üretmez. Birebir alıntı önce tarifname metninde doğrulanır, ardından DOC/DOCX/PDF fiziksel sayfası render edilerek basılı satır numaraları üzerinden `Tarifname sayfa X, satır Y-Z’te bu durum şu şekilde belirtilmiştir: “...”` biçiminde deterministik atıf eklenir.
 
-Buluş basamağı itirazında `Dokümanların birlikte değerlendirilmesi` görüşün ana ikna bölümüdür. Çıktı kapısı bu bölümde teknik fark → teknik etki → objektif teknik problem → birleştirme motivasyonu/yönlendirme → gereken ilave yapısal/işlevsel değişiklikler → geriye dönük değerlendirme riskinin kurulmasını ve yeterli teknik derinliği zorunlu tutar. D1/D2/D3 ayrı ayrı objektif incelenir; raporda olmayan X/Y kategorisi uydurulmaz; mevcut istemlerle devam kararı verilmişse görüş içinde yeni istem revizyonu yapılmaz.
+Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kullandığı doküman kapsamına göre kurulur. Tek D1 gerekçesi varsa tek-doküman genel değerlendirmesi, gerçek bir kombinasyon gerekçesi varsa dokümanların birlikte değerlendirilmesi kullanılır. Çıktı kapısı teknik fark → teknik katkı/teknik etki → objektif teknik problem → motivasyon/yönlendirme → gereken ilave yapısal/işlevsel değişiklikler → geriye dönük değerlendirme riskinin kurulmasını ve yeterli teknik derinliği zorunlu tutar. Raporun gerekçeli değerlendirmesinde fiilen kullanılan savunma dokümanları objektif incelenir; yalnız `ilgili dokümanlar` listesinde bulunup gerekçede kullanılmayan D-dokümanları görüşe taşınmaz. Raporda olmayan X/Y kategorisi uydurulmaz; mevcut istemlerle devam kararı verilmişse görüş içinde yeni istem revizyonu yapılmaz.
 
 İndirme düğmesi ancak şu görüş kapıları geçtikten sonra açılır: metadata/kaynak doğruluğu, birebir tarifname alıntısı, fiziksel sayfa-satır doğrulaması, özgün D-şekilleri, tam görüş şablon sadakati, buluş basamağı birlikte değerlendirme derinliği ve Word→PDF render smoke testi.
+
+
+## v5.4.25 — Görüş ham-kaynak ve ikinci okuma kalite kapısı
+
+- İnceleme raporunda yalnız listelenen D1/D2/D3 ile uzmanın gerekçeli değerlendirmede fiilen kullandığı dokümanlar ayrılır. Arayüz yalnız savunmada gerekli dokümanı ister.
+- Girişte doküman seçimi/usul anlatımı yapılmaz.
+- Türkçe görüş anlatımında noktalı virgül kullanılmaz.
+- Tarifname dayanağı desteklediği savunmanın aynı paragrafına bağlanır; `Tarifname sayfa ...` ayrı paragraf yapılmaz.
+- Teknik fark → teknik katkı/etki → objektif teknik problem → motivasyon/yönlendirme → ilave değişiklik → hindsight zinciri ham kaynaklara karşı doğrulanır.
+- Önceki teknik dokümanın gereksiz unsur referans numaraları görüş anlatımına taşınmaz.
+- İlk taslak, rapor + tarifname + önceki görüş + savunma dokümanları + müşteri bilgileri + onaylı istem seti karşısında bağımsız ikinci okumadan geçer. Başarısızsa bir kez otomatik düzeltilir ve yeniden denetlenir.
+- Word indirme öncesinde şablon, font/punto, 1,5 satır aralığı, fiziksel boşluk ritmi, özgün şekil, inline dayanak, noktalama, doküman kapsamı ve render kapıları görünür kalite raporuyla doğrulanır.

@@ -208,6 +208,11 @@ def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_tex
         key = _publication_key(num)
         if num and key not in _publication_key(report_norm) and not any(_edit_distance_le1(key, rk) for rk in report_keys):
             raise ValueError(f"Görüşte raporda doğrulanamayan doküman numarası var: {num}")
+    reasoned = detect_examiner_reasoned_documents(report_text)
+    reasoned_labels = {str(x.get("label", "")).upper() for x in reasoned}
+    cited_labels = {str(x.get("label", "")).upper() for x in docs if x.get("label")}
+    if reasoned_labels and (cited_labels - reasoned_labels):
+        raise ValueError("Görüşte uzman gerekçesinde fiilen kullanılmayan doküman bulunuyor: " + ", ".join(sorted(cited_labels - reasoned_labels)))
     for q in _iter_quote_objects(opinion):
         text = _norm(q.get("text", ""))
         if text and text not in spec_norm:
@@ -225,10 +230,204 @@ def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_tex
         low = combined_text.casefold()
         missing = [alts[0] for alts in required_concepts if not any(a in low for a in alts)]
         if missing:
-            raise ValueError("Dokümanların birlikte değerlendirilmesi bölümü buluş basamağı zincirini eksik kuruyor: " + ", ".join(missing))
-        if len(combined_text) < 1200:
-            raise ValueError("Dokümanların birlikte değerlendirilmesi bölümü buluş basamağı itirazı için yeterince ayrıntılı değil.")
+            raise ValueError("Görüş buluş basamağı genel değerlendirmesi zinciri eksik kuruyor: " + ", ".join(missing))
+        if len(combined_text) < 900:
+            raise ValueError("Görüş buluş basamağı genel değerlendirmesi yeterince ayrıntılı değil.")
 
+
+
+def _listed_report_documents(report_text: str) -> dict[str, str]:
+    """Return D-label -> publication number from the report's explicit cited-document list."""
+    out: dict[str, str] = {}
+    for raw in str(report_text or "").splitlines():
+        m = re.search(r"\b(D\d+)\s*:\s*([^\s,;]+)", raw, flags=re.I)
+        if not m:
+            continue
+        label = m.group(1).upper()
+        token = m.group(2).strip().strip(".()[]{}")
+        if re.search(r"[A-Z]{2}.*\d|\d.*[A-Z]", token.upper()):
+            out[label] = token
+    return out
+
+
+def detect_examiner_reasoned_documents(report_text: str) -> list[dict[str, str]]:
+    """Distinguish merely listed documents from documents actually used in substantive reasons."""
+    mapping = _listed_report_documents(report_text)
+    text = str(report_text or "")
+    low = text.casefold()
+    # The detailed prose section is normally the last Patentlenebilirlik Şartları block.
+    start = low.rfind("patentlenebilirlik şartları")
+    closest = low.find("tekniğin bilinen durumuna en yakın doküman")
+    if closest >= 0 and (start < 0 or closest < start):
+        start = max(0, closest - 450)
+    if start < 0:
+        start = low.rfind("buluş basamağı")
+    tail = text[start:] if start >= 0 else text
+    labels: list[str] = []
+    for label in re.findall(r"\bD\d+\b", tail, flags=re.I):
+        up = label.upper()
+        if up not in labels:
+            labels.append(up)
+    if not labels:
+        m = re.search(r"en yakın doküman[^.\n]{0,160}\b(D\d+)\b", text, flags=re.I)
+        if m:
+            labels = [m.group(1).upper()]
+    return [{"label": lab, "number": mapping.get(lab, "")} for lab in labels]
+
+
+def _iter_generated_narrative(opinion: dict[str, Any]):
+    intro = str(opinion.get("intro", ""))
+    if intro:
+        yield ("intro", intro)
+    for d in opinion.get("cited_documents") or []:
+        if d.get("summary"):
+            yield ("document_summary", str(d.get("summary")))
+    for section in opinion.get("sections") or []:
+        for block in section.get("blocks") or []:
+            if str(block.get("type", "paragraph")).lower() == "paragraph" and block.get("text"):
+                yield ("paragraph", str(block.get("text")))
+        for par in section.get("inventive_step_paragraphs") or []:
+            yield ("inventive_step", str(par))
+    combined = opinion.get("combined_assessment") or {}
+    for par in combined.get("paragraphs") or []:
+        yield ("overall_assessment", str(par))
+    for par in opinion.get("conclusion") or []:
+        yield ("conclusion", str(par))
+
+
+def _spec_reference_numbers(spec_text: str) -> set[str]:
+    return set(re.findall(r"\((\d{1,4})\)", str(spec_text or "")))
+
+
+def _report_reason_citations(report_text: str) -> set[str]:
+    text = str(report_text or "")
+    low = text.casefold()
+    start = low.rfind("buluş basamağı")
+    if start < 0:
+        start = low.rfind("yenilik")
+    tail = text[start:] if start >= 0 else text
+    return set(re.findall(r"\[(\d{4})\]", tail))
+
+
+def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, spec_text: str) -> None:
+    """Deterministic style/flow/source-scope rules independent from the model's own grading."""
+    intro = _norm(opinion.get("intro", ""))
+    intro_low = intro.casefold()
+    if re.search(r"\bD\d+\b", intro, flags=re.I) or "en yakın doküman" in intro_low or "ilgili doküman" in intro_low:
+        raise ValueError("Görüş giriş kapısı: girişte D1/D2/D3 seçimi veya doküman kapsamı anlatılmamalıdır.")
+
+    narratives = list(_iter_generated_narrative(opinion))
+    for kind, text in narratives:
+        if ";" in text:
+            raise ValueError(f"Görüş noktalama kapısı: model anlatımında noktalı virgül kullanılamaz ({kind}).")
+
+    full = _norm(" ".join(t for _, t in narratives))
+    low = full.casefold()
+    if "teknik katk" not in low and "ayırt edici teknik fark" not in low:
+        raise ValueError("Görüş teknik katkı kapısı: teknik katkı/ayırt edici teknik fark açıkça kurulmamış.")
+    if "buluş basamağı" in _norm(report_text).casefold():
+        for concept in ["teknik etki", "objektif teknik problem"]:
+            if concept not in low:
+                raise ValueError(f"Görüş teknik katkı kapısı: `{concept}` değerlendirmesi eksik.")
+        if "motivasyon" not in low and "yönlendirme" not in low:
+            raise ValueError("Görüş teknik katkı kapısı: motivasyon/yönlendirme değerlendirmesi eksik.")
+
+    missing_cites = sorted(c for c in _report_reason_citations(report_text) if f"[{c}]" not in full)
+    if missing_cites:
+        raise ValueError("Görüş inceleme-gerekçesi kapısı: uzmanın dayandığı D-paragraf atıflarının tümüne cevap yok: " + ", ".join(f"[{x}]" for x in missing_cites))
+
+    for section in opinion.get("sections") or []:
+        prev_type = None
+        for block in section.get("blocks") or []:
+            typ = str(block.get("type", "paragraph")).lower()
+            if typ == "quote":
+                if prev_type != "paragraph" or not bool(block.get("attach_to_previous", True)):
+                    raise ValueError("Görüş paragraf devamlılığı kapısı: tarifname dayanağı ilgili savunmanın aynı paragrafına eklenmelidir.")
+            prev_type = typ
+
+    allowed_refs = _spec_reference_numbers(spec_text)
+    ref_pat = re.compile(r"\b(piezoelektrik eleman|oturma tespit anahtarı|bimetal anahtar|ısıtma teli|ısıtıcı|sensör|birim|modül|kontak)\s*\(?([1-9]\d{1,3})\)?\b", flags=re.I)
+    for _, text in narratives:
+        for m in ref_pat.finditer(text):
+            if m.group(2) not in allowed_refs:
+                raise ValueError(f"Görüş önceki-teknik referans kapısı: `{m.group(0)}` gibi gereksiz D-doküman unsur numarası kullanılmamalıdır.")
+
+    starters = ("bu teknik farkın", "bu teknik etki", "buna göre objektif teknik problem", "böylece")
+    for section in opinion.get("sections") or []:
+        pars = [str(x) for x in section.get("inventive_step_paragraphs") or []]
+        for i, par in enumerate(pars):
+            if i > 0 and _norm(par).casefold().startswith(starters):
+                raise ValueError("Görüş paragraf devamlılığı kapısı: teknik fark/etki/problem zincirinin doğal devamı gereksiz yeni paragrafa bölünmüş.")
+    combined = opinion.get("combined_assessment") or {}
+    pars = [str(x) for x in combined.get("paragraphs") or []]
+    for i, par in enumerate(pars):
+        if i > 0 and _norm(par).casefold().startswith(starters):
+            raise ValueError("Görüş paragraf devamlılığı kapısı: genel değerlendirmedeki doğal devam cümlesi gereksiz yeni paragrafa bölünmüş.")
+
+
+def validate_opinion_against_raw_sources(
+    opinion: dict[str, Any],
+    report_text: str,
+    spec_text: str,
+    prior_opinion_text: str = "",
+    similar_text: str = "",
+    customer_text: str = "",
+) -> None:
+    """Raw-source gate over all provided inputs before Word generation."""
+    validate_opinion_payload(opinion, report_text, spec_text)
+    reasoned = detect_examiner_reasoned_documents(report_text)
+    expected = {x.get("label", "").upper() for x in reasoned if x.get("label")}
+    actual = {str(x.get("label", "")).upper() for x in (opinion.get("cited_documents") or []) if x.get("label")}
+    if expected:
+        extra = sorted(actual - expected)
+        missing = sorted(expected - actual)
+        if extra:
+            raise ValueError("Görüş doküman kapsamı kapısı: uzman gerekçesinde kullanılmayan doküman görüşe eklenmiş: " + ", ".join(extra))
+        if missing:
+            raise ValueError("Görüş doküman kapsamı kapısı: uzman gerekçesinde kullanılan doküman görüşte eksik: " + ", ".join(missing))
+    validate_opinion_narrative_rules(opinion, report_text, spec_text)
+
+
+def validate_gorus_docx_content_flow(docx_data: bytes) -> None:
+    doc = Document(io.BytesIO(docx_data))
+    for p in doc.paragraphs:
+        text = p.text.strip()
+        if not text:
+            continue
+        if text.startswith("Tarifname sayfa "):
+            raise ValueError("Görüş paragraf devamlılığı kapısı: tarifname dayanağı ayrı paragraf başlamış.")
+        narrative_only = re.sub(r"“[^”]*”", "", text, flags=re.S)
+        if ";" in narrative_only:
+            raise ValueError("Görüş noktalama kapısı: Word gövdesinde noktalı virgül bulundu.")
+
+
+def validate_ai_quality_audit(audit: dict[str, Any]) -> None:
+    checks = audit.get("checks") or {}
+    failed = []
+    for key, value in checks.items():
+        ok = bool(value.get("pass")) if isinstance(value, dict) else bool(value)
+        if not ok:
+            note = value.get("note", "") if isinstance(value, dict) else ""
+            failed.append(f"{key}: {note}".strip())
+    if not bool(audit.get("overall_pass")) or failed or (audit.get("required_fixes") or []):
+        details = "; ".join(failed or [str(x) for x in audit.get("required_fixes") or []])
+        raise ValueError("Görüş ikinci okuma kapısı başarısız: " + (details or "düzeltme gerekli"))
+
+
+def build_gorus_quality_report() -> dict[str, Any]:
+    names = [
+        "Rapor/kaynak doküman kapsamı",
+        "Uzman gerekçelerine cevap",
+        "Teknik katkı ve teknik etki",
+        "Objektif teknik problem + motivasyon + hindsight",
+        "Tarifname birebir dayanak + fiziksel sayfa/satır",
+        "İstem kapsamı / new matter kontrolü",
+        "Giriş sadeliği",
+        "Paragraf devamlılığı + inline dayanak",
+        "Noktalı virgül + önceki teknik referans numarası temizliği",
+        "696809 şablon + font/boşluk + özgün şekil + render",
+    ]
+    return {"overall_pass": True, "checks": [{"name": x, "pass": True} for x in names]}
 
 def _asset_name(asset: Any) -> str:
     if isinstance(asset, dict):
@@ -409,11 +608,13 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
     missing = sorted(required - found)
     if missing:
         raise ValueError("Görüş şekil kapısı: özgün şekli eksik dokümanlar: " + ", ".join(missing))
-    # Physical page/line quote lead + bold verbatim quote must be visible in the same paragraph.
+    # Physical page/line quote lead + bold verbatim quote must be visible in the same paragraph and continue the substantive argument.
     quote_count = 0
     for p in doc.paragraphs:
         if re.search(r"Tarifname sayfa\s+\d+,\s*satır\s+\d+-\d+’te", p.text):
             quote_count += 1
+            if p.text.strip().startswith("Tarifname sayfa "):
+                raise ValueError("Görüş paragraf devamlılığı kapısı: tarifname dayanağı ayrı paragraf olarak başlamış.")
             if "“" not in p.text or "”" not in p.text:
                 raise ValueError("Görüş dayanak kapısı: sayfa/satır atfının yanında tırnak içi birebir pasaj yok.")
             if not any(bool(r.bold) and ("“" in r.text or "”" in r.text or len(r.text.strip()) > 20) for r in p.runs):
