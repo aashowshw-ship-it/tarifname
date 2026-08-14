@@ -297,3 +297,11 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - BBF/müşteri şekli temel şekildir; ancak referans listesinde ayrı olan iki unsur kaynak şekil üzerinde `2-3` gibi tek bir hedefte birleştirilmişse nihai patent şekli bunu ayrı kutucuk/çağrı/oklarla ayırır. Ortak taşıyıcı korunabilir, fakat ayrı referanslı unsurlar tek ayırt edilemeyen kutuda gösterilemez.
 - Şekiller Word dosyası istenmişse REFERANS NUMARALARI bölümündeki tüm gerçek sistem/cihaz/ürün/yapılanma unsurları nihai şekil setinde en az bir kez gösterilmelidir. Yöntem adımları referans listesinde yer alıyor ve sistem+yöntem şekilleri hazırlanıyorsa tüm yöntem referansları da akış/yöntem şekillerinde en az bir kez bulunmalıdır. Eksik referans varsa veya güvenilir konum belirlenemiyorsa Şekiller çıktısı oluşturulmaz.
 - Şekil denetimi yalnız tek tek şekil bazında değil, son aşamada set bazında `beklenen referanslar ↔ nihai şekillerde görülen referanslar` karşılaştırmasıyla yapılır.
+
+
+## 2026-08-14.v9 — Üçlü Son Kalite Kapısı ve Yürütülebilir Taşıyıcı Ayrımı
+
+- Word üretiminden sonra, indirme verilmeden önce **3 zorunlu kontrol** yeniden yapılır: (1) BBF/ek teknik kaynaklardaki tüm mandatory teknik bilgilerin nihai Word'de kullanılması, (2) ana istem ve bütün alt istemlerin biçim + teknik kapsam + semantik tekrar + gerçek daraltma + gereklilik bakımından kontrolü, (3) BULUŞUN DETAYLI AÇIKLAMASI ve İSTEMLER içinde referans-listesi unsurlarının her kullanımında doğru parantezli unsur numarası bulunması.
+- Ortak `elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ve;` üst maddesi yalnız yürütülebilir yazılım/modül/kontrolör/arayüz/yığın gibi teknik birimleri gruplayabilir. Veritabanı, bellek, veri deposu veya salt veri yapısı kaynakta açıkça yürütülebilir yazılım/modül olarak tanımlanmıyorsa bu grubun altına alınmaz.
+- Sistem/cihaz bağımlı istemlerinde `bulunmasıdır` artık açıkça yasaktır. Profil gibi veri içeriği “veritabanında profil bulunmasıdır” diye değil, ilgili teknik unsurun `... profilini barındıran bir veritabanı olmasıdır` veya uygun biçimde `içermesidir` diliyle yazılır.
+- Yöntem işlem adımlarının referans listesi görünümü sistem `(N)` işaretlerini içermez; aynı adım detaylı açıklama ve bağımsız yöntem isteminde referanslı unsur adlarıyla birlikte yazılır.

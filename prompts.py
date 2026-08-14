@@ -102,7 +102,7 @@ NOTLAR:
 - Ana istemde bir referanslı unsuru ilk kez tanımlarken henüz tanımlanmamış sonraki referansları kullanma; kural olarak her bullet tek yeni referanslı unsur tanımlasın.
 - Parantezli unsur referansını yalnız REFERANS NUMARALARI listesindeki aynı unsur adıyla veya dilbilgisel çekimiyle kullan. Örn. `1 = İnsansız hava aracı` ise `İHA (1)`/`İHA’dan (1)` YASAK; `insansız hava aracı (1)`/`insansız hava aracından (1)` kullan. Kısaltma numarasız kullanılabilir.
 - Yazılım/modül ağırlıklı istemde kaynakta referanssız olan `elektronik işlem birimi` gibi taşıyıcıyı, henüz tanımlanmamış 2/3/4/5 gibi modülleri topluca sayan ayrı bullet yapma. Taşıyıcı ilişkisini her ilgili modül ilk kez tanımlanırken aynı bullet içinde `elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ... modülü (N)` biçiminde kur; taşıyıcı kaynakta ayrı referanslı unsur ise normal sırayla tanımla.
-- Alternatif ve tercih edilebilir yazım stili: aynı referanssız elektronik işlem birimi üzerinde aynı çalışma ilişkisine sahip ARDIŞIK birden fazla modül varsa taşıyıcıyı her modülde tekrar etmek yerine `elements` listesinde `{{"lead":"bir elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ve;","subelements":["... (2),","... (3),"]}}` biçiminde ortak üst bullet + ayrı gerçek Word alt bullet grubu kullan. Lead referans taşımaz; her subelement tek yeni referans tanımlar ve ilk-tanım sırasına uyar.
+- Alternatif ve tercih edilebilir yazım stili: aynı referanssız elektronik işlem birimi üzerinde aynı çalışma ilişkisine sahip ARDIŞIK birden fazla yürütülebilir yazılım/modül/kontrolör/arayüz/yığın varsa taşıyıcıyı her modülde tekrar etmek yerine `elements` listesinde `{{"lead":"bir elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ve;","subelements":["... (2),","... (3),"]}}` biçiminde ortak üst bullet + ayrı gerçek Word alt bullet grubu kullan. Lead referans taşımaz; her subelement tek yeni referans tanımlar ve ilk-tanım sırasına uyar.
 
 - Ürün isteminde işlem isimleştirmesi değil unsur dili kullan: “... bağlanması” değil “... bağlanan ...”.
 - Bir zorunlu unsurun kaynakta açık teknik işlevi varsa yalnız konumunu değil işlevini de yaz.
@@ -131,4 +131,13 @@ JSON dışında hiçbir şey yazma.
 
 BULUŞ VERİSİ:
 {json.dumps(extracted, ensure_ascii=False, indent=2)}
+"""
+
+
+# v5.4.19 claim/reference guardrails (also enforced deterministically in app.py/validators.py)
+V5419_GUARDRAILS = """
+- Ortak elektronik işlem birimi/yazılım taşıyıcı grubu yalnız yürütülebilir yazılım/modül/kontrolör/arayüz/yığınları kapsar; VERİTABANI/bellek/veri deposu kaynak açıkça yürütülebilir değilse ayrı unsurdur.
+- Sistem/cihaz bağımlı istemi `bulunmasıdır` ile bitemez; `olmasıdır` veya `içermesidir` kullanılır.
+- BULUŞUN DETAYLI AÇIKLAMASI ve İSTEMLER içinde referans-listesi unsur adları her kullanımda doğru `(N)` işaretini taşır.
+- Word üretiminden sonra 3 kapı tekrar çalışır: BBF tamlığı, istem/alt istem kalite-tekrar-gereklilik kontrolü, referans numarası tamlığı.
 """

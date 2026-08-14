@@ -64,6 +64,82 @@ def _reference_identity_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
     return out
 
 
+
+
+def _reference_mention_pattern(name: str) -> re.Pattern:
+    """Canonical element-name mention, allowing Turkish inflection on the final token."""
+    tokens = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9]+", str(name or ""))
+    if not tokens:
+        return re.compile(r"a^")
+    fixed = [re.escape(x) for x in tokens[:-1]]
+    last = tokens[-1]
+    stem = last if len(last) <= 4 else last[:max(4, len(last) - 2)]
+    fixed.append(re.escape(stem) + r"\w*")
+    return re.compile(r"\b" + r"\s+".join(fixed) + r"\b", re.I)
+
+
+def _reference_presence_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
+    """From DETAILED DESCRIPTION onward, canonical referenced elements may not appear without (N)."""
+    out: list[dict[str, str]] = []
+    elements = [x for x in (draft.get("elements") or []) if str(x.get("number", "")).strip() and str(x.get("name", "")).strip()]
+    texts: list[tuple[str, str]] = []
+    for i, text in enumerate(draft.get("detailed_paragraphs") or [], start=1):
+        texts.append((f"Detaylı açıklama paragrafı {i}", str(text or "")))
+    for i, step in enumerate(draft.get("method_steps") or [], start=1):
+        texts.append((f"Yöntem adımı {i}", str(step.get("text", "") or "")))
+    if draft.get("working_principle"):
+        texts.append(("Çalışma prensibi", str(draft.get("working_principle") or "")))
+    sc = draft.get("system_claim") or {}
+    texts.extend(("Ana sistem istemi", t) for t in _system_claim_all_texts(sc))
+    texts.extend((f"Bağımlı sistem istemi {i}", str(t or "")) for i, t in enumerate(draft.get("dependent_system_claims") or [], start=1))
+    mc = draft.get("method_claim") or {}
+    texts.extend(("Ana yöntem istemi", str(t or "")) for t in (mc.get("steps") or []))
+    texts.extend((f"Bağımlı yöntem istemi {i}", str(t or "")) for i, t in enumerate(draft.get("dependent_method_claims") or [], start=1))
+
+    for element in elements:
+        number = str(element.get("number", "")).strip()
+        name = str(element.get("name", "")).strip()
+        mention_re = _reference_mention_pattern(name)
+        ref_re = re.compile(r"^\s*(?:\([^)]{1,40}\)\s*)?\(\s*" + re.escape(number) + r"\s*\)")
+        for label, text in texts:
+            for m in mention_re.finditer(text):
+                after = text[m.end():m.end() + 70]
+                if not ref_re.match(after):
+                    out.append({
+                        "level": "Hata",
+                        "message": f"{label}: '{name}' unsurunun kullanımı ({number}) referansını taşımıyor. BULUŞUN DETAYLI AÇIKLAMASI ve istemlerde referans-listesi unsurları her kullanımda numaralandırılmalıdır.",
+                    })
+                    break
+    return out
+
+
+def _common_carrier_scope_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
+    """Do not group passive stores/databases under an executable-software carrier unless source description says executable."""
+    out: list[dict[str, str]] = []
+    element_map = {str(x.get("number", "")).strip(): x for x in (draft.get("elements") or [])}
+    passive_re = re.compile(r"veritaban|bellek|hafıza|veri depos|data store|profil tablos|kayıt tablos|veri yapıs", re.I)
+    executable_re = re.compile(r"yazılım|modül|kontrolör|arayüz|yığın|stack|algoritma|koştur|çalıştır|yürüt", re.I)
+    for entry in (draft.get("system_claim") or {}).get("elements") or []:
+        if not isinstance(entry, dict):
+            continue
+        lead = str(entry.get("lead", "") or "")
+        if not re.search(r"koşturulan|çalışan|yürütülen|executed|running", lead, re.I):
+            continue
+        for sub in entry.get("subelements") or []:
+            text = str(sub or "")
+            refs = re.findall(r"\(([^()]+)\)", text)
+            for ref in refs:
+                info = element_map.get(str(ref).strip()) or {}
+                name = str(info.get("name", "") or "")
+                desc = str(info.get("description", "") or "")
+                if passive_re.search(name) and not executable_re.search(desc):
+                    out.append({
+                        "level": "Hata",
+                        "message": f"Ortak yazılım taşıyıcı grubunda pasif/veri taşıyan unsur kullanılmış: {name} ({ref}). Kaynak bu unsuru yürütülebilir yazılım/modül olarak açıkça tanımlamıyorsa ortak grubun dışına çıkarılmalıdır.",
+                    })
+    return out
+
+
 def _main_claim_first_definition_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     elements = draft.get("elements") or []
@@ -239,7 +315,7 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
                     findings.append({"level":"Hata","message":"Ortak taşıyıcı alt maddelerinde noktalı virgül kullanılmamalıdır."})
 
     for claim in draft.get("dependent_system_claims") or []:
-        if re.search(r"(?:yapmasıdır|etmesidir|belirlemesidir|oluşturulmasıdır|bağlanmasıdır|sağlanmasıdır|gerçekleştirilmesidir|yapılmasıdır|edilmesidir)\.?$", claim.strip(), re.I):
+        if re.search(r"(?:yapmasıdır|etmesidir|belirlemesidir|bulunmasıdır|oluşturulmasıdır|bağlanmasıdır|sağlanmasıdır|gerçekleştirilmesidir|yapılmasıdır|edilmesidir)\.?$", claim.strip(), re.I):
             findings.append({"level": "Hata", "message": "Yöntem dışındaki alt istem yanlış eylem/işlem sonuyla bitiyor; ‘olmasıdır.’ veya ‘içermesidir.’ kullanılmalı."})
         elif not re.search(r"(?:olmasıdır|içermesidir)\.?$", claim.strip(), re.I):
             findings.append({"level": "Hata", "message": "Yöntem dışındaki alt istem ‘olmasıdır.’ veya ‘içermesidir.’ ile bitmeli."})
@@ -249,7 +325,9 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
             findings.append({"level": "Hata", "message": "Bağımlı istemde ‘Önceki istemlerden herhangi birine’ kullanılmış; ek özelliğin dayandığı doğrudan istem numarası seçilmeli."})
 
     findings.extend(_reference_identity_findings(draft))
+    findings.extend(_reference_presence_findings(draft))
     findings.extend(_main_claim_first_definition_findings(draft))
+    findings.extend(_common_carrier_scope_findings(draft))
 
     for claim in draft.get("dependent_system_claims") or []:
         if re.search(r"sistemin[,\s].*?(?:çalışmaya|kullanılmaya) uygun bir sistem olmasıdır\.?$", str(claim), re.I):

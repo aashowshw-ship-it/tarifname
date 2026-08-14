@@ -1,0 +1,8 @@
+[
+  "tests/test_v5418_rules.py::test_grouped_carrier_is_allowed",
+  "tests/test_v5418_rules.py::test_reference_alias_is_rejected",
+  "tests/test_v5419_three_gates.py::test_dependent_system_claim_bulunmasidir_rejected",
+  "tests/test_v5419_three_gates.py::test_missing_reference_in_method_step_is_rejected",
+  "tests/test_v5419_three_gates.py::test_passive_database_rejected_from_common_software_carrier",
+  "tests/test_v5419_three_gates.py::test_reference_present_in_method_step_is_allowed_for_presence_gate"
+]

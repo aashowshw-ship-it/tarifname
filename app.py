@@ -1135,7 +1135,7 @@ KRİTİK TALİMATLAR:
 - BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı sistem/cihaz unsurlarını tek tek ayrı paragraf yapma; bütün unsur açıklamalarını teknik akış içinde tek sürekli paragrafta topla. Sistem unsuru-yöntem adımı ilişkisini açıklamak için “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü tablo oluşturma. Bu ilişkiyi modül (1), sonraki modül (2) ve ilgili yöntem adımı (1001, 1002...) arasındaki veri/işlev bağlantısını gösteren doğal teknik paragraf olarak yaz. Yalnız ham kaynakta gerçekten sayısal/deneysel veri tablosu olan tabloları tables alanında koru. Gerçekten ayrı bir yapılanma/alternatif/yöntem/çalışma prensibi ayrıca paragraf olabilir.
 - Ana istemde zorunlu teknik çekirdeği kapsayıcı biçimde ver. Aynı işlemin birinci/ikinci/k'ıncı tekrarlarını ana istemde gereksiz yere ayrı satırlara bölme. Bu ayrıntıları, aynı alt akışa aitse tek bağımlı istemde topla.
 - Buluş ağırlıklı olarak yazılım/algoritma/modül/birimlerden oluşuyorsa bağımsız istemleri soyut yazılım olarak bırakma. Kaynakta özel donanım zorunlu değilse geniş bir donanımsal taşıyıcı kullan. Türkçede “bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...”, İngilizcede “software executed on an electronic device ...” veya eşdeğer teknik taşıyıcı dili kullanılabilir. Gereksiz sunucu, cep telefonu/phone veya kişisel bilgisayar daraltması yapma; özel donanım uydurma.
-- AYNI referanssız elektronik işlem birimi/cihaz taşıyıcısı üzerinde AYNI çalışma ilişkisine sahip birden fazla ARDIŞIK modül varsa taşıyıcı ifadesini her modülde tekrar etmek zorunda değilsin. Türkçe sistem isteminde `elements` listesine bir grup nesnesi koyabilirsin: `{{"lead":"bir elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ve;","subelements":["... modülü (2),","... modülü (3),"]}}`. Lead referans taşımaz; her subelement ayrı bir yeni referanslı unsuru ilk-tanım sırasıyla tanımlar. Bu grup yalnız aynı taşıyıcı gerçekten bütün alt unsurlar için ortaksa kullanılır ve Word'de gerçek iç içe bullet olarak yazılır.
+- AYNI referanssız elektronik işlem birimi/cihaz taşıyıcısı üzerinde AYNI çalışma ilişkisine sahip birden fazla ARDIŞIK yürütülebilir yazılım/modül/kontrolör/arayüz/yığın varsa taşıyıcı ifadesini her birinde tekrar etmek zorunda değilsin. Türkçe sistem isteminde `elements` listesine bir grup nesnesi koyabilirsin: `{{"lead":"bir elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ve;","subelements":["... modülü (2),","... kontrolörü (3),"]}}`. Lead referans taşımaz; her subelement ayrı bir yeni referanslı unsuru ilk-tanım sırasıyla tanımlar. VERİTABANI, bellek, veri deposu, profil tablosu veya salt veri yapısı kaynak açıkça yürütülebilir yazılım/modül olduğunu söylemiyorsa bu ortak grubun altına ALINMAZ; ayrı unsur yazılır. Bu grup yalnız aynı taşıyıcı gerçekten bütün alt unsurlar için ortaksa kullanılır ve Word'de gerçek iç içe bullet olarak yazılır.
 - İstemleri yalnız hedeflenen sonuç veya fonksiyonla bırakma. Özellikle bağımsız istemde teknikte uzman kişinin “nasıl gerçekleştiriliyor?” sorusuna cevap verecek şekilde, kaynakta açık dayanağı bulunduğu ölçüde işlemi yapan teknik unsur/taşıyıcıyı, kullanılan girdiyi veya önceki unsurdan gelen veriyi, teknik işlem/mekanizmayı ve ortaya çıkan teknik çıktının sonraki unsurla bağlantısını yaz. “tespit eden / dönüştüren / optimize eden / classifying / transforming / determining” gibi sonuç bildiren fiiller kaynak mekanizmayı açıklıyorsa tek başına yeterli sayılmaz. Buna karşılık tercihli uygulama ayrıntılarıyla ana istemi gereksiz daraltma.
 - Bağımlı istemleri kaynakta geçen her ayrıntı için çoğaltma. Yalnız ana isteme gerçek teknik daraltma/geri çekilme konumu sağlayan seçilmiş özellikleri kullan; istem bağımlılığı ana donanımsal taşıyıcıyı zaten taşıyorsa alt istemde elektronik cihaz/yazılım ifadesini gereksiz yere tekrar etme.
 - Eğitim/genel aşama ile test aşamasındaki paralel akışları aynı mantıkla fakat ayrı teknik aşamalar olarak kur.
@@ -1284,6 +1284,9 @@ ZORUNLU KONTROL LİSTESİ:
 55. Aynı teknik taşıyıcı üzerinde aynı çalışma ilişkisine sahip ardışık yazılım modüllerinde gereksiz taşıyıcı tekrarı var mı? Uygunsa ortak numarasız üst bullet + ayrı gerçek alt bullet yazım stili kullanılmış mı; üst bullet hiçbir referans taşımıyor ve alt maddeler ilk-tanım sırasına uyuyor mu?
 56. Referans listesinde ayrı olan iki unsur şekil üzerinde tek `2-3`/tek kutu/tek hedefte birleştirilmiş mi? Ayrı unsur kimlikleri ayrı kutucuk/çağrı/oklarla ayırt edilebilir mi?
 57. Şekiller çıktı setinde REFERANS NUMARALARI bölümündeki bütün gerçek sistem unsur referansları en az bir kez gösteriliyor mu? Sistem+yöntem şekilleri varsa yöntem adımı referansları da akış şekillerinde tam mı?
+58. Ortak `elektronik işlem birimi üzerinde koşturulan yazılım` üst maddesinin altında yalnız gerçekten yürütülebilir yazılım/modül/kontrolör/arayüz/yığın mı var? Veritabanı/bellek/veri deposu gibi pasif veri taşıyan unsur kaynakça açıkça yürütülebilir değilse ortak gruptan çıkarılmış mı?
+59. BULUŞUN DETAYLI AÇIKLAMASI ve İSTEMLER içinde REFERANS NUMARALARI listesindeki bir unsur adı her geçtiğinde aynı/çekimli unsur adıyla doğru `(N)` referansını taşıyor mu? Özellikle bağımsız ve bağımlı yöntem istemlerindeki gNodeB, arayüz, kontrolör, veritabanı, yığın ve cihaz kullanımları numaralı mı?
+60. Nihai Word üretildikten sonra üç son kapının üçünün de tekrar geçmesi gerekiyor: BBF/KAYNAK TAMLIK, ANA+ALT İSTEM kalite/tekrar/gereklilik, DETAYLI AÇIKLAMA+İSTEMLER REFERANS NUMARASI tamlığı. Sistem alt istemlerinde `bulunmasıdır` kullanılmışsa mutlaka unsur merkezli `olmasıdır/içermesidir` diline dönüştür.
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
 {TARIFNAME_DRAFT_SCHEMA}
@@ -1682,6 +1685,73 @@ def _validate_reference_identity(draft: dict[str, Any]) -> None:
                 )
 
 
+
+def _reference_mention_pattern(name: str) -> re.Pattern:
+    """Referans listesi unsur adını, son sözcükte Türkçe çekime izin vererek yakalar."""
+    tokens = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9]+", str(name or ""))
+    if not tokens:
+        return re.compile(r"a^")
+    parts = [re.escape(x) for x in tokens[:-1]]
+    last = tokens[-1]
+    stem = last if len(last) <= 4 else last[:max(4, len(last) - 2)]
+    parts.append(re.escape(stem) + r"\w*")
+    return re.compile(r"\b" + r"\s+".join(parts) + r"\b", re.I)
+
+
+def _validate_reference_presence(draft: dict[str, Any]) -> None:
+    """Detaylı açıklama ve istemlerde referans-listesi unsur adının numarasız kullanımını engeller."""
+    elements = [x for x in (draft.get("elements") or []) if str(x.get("number", "") or "").strip() and str(x.get("name", "") or "").strip()]
+    texts: list[tuple[str, str]] = []
+    for i, text in enumerate(draft.get("detailed_paragraphs") or [], start=1):
+        texts.append((f"BULUŞUN DETAYLI AÇIKLAMASI paragrafı {i}", str(text or "")))
+    for i, step in enumerate(draft.get("method_steps") or [], start=1):
+        texts.append((f"Yöntem işlem adımı {i}", str(step.get("text", "") or "")))
+    if draft.get("working_principle"):
+        texts.append(("Çalışma prensibi", str(draft.get("working_principle") or "")))
+    sc = draft.get("system_claim") or {}
+    texts.extend(("Ana sistem istemi", str(t or "")) for t in _system_claim_all_texts(sc))
+    texts.extend((f"Bağımlı sistem istemi {i}", str(t or "")) for i, t in enumerate(draft.get("dependent_system_claims") or [], start=1))
+    mc = draft.get("method_claim") or {}
+    texts.extend(("Ana yöntem istemi", str(t or "")) for t in (mc.get("steps") or []))
+    texts.extend((f"Bağımlı yöntem istemi {i}", str(t or "")) for i, t in enumerate(draft.get("dependent_method_claims") or [], start=1))
+
+    for element in elements:
+        number = str(element.get("number", "") or "").strip()
+        name = str(element.get("name", "") or "").strip()
+        mention_re = _reference_mention_pattern(name)
+        ref_re = re.compile(r"^\s*(?:\([^)]{1,40}\)\s*)?\(\s*" + re.escape(number) + r"\s*\)")
+        for label, text in texts:
+            for m in mention_re.finditer(text):
+                if not ref_re.match(text[m.end():m.end() + 70]):
+                    raise ValueError(
+                        f"{label}: '{name}' unsurunun kullanımı ({number}) referansını taşımıyor. "
+                        "BULUŞUN DETAYLI AÇIKLAMASI ve İSTEMLER bölümünde referans-listesi unsurları her kullanımda doğru parantezli numarayla yazılmalıdır."
+                    )
+
+
+def _validate_common_carrier_scope(draft: dict[str, Any]) -> None:
+    """Ortak yazılım taşıyıcısına pasif veri depolarının yanlışlıkla alınmasını engeller."""
+    element_map = {str(x.get("number", "") or "").strip(): x for x in (draft.get("elements") or [])}
+    passive_re = re.compile(r"veritaban|bellek|hafıza|veri depos|data store|profil tablos|kayıt tablos|veri yapıs", re.I)
+    executable_re = re.compile(r"yazılım|modül|kontrolör|arayüz|yığın|stack|algoritma|koştur|çalıştır|yürüt", re.I)
+    for entry in _system_claim_entries(draft.get("system_claim") or {}):
+        if not isinstance(entry, dict):
+            continue
+        lead = str(entry.get("lead", "") or "")
+        if not re.search(r"koşturulan|çalışan|yürütülen|executed|running", lead, re.I):
+            continue
+        for sub in entry.get("subelements") or []:
+            text = str(sub or "")
+            for ref in _claim_refs(text):
+                info = element_map.get(str(ref).strip()) or {}
+                name = str(info.get("name", "") or "")
+                desc = str(info.get("description", "") or "")
+                if passive_re.search(name) and not executable_re.search(desc):
+                    raise ValueError(
+                        f"Ortak elektronik işlem birimi/yazılım grubunda '{name} ({ref})' kullanılmış. "
+                        "Veritabanı/bellek/veri deposu gibi pasif veri unsurları kaynakta açıkça yürütülebilir yazılım/modül olarak tanımlanmıyorsa ortak taşıyıcı grubunun dışında ayrı unsur olarak yazılmalıdır."
+                    )
+
 def _strip_known_element_reference_marks(text: str, element_numbers: list[str]) -> str:
     """REFERANS NUMARALARI yöntem satırında yalnız bilinen sistem/cihaz `(REF)` işaretlerini kaldır."""
     result = str(text or "")
@@ -1966,9 +2036,11 @@ def validate_tarifname_draft(
                         raise ValueError("Ana istem unsur maddelerinde noktalı virgül kullanılmamalıdır; ortak-taşıyıcı hiyerarşik grubundaki ‘ve;’ istisnası dışında kaldırın.")
             _validate_system_claim_reference_order(system_claim, element_numbers)
             _validate_reference_identity(draft)
+            _validate_reference_presence(draft)
+            _validate_common_carrier_scope(draft)
 
         dependents = [str(x or "").strip() for x in (draft.get("dependent_system_claims") or []) if str(x or "").strip()]
-        bad_ending_re = re.compile(r"(?:yapmasıdır|etmesidir|belirlemesidir|oluşturulmasıdır|bağlanmasıdır|sağlanmasıdır|gerçekleştirilmesidir|yapılmasıdır|edilmesidir)\.?$", re.IGNORECASE)
+        bad_ending_re = re.compile(r"(?:yapmasıdır|etmesidir|belirlemesidir|bulunmasıdır|oluşturulmasıdır|bağlanmasıdır|sağlanmasıdır|gerçekleştirilmesidir|yapılmasıdır|edilmesidir)\.?$", re.IGNORECASE)
         for idx, claim in enumerate(dependents, start=2):
             if bad_ending_re.search(claim):
                 raise ValueError(f"İstem {idx} ürün/sistem/yapılanma istem diline aykırı eylem sonucu ile bitiyor; ‘olmasıdır.’ veya ‘içermesidir.’ kullanın.")
@@ -2139,6 +2211,65 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
     expected_claims = (1 if draft.get("system_claim") else 0) + len(draft.get("dependent_system_claims") or []) + (1 if draft.get("method_claim") else 0) + len(draft.get("dependent_method_claims") or [])
     if numbered_count < expected_claims:
         raise ValueError("Word şablon kontrolü: İstemlerin tamamında gerçek Word otomatik numaralandırması uygulanmamış.")
+
+
+
+def validate_tarifname_post_generation_quality(
+    data: bytes,
+    draft: dict[str, Any],
+    extracted: dict[str, Any],
+    claim_mode: str,
+    literature: list[dict[str, Any]] | None = None,
+    language: str = "Türkçe",
+) -> dict[str, bool]:
+    """Word üretildikten sonra 3 zorunlu kalite kapısını nihai çıktı üzerinde yeniden çalıştırır."""
+    doc = Document(io.BytesIO(data))
+    final_text = "\n".join(p.text for p in doc.paragraphs)
+
+    # 1) Kaynak/BBF tamlık kapısı: mandatory fact coverage evidence nihai Word'de gerçekten bulunmalı.
+    mandatory_ids = {
+        str(f.get("id", "") or "").strip()
+        for f in (extracted.get("technical_facts") or [])
+        if f.get("mandatory", True) and str(f.get("id", "") or "").strip()
+    }
+    rows = {str(r.get("fact_id", "") or "").strip(): r for r in (draft.get("source_coverage_map") or [])}
+    missing: list[str] = []
+    for fid in mandatory_ids:
+        row = rows.get(fid) or {}
+        evidence = str(row.get("evidence", "") or "").strip()
+        if row.get("covered") is not True or not (row.get("sections") or []) or len(evidence) < 20 or evidence not in final_text:
+            missing.append(fid)
+    if missing:
+        raise ValueError("ÇIKTI SONRASI KAPI 1/3 — BBF/KAYNAK TAMLIK başarısız: " + ", ".join(sorted(missing)))
+
+    # 2) Ana istem + alt istem kapısı: taslak denetimini Word üretiminden sonra tekrar çalıştır.
+    validate_tarifname_draft(draft, claim_mode, literature or [], language, extracted)
+
+    # 3) Referans kapısı: detaylı açıklama ve istemlerde canonical unsur kullanımları numaralı olmalı.
+    _validate_reference_identity(draft)
+    _validate_reference_presence(draft)
+
+    # Nihai Word'de de DETAYLI AÇIKLAMA -> ÖZET arasında canonical isimlerin numarasız görünümünü ara.
+    texts = [p.text.strip() for p in doc.paragraphs]
+    detail_label = "DETAILED DESCRIPTION OF THE INVENTION" if _english_spec(language) else "BULUŞUN DETAYLI AÇIKLAMASI"
+    abstract_label = "ABSTRACT" if _english_spec(language) else "ÖZET"
+    try:
+        di, ai = texts.index(detail_label), texts.index(abstract_label)
+    except ValueError as exc:
+        raise ValueError("ÇIKTI SONRASI KAPI 3/3 — referans denetimi için bölüm sınırları bulunamadı.") from exc
+    segment = "\n".join(texts[di + 1:ai])
+    for element in (draft.get("elements") or []):
+        number = str(element.get("number", "") or "").strip()
+        name = str(element.get("name", "") or "").strip()
+        if not number or not name:
+            continue
+        mention_re = _reference_mention_pattern(name)
+        ref_re = re.compile(r"^\s*(?:\([^)]{1,40}\)\s*)?\(\s*" + re.escape(number) + r"\s*\)")
+        for m in mention_re.finditer(segment):
+            if not ref_re.match(segment[m.end():m.end() + 70]):
+                raise ValueError(f"ÇIKTI SONRASI KAPI 3/3 — '{name}' kullanımı ({number}) referansı olmadan nihai Word'e girmiş.")
+
+    return {"source_completeness": True, "claims": True, "references": True}
 
 
 def render_tarifname_docx_smoke_test(data: bytes) -> None:
@@ -3823,7 +3954,11 @@ if work_type == "Tarifname oluşturma":
                 progress.progress(88, text="Word dosyası hazırlanıyor ve şablon yapısı doğrulanıyor...")
                 data = build_tarifname_docx(draft, language_choice)
                 validate_tarifname_docx_structure(data, draft, language_choice)
+                final_gates = validate_tarifname_post_generation_quality(
+                    data, draft, extracted, mode, lit_docs, language_choice
+                )
                 render_tarifname_docx_smoke_test(data)
+                st.success("Son kalite kapıları: ✅ 1/3 BBF/Kaynak tamlığı  ✅ 2/3 Ana istem + alt istemler  ✅ 3/3 Referans numaraları")
 
                 figure_data = None
                 figure_reports: list[dict[str, Any]] = []

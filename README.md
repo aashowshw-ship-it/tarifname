@@ -1,10 +1,10 @@
-# Patent Atölyesi v5.4.17
+# Patent Atölyesi v5.4.19
 
-Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 13.08.2026 tarihli güncel tam sürümüdür.
+Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 14.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme
 
-ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `Patent_Atolyesi_v5.4.17_GitHub` klasörünü ikinci bir alt klasör olarak yüklemeyin.
+ZIP'i açın ve içindeki dosyaların tamamını mevcut GitHub deposunun **ana dizinindeki** dosyalarla değiştirin. `Patent_Atolyesi_v5.4.19_GitHub` klasörünü ikinci bir alt klasör olarak yüklemeyin.
 
 Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
@@ -216,3 +216,13 @@ BBF veya açık teknik müşteri kaynağında kullanılabilir teknik şekil, blo
 - Şekillerde kaynak BBF/müşteri görseli esas olmaya devam eder. Ancak referans listesinde ayrı olan unsurlar aynı tek kutu/tek hedef altında `2-3` gibi birleştirilemez; aynı taşıyıcı içinde dahi ayrı kutucuk/callout/ok ile ayırt edilebilir gösterilir.
 - Ayrı Şekiller çıktısı istenmişse REFERANS NUMARALARI bölümündeki tüm gerçek sistem unsurları nihai şekil setinde en az bir kez bulunmak zorundadır. Sistem+yöntem şekilleri hazırlanıyorsa yöntem referanslarının tamamı da akış şekillerinde kapsanır. Set bazında eksik referans kalite kapısını durdurur.
 - v5.4.17'de bazı yeni istem kontrolleri yalnız yardımcı `validators.py` tarafında kalabildiği için aktif Streamlit kalite kapısıyla eşzamanlılık riski vardı. v5.4.18'de aynı kontroller `app.py` aktif üretim/Word kapısına da bağlandı ve hiyerarşik istem yapısı hem üretici hem doğrulayıcı tarafından destekleniyor.
+
+## 2026-08-14.v9 — Çıktı Sonrası Üçlü Tarifname Kalite Kapısı
+
+Tarifname oluşturma akışında Word üretimi artık işlemin sonu değildir. İndirme düğmesi açılmadan önce üç zorunlu kontrol yeniden çalışır:
+
+1. **BBF/Kaynak tamlık kontrolü:** mandatory `technical_facts` maddelerinin tamamının karşılığı ve kanıt metni nihai Word içinde doğrulanır. Tek bir teknik bilgi eksikse çıktı geri çevrilir.
+2. **Ana istem + alt istem kontrolü:** ürün/yöntem dili, ortak yazılım taşıyıcısı, ilk-tanım sırası, bağımlılık, semantik tekrar, gerçek ek sınırlama ve gereksiz alt istemler yeniden denetlenir. Sistem/cihaz alt istemlerinde `bulunmasıdır` ve diğer eylem/sonuç sonlandırmaları kabul edilmez.
+3. **Referans kullanım kontrolü:** REFERANS NUMARALARI bölümündeki unsur adları BULUŞUN DETAYLI AÇIKLAMASI ve İSTEMLER içinde geçtiği her yerde doğru `(N)` işaretiyle kullanılmalıdır. Yöntem istemlerindeki gNodeB/modül/veritabanı/yığın/cihaz gibi unsur kullanımları da bu kontrole dahildir. Referans listesi yöntem satırlarında ise önceki kural gereği sistem `(1)`, `(2)` işaretleri gösterilmez.
+
+Ayrıca ortak `elektronik işlem birimi üzerinde koşturulan yazılım` üst bullet'ı yalnız gerçekten yürütülebilir yazılım/modül/kontrolör/arayüz/yığınlar için kullanılır. Veritabanı, bellek veya salt veri yapısı kaynak açıkça yürütülebilir bir yazılım birimi olduğunu söylemiyorsa bu ortak grubun altına alınmaz.
