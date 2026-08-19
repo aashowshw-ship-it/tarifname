@@ -53,6 +53,8 @@ Tarifname oluştururken ayrı `Şekiller` Word çıktısı istenmişse şekiller
 
 ## Görüş akışı
 
+Görüş hazırlama başlangıcında iki ayrı çalışma sekmesi vardır: **EP Araştırma Raporu** ve **Ofis Aksiyonu / İnceleme Raporu**. EP sekmesinde savunma dokümanları araştırma raporundaki yalnız **X ve Y** kategorilerinden alınır. **A** kategorisi teknik arka plan kabul edilir ve savunma dokümanı olarak istenmez. Ofis aksiyonu sekmesinde ise uzmanın gerekçede fiilen kullandığı dokümanlar esas alınır.
+
 Görüş bölümü artık doğrudan Word üretmez.
 
 1. Dosyalar yüklenir.
@@ -288,3 +290,21 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Önceki teknik dokümanın gereksiz unsur referans numaraları görüş anlatımına taşınmaz.
 - İlk taslak, rapor + tarifname + önceki görüş + savunma dokümanları + müşteri bilgileri + onaylı istem seti karşısında bağımsız ikinci okumadan geçer. Başarısızsa bir kez otomatik düzeltilir ve yeniden denetlenir.
 - Word indirme öncesinde şablon, font/punto, 1,5 satır aralığı, fiziksel boşluk ritmi, özgün şekil, inline dayanak, noktalama, doküman kapsamı ve render kapıları görünür kalite raporuyla doğrulanır.
+
+
+## v5.4.26 — EP görüş sekmesi, X/Y filtresi ve EP markup kalite kapısı
+
+- Görüş başlangıcı `EP Araştırma Raporu` ve `Ofis Aksiyonu / İnceleme Raporu` olarak ayrıldı.
+- EP araştırma raporunda yalnız X/Y kategorisi dokümanlar savunma kapsamına alınır. A kategorisi görüşe otomatik taşınmaz.
+- EP İngilizce görüş girişi `Dear Sir/Madam` ve kullanıcı tarafından verilen EP giriş kalıbını, sonuç ise `In the light of above explanations and defence...` kalıbını kullanır.
+- EP tarifname markup literatür eklerinde D1/D2 etiketleri tarifname gövdesinde kullanılmaz. `As a result of the research on the subject...` önceki teknik formatı ve komşu paragrafın font/punto/spacing özellikleri zorunlu olarak klonlanır.
+- Article 84 antecedent düzeltmesinde belirsiz `the actor` ifadesi otomatik çoğullaştırılmaz. Tarifnamede açık referent aranır ve her değişiklik için fiziksel sayfa/satır dayanağı gösterilir.
+- Bağımlı istem görüşü artık tüm itirazlı istemleri veya teknik grupları kapsayan teknik katkı kontrolünden geçer.
+- Word kalite raporuna EP X/Y kapsamı, EP giriş/sonuç formatı, dependent-claim teknik katkısı, markup literatür etiketi ve font eşleşmesi kontrolleri eklendi.
+
+
+## v5.4.27 — Minimum Track Changes ve EP önceki teknik fark kapısı
+
+- EP tarifname literatür eklerinde D1/D2 etiketi kullanılmaz. Her X/Y paragrafı mevcut formatta `As a result of the research on the subject...` ile başlar, objektif doküman açıklamasından sonra `However,` ile başvurunun as-filed metninde zaten bulunan teknik farkı açıklar. Yeni özellik veya yeni teknik etki eklenmez.
+- Claim markup minimum-fark mantığıyla üretilir: değişmeyen kelime/cümle parçası silinip yeniden eklenmez. `the→a` yalnız artikel, `actor→authenticated actor (8)` yalnız actor tokenı, eksik harf yalnız karakter insertion olarak işaretlenir.
+- Word indirme kapısında minimum redline, EP However-fark dayanağı, X/Y kapsamı, Article 123(2) dayanağı ve font/punto eşleşmesi görünür kontrol satırlarıdır.

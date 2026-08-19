@@ -4,8 +4,10 @@ import io
 import re
 import subprocess
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any, Iterable
+from lxml import etree
 
 import fitz
 from docx import Document
@@ -208,7 +210,7 @@ def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_tex
         key = _publication_key(num)
         if num and key not in _publication_key(report_norm) and not any(_edit_distance_le1(key, rk) for rk in report_keys):
             raise ValueError(f"Görüşte raporda doğrulanamayan doküman numarası var: {num}")
-    reasoned = detect_examiner_reasoned_documents(report_text)
+    reasoned = detect_defense_documents(report_text)
     reasoned_labels = {str(x.get("label", "")).upper() for x in reasoned}
     cited_labels = {str(x.get("label", "")).upper() for x in docs if x.get("label")}
     if reasoned_labels and (cited_labels - reasoned_labels):
@@ -239,12 +241,21 @@ def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_tex
 def _listed_report_documents(report_text: str) -> dict[str, str]:
     """Return D-label -> publication number from the report's explicit cited-document list."""
     out: dict[str, str] = {}
+    pub_re = re.compile(
+        r"\bXP\d{6,}\b|\b(?:US|EP|WO|CN|JP|KR|DE|GB)\s*[0-9][0-9/ .-]{4,}[A-Z]\d?\b",
+        flags=re.I,
+    )
     for raw in str(report_text or "").splitlines():
-        m = re.search(r"\b(D\d+)\s*:\s*([^\s,;]+)", raw, flags=re.I)
+        m = re.search(r"\b(D\d+)\s*:\s*(.+)$", raw, flags=re.I)
         if not m:
             continue
         label = m.group(1).upper()
-        token = m.group(2).strip().strip(".()[]{}")
+        rest = m.group(2).strip()
+        pm = pub_re.search(rest)
+        if pm:
+            out[label] = re.sub(r"\s+", " ", pm.group(0)).strip()
+            continue
+        token = rest.split()[0].strip().strip(".()[]{}") if rest else ""
         if re.search(r"[A-Z]{2}.*\d|\d.*[A-Z]", token.upper()):
             out[label] = token
     return out
@@ -273,6 +284,58 @@ def detect_examiner_reasoned_documents(report_text: str) -> list[dict[str, str]]
         if m:
             labels = [m.group(1).upper()]
     return [{"label": lab, "number": mapping.get(lab, "")} for lab in labels]
+
+
+def is_ep_search_report(report_text: str) -> bool:
+    low = _norm(report_text).casefold()
+    return ("european search report" in low or "supplementary european search report" in low) and "category of cited documents" in low
+
+
+def detect_ep_xy_documents(report_text: str) -> list[dict[str, str]]:
+    """For EP search reports, return only D-labelled documents whose search category is X or Y."""
+    text = str(report_text or "")
+    mapping = _listed_report_documents(text)
+    lines = text.splitlines()
+    xy_keys: set[str] = set()
+    raw_xy: list[str] = []
+    pub_re = re.compile(r"\bXP\d{6,}\b|\b(?:US|EP|WO|CN|JP|KR|DE|GB)\s*[0-9][0-9/ .-]{4,}[A-Z]\d?\b", re.I)
+    for i, raw in enumerate(lines):
+        if not re.match(r"^\s*[XY]\b", raw, flags=re.I):
+            continue
+        block = [raw]
+        for nxt in lines[i+1:i+14]:
+            if re.match(r"^\s*-{3,}\s*$", nxt):
+                break
+            if re.match(r"^\s*[XYA]\b", nxt, flags=re.I):
+                break
+            block.append(nxt)
+        chunk = " ".join(block)
+        for token in pub_re.findall(chunk):
+            key = _publication_key(token)
+            if key:
+                xy_keys.add(key); raw_xy.append(token.strip())
+    out: list[dict[str, str]] = []
+    for label, number in mapping.items():
+        key = _publication_key(number)
+        if key and any(key == x or _edit_distance_le1(key, x) for x in xy_keys):
+            out.append({"label": label, "number": number})
+    if out:
+        return out
+    # Fallback when the detailed opinion does not assign D-labels. Preserve search-table order.
+    seen: set[str] = set()
+    for token in raw_xy:
+        key = _publication_key(token)
+        if key in seen: continue
+        seen.add(key)
+        out.append({"label": f"D{len(out)+1}", "number": token})
+    return out
+
+
+def detect_defense_documents(report_text: str) -> list[dict[str, str]]:
+    """Binding defense scope: EP search report = X/Y only, other office actions = reasoned documents."""
+    if is_ep_search_report(report_text):
+        return detect_ep_xy_documents(report_text)
+    return detect_examiner_reasoned_documents(report_text)
 
 
 def _iter_generated_narrative(opinion: dict[str, Any]):
@@ -375,7 +438,7 @@ def validate_opinion_against_raw_sources(
 ) -> None:
     """Raw-source gate over all provided inputs before Word generation."""
     validate_opinion_payload(opinion, report_text, spec_text)
-    reasoned = detect_examiner_reasoned_documents(report_text)
+    reasoned = detect_defense_documents(report_text)
     expected = {x.get("label", "").upper() for x in reasoned if x.get("label")}
     actual = {str(x.get("label", "")).upper() for x in (opinion.get("cited_documents") or []) if x.get("label")}
     if expected:
@@ -386,6 +449,79 @@ def validate_opinion_against_raw_sources(
         if missing:
             raise ValueError("Görüş doküman kapsamı kapısı: uzman gerekçesinde kullanılan doküman görüşte eksik: " + ", ".join(missing))
     validate_opinion_narrative_rules(opinion, report_text, spec_text)
+
+
+def _tracked_text(node, ns: dict[str, str], deleted: bool = False) -> str:
+    tag = "w:delText" if deleted else "w:t"
+    return "".join(node.xpath(f".//{tag}/text()", namespaces=ns))
+
+
+def validate_minimal_tracked_changes(docx_data: bytes) -> None:
+    """Reject over-broad OOXML redlines that re-delete/re-insert unchanged surrounding text.
+
+    Adjacent delete/insert pairs are expected to contain only the changed unit. If they
+    share a meaningful unchanged prefix or suffix, the markup is broader than necessary.
+    Insertion-only typo fixes are accepted.
+    """
+    W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    ns = {"w": W}
+    with zipfile.ZipFile(io.BytesIO(docx_data), "r") as z:
+        root = etree.fromstring(z.read("word/document.xml"))
+    for p in root.xpath(".//w:p", namespaces=ns):
+        children = list(p)
+        for i, node in enumerate(children[:-1]):
+            if node.tag != f"{{{W}}}del" or children[i+1].tag != f"{{{W}}}ins":
+                continue
+            old = _tracked_text(node, ns, deleted=True)
+            new = _tracked_text(children[i+1], ns, deleted=False)
+            if not old or not new:
+                continue
+            # Common exact prefix/suffix longer than one punctuation/character means unchanged
+            # material was unnecessarily included in both sides of the redline.
+            cp = 0
+            while cp < min(len(old), len(new)) and old[cp] == new[cp]:
+                cp += 1
+            cs = 0
+            while cs < len(old)-cp and cs < len(new)-cp and old[-1-cs] == new[-1-cs]:
+                cs += 1
+            common_prefix = old[:cp]
+            common_suffix = old[len(old)-cs:] if cs else ""
+            meaningful = lambda x: bool(re.search(r"[A-Za-z0-9]{2,}|\s+[A-Za-z0-9]", x))
+            if meaningful(common_prefix) or meaningful(common_suffix):
+                raise ValueError(
+                    "Markup minimum-fark kapısı: değişmeyen ön/son metin silinip yeniden eklenmiş. "
+                    f"Silinen=`{old}` Eklenen=`{new}`"
+                )
+
+
+def validate_ep_prior_art_markup_text(paragraphs: Iterable[str], as_filed_spec_text: str = "") -> None:
+    """Deterministic EP Rule 42 prior-art paragraph checks."""
+    candidates=[_norm(x) for x in paragraphs if _norm(x).casefold().startswith("as a result of the research on the subject")]
+    # Existing application may already have one paragraph; only paragraphs naming EP-cited docs are relevant.
+    added=[x for x in candidates if re.search(r"XP\d{6,}|US\s*20\d{2}/", x, flags=re.I) or "self-sovereign identity empowered" in x.casefold()]
+    for text in added:
+        if re.search(r"\bD[1-9]\b", text, flags=re.I):
+            raise ValueError("EP markup literatür kapısı: tarifname gövdesinde D1/D2 etiketi kullanılamaz.")
+        if "however," not in text.casefold():
+            raise ValueError("EP markup literatür kapısı: objektif açıklamadan sonra `However,` teknik fark cümlesi eksik.")
+        if as_filed_spec_text:
+            however=text.casefold().split("however,",1)[1]
+            # Source-grounding guard: core technical nouns used in the difference sentence must
+            # already occur in the as-filed specification. Generic/legal words are ignored.
+            stop={"document","application","mention","mentions","does","not","the","and","or","a","an","in","of","to","with","through","present","defined","relationship","together","both","completing","completes"}
+            terms={w for w in re.findall(r"[a-z][a-z-]{4,}", however) if w not in stop}
+            spec_low=_norm(as_filed_spec_text).casefold()
+            def grounded(w: str) -> bool:
+                variants={w}
+                if w.endswith("ies") and len(w)>4: variants.add(w[:-3]+"y")
+                if w.endswith("es") and len(w)>4: variants.add(w[:-2])
+                if w.endswith("s") and len(w)>4: variants.add(w[:-1])
+                if w.endswith("ed") and len(w)>4: variants.update({w[:-2], w[:-1]})
+                if w.endswith("ing") and len(w)>5: variants.update({w[:-3], w[:-3]+"e"})
+                return any(v in spec_low for v in variants if len(v)>=4)
+            missing=sorted(w for w in terms if not grounded(w))
+            if missing:
+                raise ValueError("EP markup kaynak-dayanak kapısı: However fark cümlesinde as-filed tarifnamede bulunmayan terimler var: "+", ".join(missing[:8]))
 
 
 def validate_gorus_docx_content_flow(docx_data: bytes) -> None:
@@ -416,16 +552,18 @@ def validate_ai_quality_audit(audit: dict[str, Any]) -> None:
 
 def build_gorus_quality_report() -> dict[str, Any]:
     names = [
-        "Rapor/kaynak doküman kapsamı",
+        "Rapor/kaynak doküman kapsamı + EP X/Y filtresi",
         "Uzman gerekçelerine cevap",
         "Teknik katkı ve teknik etki",
         "Objektif teknik problem + motivasyon + hindsight",
         "Tarifname birebir dayanak + fiziksel sayfa/satır",
         "İstem kapsamı / new matter kontrolü",
+        "Minimum Track Changes (karakter/kelime bazlı redline)",
+        "EP markup: D1/D2 etiketsiz prior-art + However teknik fark dayanağı",
         "Giriş sadeliği",
         "Paragraf devamlılığı + inline dayanak",
         "Noktalı virgül + önceki teknik referans numarası temizliği",
-        "696809 şablon + font/boşluk + özgün şekil + render",
+        "696809 şablon + EP giriş/sonuç + font/boşluk + özgün şekil + render",
     ]
     return {"overall_pass": True, "checks": [{"name": x, "pass": True} for x in names]}
 

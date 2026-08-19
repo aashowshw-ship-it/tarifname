@@ -362,3 +362,20 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Önceki teknik dokümanın gereksiz unsur referans numaraları görüş anlatımına taşınmaz.
 - İlk taslak, rapor + tarifname + önceki görüş + savunma dokümanları + müşteri bilgileri + onaylı istem seti karşısında bağımsız ikinci okumadan geçer. Başarısızsa bir kez otomatik düzeltilir ve yeniden denetlenir.
 - Word indirme öncesinde şablon, font/punto, 1,5 satır aralığı, fiziksel boşluk ritmi, özgün şekil, inline dayanak, noktalama, doküman kapsamı ve render kapıları görünür kalite raporuyla doğrulanır.
+
+## v5.4.26 — EP görüş ve markup kuralları (20.08.2026)
+- Görüş başlangıcında `EP Araştırma Raporu` ve `Ofis Aksiyonu / İnceleme Raporu` ayrı çalışma modlarıdır.
+- EP araştırma raporunda savunma kapsamı yalnız X/Y kategorisi dokümanlardır. A kategorisi teknik arka plan kabul edilir ve otomatik görüş dokümanı yapılmaz.
+- EP İngilizce görüş girişinde `Dear Sir/Madam,` ve kullanıcı tarafından sağlanan EP giriş kalıbı kullanılır. Sonuç `In the light of above explanations and defence, ... further amendments or at least oral proceedings.` kalıbıyla biter.
+- EP tarifname markup içinde eklenen önceki teknik paragraflarında `D1`, `D2` etiketleri kullanılmaz. Mevcut `As a result of the research on the subject...` formatı takip edilir ve yalnız objektif kaynak özeti yazılır.
+- Markup literatür paragrafı komşu mevcut literatür paragrafının font, punto, hizalama, 1,5 satır aralığı ve paragraf sonrası boşluk özelliklerini birebir klonlar.
+- `the actor` antecedent düzeltmesinde belirsiz biçimde `actors` çoğullaştırması yapılmaz. Tarifnamede açıkça gösterilen rol bulunur ve fiziksel sayfa/satır dayanağı verilir. Bu dosyada uygun dayanak `authenticated actor` rolüdür.
+- Bağımlı istemler görüşte yalnız topluca geçiştirilmez. İtirazlı tüm istemler veya teknik gruplar için ek özellik, teknik katkı ve bağımsız istemle birlikte neden X/Y dokümanlarından doğrudan/rutin çıkmadığı açıklanır.
+- EP ikinci okuma ve Word kalite kapısında X/Y doküman kapsamı, EP giriş/sonuç formatı, dependent-claim teknik katkısı, markup D1/D2 etiket yasağı, markup font/punto eşleşmesi ve Art.123(2) dayanakları ayrıca kontrol edilir.
+
+
+## v5.4.27 — Minimum Track Changes ve EP önceki teknik fark kapısı
+
+- EP tarifname literatür eklerinde D1/D2 etiketi kullanılmaz. Her X/Y paragrafı mevcut formatta `As a result of the research on the subject...` ile başlar, objektif doküman açıklamasından sonra `However,` ile başvurunun as-filed metninde zaten bulunan teknik farkı açıklar. Yeni özellik veya yeni teknik etki eklenmez.
+- Claim markup minimum-fark mantığıyla üretilir: değişmeyen kelime/cümle parçası silinip yeniden eklenmez. `the→a` yalnız artikel, `actor→authenticated actor (8)` yalnız actor tokenı, eksik harf yalnız karakter insertion olarak işaretlenir.
+- Word indirme kapısında minimum redline, EP However-fark dayanağı, X/Y kapsamı, Article 123(2) dayanağı ve font/punto eşleşmesi görünür kontrol satırlarıdır.

@@ -30,3 +30,5 @@ test_v5424_gorus_output_gate.py
 validators.py
 word_math.py
 test_v5425_gorus_raw_source_quality_gate.py
+test_v5426_ep_xy_rules.py
+test_v5427_minimal_markup.py

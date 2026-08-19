@@ -48,10 +48,15 @@ from gorus_audit import (
     annotate_quote_locations,
     extract_cited_original_figure_pages,
     detect_examiner_reasoned_documents,
+    detect_ep_xy_documents,
+    detect_defense_documents,
+    is_ep_search_report,
     validate_gorus_template_fidelity,
     validate_opinion_payload,
     validate_opinion_against_raw_sources,
     validate_gorus_docx_content_flow,
+    validate_minimal_tracked_changes,
+    validate_ep_prior_art_markup_text,
     validate_ai_quality_audit,
     build_gorus_quality_report,
     render_gorus_docx_smoke_test,
@@ -2900,9 +2905,10 @@ Aşağıdaki dosyaları önce YALNIZCA analiz et. Bu aşamada görüş Word metn
 Görüş türü: {report_type}
 Ana dosya referansı: {reference}
 
-Önce rapordaki itirazları, X/Y dokümanlarını, mevcut istemleri, tarifname dayanaklarını, varsa önceki görüşü ve müşteri bilgisini birlikte değerlendir.
+Önce rapordaki itirazları, mevcut istemleri, tarifname dayanaklarını, varsa önceki görüşü ve müşteri bilgisini birlikte değerlendir. EP araştırma raporuysa savunma kapsamını yalnız X/Y kategorisi dokümanlarla sınırla. A kategorisini savunma dokümanı yapma.
 İstem değişikliği sırf daha iyi yazılabilir diye önerilmez. Yalnızca itirazı gidermek için gerçekten zorunluysa amendment_required=true yap.
-Revizyon gerekiyorsa EN AZ DEĞİŞİKLİK ilkesini uygula. Her old_text, TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olsun; tüm istemi old_text olarak verme.
+Revizyon gerekiyorsa EN AZ DEĞİŞİKLİK ilkesini uygula. Her old_text, TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olsun; tüm istemi old_text olarak verme. Değişmeyen kelimeyi old_text/new_text içine alma: artikel değişiyorsa yalnız artikel, unsur adı değişiyorsa yalnız değişen unsur adı, eksik harf varsa yalnız gerekli karakter farkı öner.
+EP raporunda Rule 42(1)(b) gereği önceki teknik dokümanlarının tarifnameye eklenmesi isteniyorsa description_prior_art_updates üret. Bu alanda D1/D2 etiketi kullanma. Mevcut `As a result of the research on the subject...` formatını izle. objective_summary yalnız ilgili X/Y kaynağın gerçek içeriği olsun. however_difference yalnız as-filed tarifnamede/istemlerde açıkça bulunan teknik farkı kullansın, yeni özellik veya yeni teknik etki eklemesin.
 Her basis_quote tarifnamede birebir bulunan dayanak pasajı olsun. Kapsam aşımı/yeni konu yaratma.
 
 JSON dışında yazma.
@@ -2921,6 +2927,16 @@ JSON dışında yazma.
       "basis_quote":"",
       "old_text":"",
       "new_text":""
+    }}
+  ],
+  "description_prior_art_updates":[
+    {{
+      "source_kind":"application|document",
+      "publication_number":"",
+      "document_title":"",
+      "objective_summary":"",
+      "however_difference":"",
+      "basis_quote":""
     }}
   ]
 }}
@@ -2945,7 +2961,7 @@ def gorus_revision_refine_prompt(
     return f"""{GORUS_RULES}
 Aşağıdaki mevcut istem-revizyon analizini kullanıcının talimatına göre yeniden değerlendir.
 Yalnızca gerçekten zorunlu değişiklikleri bırak. En az değişiklik, açık tarifname dayanağı ve kapsam aşımı yapmama kuralları bağlayıcıdır.
-old_text, kaynak TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olmalıdır.
+old_text, kaynak TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olmalıdır. Değişmeyen ön/son kelimeleri old_text/new_text içine alma. Artikel değişimini yalnız artikel, unsur adı değişimini yalnız değişen unsur adı, eksik harf düzeltmesini yalnız karakter bazında öner.
 Tüm istemi silip yeniden yazma. Kullanıcının talimatı teknik kaynaklarla çelişiyorsa uydurma yapma; güvenli olan minimum revizyonu seç.
 
 JSON dışında yazma ve ilk analizle AYNI şemayı kullan.
@@ -2979,6 +2995,18 @@ def validate_gorus_analysis(analysis: dict[str, Any], spec_text: str) -> None:
             raise ValueError(f"Revize edilecek eski ifade tarifnamede birebir doğrulanamadı: {old_text[:120]}...")
         if basis and basis not in normalized_spec:
             raise ValueError(f"Revizyon dayanağı tarifnamede birebir doğrulanamadı: {basis[:120]}...")
+
+    for upd in analysis.get("description_prior_art_updates") or []:
+        kind=str(upd.get("source_kind", "")).strip().lower()
+        objective=re.sub(r"\s+", " ", str(upd.get("objective_summary", ""))).strip()
+        difference=re.sub(r"\s+", " ", str(upd.get("however_difference", ""))).strip()
+        basis=re.sub(r"\s+", " ", str(upd.get("basis_quote", ""))).strip()
+        if kind not in {"application","document"} or not objective or not difference or not basis:
+            raise ValueError("EP önceki teknik güncellemesinde source_kind/objective_summary/however_difference/basis_quote zorunludur.")
+        if re.search(r"\bD[1-9]\b", objective+" "+difference, flags=re.I):
+            raise ValueError("EP tarifname literatüründe D1/D2 etiketi kullanılamaz.")
+        if basis not in normalized_spec:
+            raise ValueError("EP However fark cümlesinin tarifname dayanağı birebir doğrulanamadı.")
 
 
 def gorus_prompt(
@@ -3052,6 +3080,11 @@ JSON dışında yazma.
 - Genel değerlendirme en az birkaç güçlü paragraf olsun, yalnız dokümanı özetleme, uzmanı teknik katkı üzerinden ikna et.
 - Müşteri bilgisinin tarifname dayanağı yoksa kullanma.
 - Onaylı istem setine yeni değişiklik ekleme.
+- EP araştırma raporuysa cited_documents ve sections alanlarında yalnız X/Y kategori dokümanları yer alsın. A kategorisi rapor gerekçesinde anılsa bile görüş bölümü açma.
+- EP ve İngilizce çıktıysa `intro` şu formatı izlesin: `In the Extended European Search Report dated [date], objections were raised under ... Applicant’s observations and amendments in response to the objections raised in the communication are hereby submitted below.` Doküman listesi intro içine gömülmez, cited_documents alanı üzerinden hemen arkasından gelir.
+- EP ve İngilizce çıktıysa `conclusion` son paragrafı şu bağlayıcı formatta kur: `In the light of above explanations and defence, we believe that our claims meet the [applicable criteria] criteria. However, in case of probable rejection, we kindly request to be given opportunity for further amendments or at least oral proceedings.`
+- EP bağımlı istem itirazında tüm itirazlı bağımlı istemleri veya teknik olarak anlamlı istem gruplarını ele al. Her grupta ek özelliğin bağımsız istemle birlikte teknik katkısını açıkla. Bluetooth, WiFi, QR vb. tekil teknolojileri tek başına inventive diye sunma.
+- Article 84 için `the actor` gibi antecedent düzeltmesinde tarifnamede açıkça hangi rol gösterilmişse onu kullan. Açık dayanak yoksa otomatik `actors` çoğullaştırması yapma.
 
 ÖN ANALİZ:\n{json.dumps(preanalysis or {}, ensure_ascii=False, indent=2)}\n
 RAPOR:\n{report_text}\n
@@ -3428,6 +3461,54 @@ def _append_revision(parent, text: str, *, kind: str, change_id: int, rpr: Any =
     parent.append(wrapper)
 
 
+def _minimal_markup_parts(old_text: str, new_text: str) -> tuple[str, str, str, str]:
+    """Return unchanged_prefix, deleted_mid, inserted_mid, unchanged_suffix.
+
+    Common text is preserved positionally, not realigned from the middle. This produces
+    patent-friendly minimal redlines: article changes mark only the article, noun
+    replacements mark only the noun phrase, and a one-letter typo can become insertion-only.
+    """
+    tok_re = re.compile(r"\s+|[^\s]+")
+    old_tokens = tok_re.findall(old_text)
+    new_tokens = tok_re.findall(new_text)
+    i = 0
+    while i < min(len(old_tokens), len(new_tokens)) and old_tokens[i] == new_tokens[i]:
+        i += 1
+    j = 0
+    while (
+        j < len(old_tokens) - i
+        and j < len(new_tokens) - i
+        and old_tokens[len(old_tokens)-1-j] == new_tokens[len(new_tokens)-1-j]
+    ):
+        j += 1
+    prefix = "".join(old_tokens[:i])
+    old_mid = "".join(old_tokens[i:len(old_tokens)-j if j else len(old_tokens)])
+    new_mid = "".join(new_tokens[i:len(new_tokens)-j if j else len(new_tokens)])
+    suffix = "".join(old_tokens[len(old_tokens)-j:]) if j else ""
+
+    # If the only changed unit is one lexical token, minimize further at character level.
+    if old_mid and new_mid and not re.search(r"\s", old_mid) and not re.search(r"\s", new_mid):
+        cp = 0
+        while cp < min(len(old_mid), len(new_mid)) and old_mid[cp] == new_mid[cp]:
+            cp += 1
+        cs = 0
+        while (
+            cs < len(old_mid)-cp
+            and cs < len(new_mid)-cp
+            and old_mid[len(old_mid)-1-cs] == new_mid[len(new_mid)-1-cs]
+        ):
+            cs += 1
+        prefix += old_mid[:cp]
+        suffix = (old_mid[len(old_mid)-cs:] if cs else "") + suffix
+        old_mid = old_mid[cp:len(old_mid)-cs if cs else len(old_mid)]
+        new_mid = new_mid[cp:len(new_mid)-cs if cs else len(new_mid)]
+    elif not old_mid and new_mid:
+        pass
+    elif old_mid and not new_mid:
+        pass
+    return prefix, old_mid, new_mid, suffix
+
+
 def _rewrite_paragraph_with_changes(paragraph, operations: list[dict[str, Any]], *, track_changes: bool, id_start: int) -> int:
     original = paragraph.text
     if not original:
@@ -3457,14 +3538,25 @@ def _rewrite_paragraph_with_changes(paragraph, operations: list[dict[str, Any]],
         old_actual = original[start:end]
         new_text = str(op.get("new_text", ""))
         _append_unchanged_with_styles(p_el, original, cursor, start, style_spans)
-        change_style = _style_at(style_spans, start)
+        prefix, deleted_mid, inserted_mid, suffix = _minimal_markup_parts(old_actual, new_text)
+        # Preserve unchanged prefix/suffix outside Track Changes. Only the minimum changed
+        # character/word span is wrapped in w:del/w:ins.
+        if prefix:
+            _append_unchanged_with_styles(p_el, original, start, start + len(prefix), style_spans)
+        change_pos = start + len(prefix)
+        change_style = _style_at(style_spans, min(change_pos, max(start, end - 1)))
         if track_changes:
-            _append_revision(p_el, old_actual, kind="delete", change_id=change_id, rpr=change_style)
-            change_id += 1
-            _append_revision(p_el, new_text, kind="insert", change_id=change_id, rpr=change_style)
-            change_id += 1
+            if deleted_mid:
+                _append_revision(p_el, deleted_mid, kind="delete", change_id=change_id, rpr=change_style)
+                change_id += 1
+            if inserted_mid:
+                _append_revision(p_el, inserted_mid, kind="insert", change_id=change_id, rpr=change_style)
+                change_id += 1
         else:
-            _append_plain_run(p_el, new_text, change_style)
+            if inserted_mid:
+                _append_plain_run(p_el, inserted_mid, change_style)
+        if suffix:
+            _append_unchanged_with_styles(p_el, original, end - len(suffix), end, style_spans)
         cursor = end
     _append_unchanged_with_styles(p_el, original, cursor, len(original), style_spans)
     return change_id
@@ -3477,9 +3569,58 @@ def _enable_track_revisions(doc: Document) -> None:
         settings.insert(0, track)
 
 
-def build_claim_revision_docx(source_docx: bytes, amendments: list[dict[str, Any]], *, track_changes: bool) -> bytes:
-    if not amendments:
-        raise ValueError("Uygulanacak istem revizyonu bulunamadı.")
+def _ep_prior_art_paragraph_text(upd: dict[str, Any]) -> str:
+    kind=str(upd.get("source_kind", "application")).strip().lower()
+    objective=re.sub(r"\s+", " ", str(upd.get("objective_summary", ""))).strip().rstrip(".")
+    difference=re.sub(r"\s+", " ", str(upd.get("however_difference", ""))).strip().rstrip(".")
+    if kind == "document":
+        title=str(upd.get("document_title", "")).strip()
+        if not title:
+            raise ValueError("EP document prior-art update requires document_title.")
+        lead=f'As a result of the research on the subject, the document entitled "{title}" has been found. The document is related to {objective}.'
+    else:
+        pub=str(upd.get("publication_number", "")).strip()
+        if not pub:
+            raise ValueError("EP application prior-art update requires publication_number.")
+        lead=f'As a result of the research on the subject, application numbered {pub} has been found. The application is related to {objective}.'
+    return f"{lead} However, {difference}."
+
+
+def _insert_ep_prior_art_updates(doc: Document, updates: list[dict[str, Any]], *, track_changes: bool, id_start: int) -> int:
+    if not updates:
+        return id_start
+    anchor=None
+    for p in doc.paragraphs:
+        if p.text.strip().casefold().startswith("as a result of the research on the subject"):
+            anchor=p
+            break
+    if anchor is None:
+        raise ValueError("EP önceki teknik ekleme noktası bulunamadı.")
+    parent=anchor._p.getparent(); insert_index=parent.index(anchor._p)+1
+    base_rpr=None
+    for r in anchor._p.findall(qn("w:r")):
+        if "".join(t.text or "" for t in r.findall(qn("w:t"))).strip():
+            rp=r.find(qn("w:rPr")); base_rpr=deepcopy(rp) if rp is not None else None; break
+    change_id=id_start
+    for upd in updates:
+        text=_ep_prior_art_paragraph_text(upd)
+        p_el=OxmlElement("w:p")
+        ppr=anchor._p.find(qn("w:pPr"))
+        if ppr is not None:
+            p_el.append(deepcopy(ppr))
+        if track_changes:
+            _append_revision(p_el, text, kind="insert", change_id=change_id, rpr=base_rpr)
+            change_id += 1
+        else:
+            _append_plain_run(p_el, text, base_rpr)
+        parent.insert(insert_index,p_el); insert_index += 1
+    return change_id
+
+
+def build_claim_revision_docx(source_docx: bytes, amendments: list[dict[str, Any]], *, track_changes: bool, description_updates: list[dict[str, Any]] | None = None) -> bytes:
+    description_updates = description_updates or []
+    if not amendments and not description_updates:
+        raise ValueError("Uygulanacak istem veya açıklama revizyonu bulunamadı.")
     doc = Document(io.BytesIO(source_docx))
     claim_map = _claim_paragraph_map(doc)
 
@@ -3514,14 +3655,16 @@ def build_claim_revision_docx(source_docx: bytes, amendments: list[dict[str, Any
             id_start=change_id,
         )
 
+    change_id = _insert_ep_prior_art_updates(doc, description_updates, track_changes=track_changes, id_start=change_id)
+
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
 
 
-def build_claim_revision_pair(source_docx: bytes, amendments: list[dict[str, Any]]) -> tuple[bytes, bytes]:
-    markup = build_claim_revision_docx(source_docx, amendments, track_changes=True)
-    clean = build_claim_revision_docx(source_docx, amendments, track_changes=False)
+def build_claim_revision_pair(source_docx: bytes, amendments: list[dict[str, Any]], description_updates: list[dict[str, Any]] | None = None) -> tuple[bytes, bytes]:
+    markup = build_claim_revision_docx(source_docx, amendments, track_changes=True, description_updates=description_updates)
+    clean = build_claim_revision_docx(source_docx, amendments, track_changes=False, description_updates=description_updates)
     return markup, clean
 
 
@@ -4584,13 +4727,20 @@ elif work_type == "Görüş hazırlama":
     st.subheader("Görüş hazırlama")
     st.caption("Akış: rapor ve önceki görüş → tarifname → uzman gerekçesinde fiilen kullanılan savunma dokümanları → teknik analiz/revizyon kararı → ham-kaynak ikinci okuma → Word kalite kapıları → görüş çıktısı.")
 
-    report_type = st.selectbox("Görüş türü", ["Araştırma raporuna karşı görüş", "İnceleme raporuna karşı görüş"])
+    opinion_case_mode = st.radio(
+        "Görüş çalışma sekmesi",
+        ["EP Araştırma Raporu", "Ofis Aksiyonu / İnceleme Raporu"],
+        horizontal=True,
+        key="gor_case_mode",
+    )
+    report_type = "EP araştırma raporuna karşı görüş" if opinion_case_mode == "EP Araştırma Raporu" else "İnceleme/ofis aksiyonuna karşı görüş"
     opinion_language = st.selectbox("Görüş dili", ["Türkçe", "İngilizce"], key="gor_language")
-    report_file = st.file_uploader("Araştırma / inceleme raporu", type=["pdf", "docx", "doc", "txt"], key="gor_report")
+    report_label = "EP Araştırma Raporu" if opinion_case_mode == "EP Araştırma Raporu" else "Ofis aksiyonu / inceleme raporu"
+    report_file = st.file_uploader(report_label, type=["pdf", "docx", "doc", "txt"], key="gor_report")
 
     prior_file = None
     prior_yes = "Hayır"
-    if report_type == "İnceleme raporuna karşı görüş":
+    if opinion_case_mode == "Ofis Aksiyonu / İnceleme Raporu":
         prior_yes = st.radio("Önceki sunulan görüş var mı?", ["Hayır", "Evet"], horizontal=True, key="gor_prior_yes")
         if prior_yes == "Evet":
             prior_file = st.file_uploader("Önceki sunulan görüş", type=["pdf", "docx", "doc", "txt"], key="gor_prior")
@@ -4628,16 +4778,16 @@ elif work_type == "Görüş hazırlama":
     if st.button("1. İnceleme gerekçesini analiz et ve savunmada gerekli dokümanları belirle", type="primary", use_container_width=True):
         if not all([reference.strip(), report_file, spec_file]):
             st.error("Referans, rapor ve tarifnameyi yükleyin.")
-        elif report_type == "İnceleme raporuna karşı görüş" and prior_yes == "Evet" and prior_file is None:
+        elif opinion_case_mode == "Ofis Aksiyonu / İnceleme Raporu" and prior_yes == "Evet" and prior_file is None:
             st.error("Önceki sunulan görüş var seçildi; önceki görüşü yükleyin.")
         elif customer_yes == "Evet" and not customer_files:
             st.error("Müşteriden bilgi var seçildi; müşteri bilgilerini yükleyin.")
         else:
             try:
                 report_text_scope = extract_text_from_asset(UploadedAsset(report_file.name, report_file.getvalue(), report_file.type))
-                required_docs = detect_examiner_reasoned_documents(report_text_scope)
+                required_docs = detect_ep_xy_documents(report_text_scope) if opinion_case_mode == "EP Araştırma Raporu" else detect_examiner_reasoned_documents(report_text_scope)
                 if not required_docs:
-                    raise ValueError("Uzmanın gerekçeli değerlendirmesinde kullanılan D-doküman otomatik olarak kesinleştirilemedi. Raporu kontrol edin.")
+                    raise ValueError("Savunmada kullanılacak doküman otomatik kesinleştirilemedi. EP araştırma raporunda yalnız X/Y kategorileri, ofis aksiyonunda ise gerekçede fiilen kullanılan dokümanlar kabul edilir.")
                 st.session_state.gorus_required_docs = required_docs
                 st.session_state.gorus_scope_report_text = report_text_scope
                 st.session_state.gorus_analysis = None
@@ -4697,6 +4847,7 @@ elif work_type == "Görüş hazırlama":
                 st.session_state.gorus_analysis = analysis
                 st.session_state.gorus_source = {
                     "report_type": report_type,
+                    "opinion_case_mode": opinion_case_mode,
                     "language": opinion_language,
                     "reference": reference,
                     "applicant_override": applicant_override.strip(),
@@ -4817,7 +4968,12 @@ elif work_type == "Görüş hazırlama":
                             markup_data, clean_data = build_claim_revision_pair(
                                 source_state["spec_bytes"],
                                 analysis.get("amendments") or [],
+                                analysis.get("description_prior_art_updates") or [],
                             )
+                            validate_minimal_tracked_changes(markup_data)
+                            if analysis.get("description_prior_art_updates"):
+                                clean_doc=Document(io.BytesIO(clean_data))
+                                validate_ep_prior_art_markup_text([p.text for p in clean_doc.paragraphs], source_state["spec_text"])
                             st.session_state.gorus_markup_data = markup_data
                             st.session_state.gorus_clean_data = clean_data
                             st.session_state.gorus_final_spec_text = docx_text(clean_data)

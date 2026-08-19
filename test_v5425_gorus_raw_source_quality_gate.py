@@ -30,7 +30,7 @@ def base_opinion():
         "combined_assessment":{"heading":"D1 dokümanının inceleme gerekçesiyle birlikte değerlendirilmesi","paragraphs":[("Teknik fark ve teknik etki birlikte değerlendirildiğinde objektif teknik problem açık hale gelmektedir. D1’in somut öğretisinde başvurudaki teknik katkıya yönelik motivasyon veya yönlendirme yoktur. Uzman kişinin birden fazla yapısal ve işlevsel değişiklik yapması gerekir. Bu değişikliklerin başvuru bilindikten sonra seçilmesi geriye dönük değerlendirme riskidir. "*5)]},
         "conclusion":["İstem 1 ve İstem 2 bakımından buluş basamağı kriterinin sağlandığı değerlendirilmektedir."]}
 def test_version_bumped():
-    assert APP_VERSION == "v5.4.25" and RULESET_VERSION == "2026-08-14.v15"
+    assert APP_VERSION == "v5.4.27" and RULESET_VERSION == "2026-08-20.v17"
 def test_rules_capture_new_controls():
     low=GORUS_RULES.casefold()
     for phrase in ["noktalı virgül","aynı paragrafta","ham-kaynak","okuma kapisi","teknik katkı","savunmada gerekli dokümanlar","referans numaraları"]: assert phrase in low
