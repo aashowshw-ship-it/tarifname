@@ -32,8 +32,8 @@ def _base_opinion():
 
 
 def test_version_and_ruleset_bumped_for_opinion_gate():
-    assert APP_VERSION == "v5.4.27"
-    assert RULESET_VERSION == "2026-08-20.v17"
+    assert APP_VERSION == "v5.4.28"
+    assert RULESET_VERSION == "2026-08-20.v18"
 
 
 def test_gorus_rules_include_language_physical_line_original_figures_and_full_output_gate():
@@ -60,7 +60,7 @@ def test_active_app_wires_opinion_language_applicant_exact_line_and_figure_gates
     src = (ROOT / "app.py").read_text(encoding="utf-8")
     assert 'st.selectbox("Görüş dili"' in src
     assert 'st.text_input("Başvuru sahibi (raporda yoksa girin)"' in src
-    assert "annotate_quote_locations(opinion" in src
+    assert "annotate_quote_locations(" in src
     assert "extract_cited_original_figure_pages(" in src
     assert "validate_gorus_template_fidelity(" in src
     assert "render_gorus_docx_smoke_test(data)" in src
@@ -92,8 +92,8 @@ def test_source_page_line_is_deterministic_not_llm_field():
     src = (ROOT / "gorus_audit.py").read_text(encoding="utf-8")
     assert "build_page_line_index" in src
     assert "locate_quote_page_lines" in src
-    assert 'q["line_start"] = start' in src
-    assert 'q["line_end"] = end' in src
+    assert 'q["line_start"] = l1' in src
+    assert 'q["line_end"] = l2' in src
     assert "printed line numbers" in src or "basılı satır" in src
 
 

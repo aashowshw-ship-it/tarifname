@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.25
+# Patent Atölyesi v5.4.28
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 14.08.2026 tarihli güncel tam sürümüdür.
 
@@ -53,7 +53,7 @@ Tarifname oluştururken ayrı `Şekiller` Word çıktısı istenmişse şekiller
 
 ## Görüş akışı
 
-Görüş hazırlama başlangıcında iki ayrı çalışma sekmesi vardır: **EP Araştırma Raporu** ve **Ofis Aksiyonu / İnceleme Raporu**. EP sekmesinde savunma dokümanları araştırma raporundaki yalnız **X ve Y** kategorilerinden alınır. **A** kategorisi teknik arka plan kabul edilir ve savunma dokümanı olarak istenmez. Ofis aksiyonu sekmesinde ise uzmanın gerekçede fiilen kullandığı dokümanlar esas alınır.
+Görüş hazırlama başlangıcında tam dört çalışma türü vardır ve sıra sabittir: **Araştırma raporuna karşı**, **İnceleme raporuna karşı**, **EP araştırma raporu veya ofis aksiyon**, **Yurtdışı ofis aksiyon**. İlk iki tür Türkiye dosyaları içindir. Türkiye araştırma raporlarında ve EP araştırma raporlarında savunma kapsamına yalnız **X ve Y** kategorisindeki dokümanlar alınır; **A** kategorisi teknik arka plan kabul edilir. İnceleme ve ofis aksiyonlarında ise yalnız uzmanın gerekçede fiilen kullandığı dokümanlar esas alınır.
 
 Görüş bölümü artık doğrudan Word üretmez.
 
@@ -308,3 +308,12 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - EP tarifname literatür eklerinde D1/D2 etiketi kullanılmaz. Her X/Y paragrafı mevcut formatta `As a result of the research on the subject...` ile başlar, objektif doküman açıklamasından sonra `However,` ile başvurunun as-filed metninde zaten bulunan teknik farkı açıklar. Yeni özellik veya yeni teknik etki eklenmez.
 - Claim markup minimum-fark mantığıyla üretilir: değişmeyen kelime/cümle parçası silinip yeniden eklenmez. `the→a` yalnız artikel, `actor→authenticated actor (8)` yalnız actor tokenı, eksik harf yalnız karakter insertion olarak işaretlenir.
 - Word indirme kapısında minimum redline, EP However-fark dayanağı, X/Y kapsamı, Article 123(2) dayanağı ve font/punto eşleşmesi görünür kontrol satırlarıdır.
+
+
+## v5.4.28 — Dört görüş modu ve son Markup sayfa/satır kapısı
+
+- Ana ekrandaki sürüm, `APP_VERSION` ile birlikte **v5.4.28** olarak görünür; README başlığı da aynı sürümle senkron tutulur.
+- Görüş hazırlama ana seçimi dört moddur: Türkiye Araştırma, Türkiye İnceleme, EP Araştırma/Ofis Aksiyonu, Yurtdışı Ofis Aksiyonu.
+- Araştırma raporlarında yalnız X/Y dokümanları savunulur; A kategorisi savunma dokümanı değildir.
+- Revizyon/Markup varsa bütün fiziksel sayfa-satır dayanakları son Markup dosyasından hesaplanır. Temiz sürüm veya ilk yüklenen tarifname bu iş için kullanılmaz.
+- Word üretiminden hemen önce alıntı metni ve sayfa/satır konumu ikinci kez doğrulanır; eşleşme yoksa çıktı bloke edilir.

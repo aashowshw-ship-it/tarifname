@@ -32,10 +32,10 @@ def test_ep_xy_scope_excludes_a_even_if_reasoned():
     assert [x['label'] for x in detect_defense_documents(_sample())]==['D1','D2']
 
 def test_rules_and_ui_ep_mode_present():
-    assert APP_VERSION=='v5.4.27'
+    assert APP_VERSION=='v5.4.28'
     low=GORUS_RULES.casefold()
     assert 'yalnız araştırma raporunda x veya y' in low
     assert 'd1`, `d2` gibi inceleme-etiketleri kullanılmaz' in low
     src=(ROOT/'app.py').read_text(encoding='utf-8')
-    assert 'EP Araştırma Raporu' in src
+    assert 'EP araştırma raporu veya ofis aksiyon' in src
     assert 'detect_ep_xy_documents' in src

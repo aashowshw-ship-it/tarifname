@@ -46,6 +46,7 @@ from source_guards import build_source_passage_registry, validate_source_passage
 from word_math import EQ_MARKER_RE, append_text_with_equations as _append_text_with_equations, add_display_equation
 from gorus_audit import (
     annotate_quote_locations,
+    validate_quote_locations_against_spec,
     extract_cited_original_figure_pages,
     detect_examiner_reasoned_documents,
     detect_ep_xy_documents,
@@ -2905,7 +2906,7 @@ Aşağıdaki dosyaları önce YALNIZCA analiz et. Bu aşamada görüş Word metn
 Görüş türü: {report_type}
 Ana dosya referansı: {reference}
 
-Önce rapordaki itirazları, mevcut istemleri, tarifname dayanaklarını, varsa önceki görüşü ve müşteri bilgisini birlikte değerlendir. EP araştırma raporuysa savunma kapsamını yalnız X/Y kategorisi dokümanlarla sınırla. A kategorisini savunma dokümanı yapma.
+Önce rapordaki itirazları, mevcut istemleri, tarifname dayanaklarını, varsa önceki görüşü ve müşteri bilgisini birlikte değerlendir. Türkiye araştırma raporuysa veya EP dosyası araştırma raporuysa savunma kapsamını yalnız X/Y kategorisi dokümanlarla sınırla. A kategorisini savunma dokümanı yapma. İnceleme/ofis aksiyonlarında yalnız uzmanın gerekçede fiilen kullandığı dokümanları esas al.
 İstem değişikliği sırf daha iyi yazılabilir diye önerilmez. Yalnızca itirazı gidermek için gerçekten zorunluysa amendment_required=true yap.
 Revizyon gerekiyorsa EN AZ DEĞİŞİKLİK ilkesini uygula. Her old_text, TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olsun; tüm istemi old_text olarak verme. Değişmeyen kelimeyi old_text/new_text içine alma: artikel değişiyorsa yalnız artikel, unsur adı değişiyorsa yalnız değişen unsur adı, eksik harf varsa yalnız gerekli karakter farkı öner.
 EP raporunda Rule 42(1)(b) gereği önceki teknik dokümanlarının tarifnameye eklenmesi isteniyorsa description_prior_art_updates üret. Bu alanda D1/D2 etiketi kullanma. Mevcut `As a result of the research on the subject...` formatını izle. objective_summary yalnız ilgili X/Y kaynağın gerçek içeriği olsun. however_difference yalnız as-filed tarifnamede/istemlerde açıkça bulunan teknik farkı kullansın, yeni özellik veya yeni teknik etki eklemesin.
@@ -3028,7 +3029,7 @@ def gorus_prompt(
         else "Nihai görüşün tamamını Türkçe yaz."
     )
     return f"""{GORUS_RULES}
-Aşağıdaki dosyalara dayanarak Türk Patent ve Marka Kurumu için ayrıntılı görüş metni hazırla.
+Aşağıdaki dosyalara dayanarak seçilen görüş türüne uygun ilgili patent ofisine sunulacak ayrıntılı görüş metni hazırla.
 Görüş türü: {report_type}
 Ana dosya referansı: {reference}
 Nihai istem durumu: {revision_status}
@@ -3080,7 +3081,7 @@ JSON dışında yazma.
 - Genel değerlendirme en az birkaç güçlü paragraf olsun, yalnız dokümanı özetleme, uzmanı teknik katkı üzerinden ikna et.
 - Müşteri bilgisinin tarifname dayanağı yoksa kullanma.
 - Onaylı istem setine yeni değişiklik ekleme.
-- EP araştırma raporuysa cited_documents ve sections alanlarında yalnız X/Y kategori dokümanları yer alsın. A kategorisi rapor gerekçesinde anılsa bile görüş bölümü açma.
+- Türkiye araştırma raporunda ve EP araştırma raporunda cited_documents ve sections alanlarında yalnız X/Y kategori dokümanları yer alsın. A kategorisi görüş bölümü değildir. İnceleme/ofis aksiyonunda yalnız uzmanın gerekçede fiilen kullandığı dokümanlara bölüm aç.
 - EP ve İngilizce çıktıysa `intro` şu formatı izlesin: `In the Extended European Search Report dated [date], objections were raised under ... Applicant’s observations and amendments in response to the objections raised in the communication are hereby submitted below.` Doküman listesi intro içine gömülmez, cited_documents alanı üzerinden hemen arkasından gelir.
 - EP ve İngilizce çıktıysa `conclusion` son paragrafı şu bağlayıcı formatta kur: `In the light of above explanations and defence, we believe that our claims meet the [applicable criteria] criteria. However, in case of probable rejection, we kindly request to be given opportunity for further amendments or at least oral proceedings.`
 - EP bağımlı istem itirazında tüm itirazlı bağımlı istemleri veya teknik olarak anlamlı istem gruplarını ele al. Her grupta ek özelliğin bağımsız istemle birlikte teknik katkısını açıkla. Bluetooth, WiFi, QR vb. tekil teknolojileri tek başına inventive diye sunma.
@@ -4725,25 +4726,40 @@ if work_type == "Tarifname oluşturma":
 # GÖRÜŞ
 elif work_type == "Görüş hazırlama":
     st.subheader("Görüş hazırlama")
-    st.caption("Akış: rapor ve önceki görüş → tarifname → uzman gerekçesinde fiilen kullanılan savunma dokümanları → teknik analiz/revizyon kararı → ham-kaynak ikinci okuma → Word kalite kapıları → görüş çıktısı.")
+    st.caption("Akış: görüş türü → rapor ve önceki görüş → tarifname → araştırma raporunda X/Y veya ofis aksiyonunda gerekçede fiilen kullanılan savunma dokümanları → teknik analiz/revizyon kararı → ham-kaynak ikinci okuma → son Markup fiziksel sayfa/satır kontrolü → Word kalite kapıları → görüş çıktısı.")
 
+    opinion_modes = [
+        "Araştırma raporuna karşı",
+        "İnceleme raporuna karşı",
+        "EP araştırma raporu veya ofis aksiyon",
+        "Yurtdışı ofis aksiyon",
+    ]
     opinion_case_mode = st.radio(
         "Görüş çalışma sekmesi",
-        ["EP Araştırma Raporu", "Ofis Aksiyonu / İnceleme Raporu"],
+        opinion_modes,
         horizontal=True,
         key="gor_case_mode",
     )
-    report_type = "EP araştırma raporuna karşı görüş" if opinion_case_mode == "EP Araştırma Raporu" else "İnceleme/ofis aksiyonuna karşı görüş"
+    report_type_map = {
+        "Araştırma raporuna karşı": "Türkiye araştırma raporuna karşı görüş",
+        "İnceleme raporuna karşı": "Türkiye inceleme raporuna karşı görüş",
+        "EP araştırma raporu veya ofis aksiyon": "EP araştırma raporu veya ofis aksiyonuna karşı görüş",
+        "Yurtdışı ofis aksiyon": "Yurtdışı ofis aksiyonuna karşı görüş",
+    }
+    report_label_map = {
+        "Araştırma raporuna karşı": "Türkiye araştırma raporu",
+        "İnceleme raporuna karşı": "Türkiye inceleme raporu",
+        "EP araştırma raporu veya ofis aksiyon": "EP araştırma raporu / ofis aksiyon",
+        "Yurtdışı ofis aksiyon": "Yurtdışı ofis aksiyon",
+    }
+    report_type = report_type_map[opinion_case_mode]
     opinion_language = st.selectbox("Görüş dili", ["Türkçe", "İngilizce"], key="gor_language")
-    report_label = "EP Araştırma Raporu" if opinion_case_mode == "EP Araştırma Raporu" else "Ofis aksiyonu / inceleme raporu"
-    report_file = st.file_uploader(report_label, type=["pdf", "docx", "doc", "txt"], key="gor_report")
+    report_file = st.file_uploader(report_label_map[opinion_case_mode], type=["pdf", "docx", "doc", "txt"], key="gor_report")
 
     prior_file = None
-    prior_yes = "Hayır"
-    if opinion_case_mode == "Ofis Aksiyonu / İnceleme Raporu":
-        prior_yes = st.radio("Önceki sunulan görüş var mı?", ["Hayır", "Evet"], horizontal=True, key="gor_prior_yes")
-        if prior_yes == "Evet":
-            prior_file = st.file_uploader("Önceki sunulan görüş", type=["pdf", "docx", "doc", "txt"], key="gor_prior")
+    prior_yes = st.radio("Önceki sunulan görüş var mı?", ["Hayır", "Evet"], horizontal=True, key="gor_prior_yes")
+    if prior_yes == "Evet":
+        prior_file = st.file_uploader("Önceki sunulan görüş", type=["pdf", "docx", "doc", "txt"], key="gor_prior")
 
     customer_yes = st.radio("Müşteriden bilgi var mı?", ["Hayır", "Evet"], horizontal=True)
     customer_files = []
@@ -4775,19 +4791,23 @@ elif work_type == "Görüş hazırlama":
         if key not in st.session_state:
             st.session_state[key] = default
 
-    if st.button("1. İnceleme gerekçesini analiz et ve savunmada gerekli dokümanları belirle", type="primary", use_container_width=True):
+    if st.button("1. Raporu analiz et ve savunmada gerekli dokümanları belirle", type="primary", use_container_width=True):
         if not all([reference.strip(), report_file, spec_file]):
             st.error("Referans, rapor ve tarifnameyi yükleyin.")
-        elif opinion_case_mode == "Ofis Aksiyonu / İnceleme Raporu" and prior_yes == "Evet" and prior_file is None:
+        elif prior_yes == "Evet" and prior_file is None:
             st.error("Önceki sunulan görüş var seçildi; önceki görüşü yükleyin.")
         elif customer_yes == "Evet" and not customer_files:
             st.error("Müşteriden bilgi var seçildi; müşteri bilgilerini yükleyin.")
         else:
             try:
                 report_text_scope = extract_text_from_asset(UploadedAsset(report_file.name, report_file.getvalue(), report_file.type))
-                required_docs = detect_ep_xy_documents(report_text_scope) if opinion_case_mode == "EP Araştırma Raporu" else detect_examiner_reasoned_documents(report_text_scope)
+                xy_scope = (
+                    opinion_case_mode == "Araştırma raporuna karşı"
+                    or (opinion_case_mode == "EP araştırma raporu veya ofis aksiyon" and is_ep_search_report(report_text_scope))
+                )
+                required_docs = detect_ep_xy_documents(report_text_scope) if xy_scope else detect_examiner_reasoned_documents(report_text_scope)
                 if not required_docs:
-                    raise ValueError("Savunmada kullanılacak doküman otomatik kesinleştirilemedi. EP araştırma raporunda yalnız X/Y kategorileri, ofis aksiyonunda ise gerekçede fiilen kullanılan dokümanlar kabul edilir.")
+                    raise ValueError("Savunmada kullanılacak doküman otomatik kesinleştirilemedi. Türkiye/EP araştırma raporlarında yalnız X/Y kategorileri, inceleme ve ofis aksiyonlarında ise gerekçede fiilen kullanılan dokümanlar kabul edilir.")
                 st.session_state.gorus_required_docs = required_docs
                 st.session_state.gorus_scope_report_text = report_text_scope
                 st.session_state.gorus_analysis = None
@@ -4852,6 +4872,7 @@ elif work_type == "Görüş hazırlama":
                     "reference": reference,
                     "applicant_override": applicant_override.strip(),
                     "output_name": output_name,
+                    "required_docs": required_docs,
                     "report_text": report_text,
                     "spec_text": spec_text,
                     "spec_name": spec_file.name,
@@ -5056,6 +5077,7 @@ elif work_type == "Görüş hazırlama":
                     validate_opinion_against_raw_sources(
                         opinion, source_state["report_text"], final_spec_text,
                         source_state["prior_text"], source_state["sim_text"], source_state["cust_text"],
+                        allowed_documents=source_state.get("required_docs"),
                     )
                     progress.progress(58, text="Ham kaynaklara karşı bağımsız ikinci okuma yapılıyor...")
                     quality_audit = ask_json(
@@ -5082,6 +5104,7 @@ elif work_type == "Görüş hazırlama":
                         validate_opinion_against_raw_sources(
                             opinion, source_state["report_text"], final_spec_text,
                             source_state["prior_text"], source_state["sim_text"], source_state["cust_text"],
+                            allowed_documents=source_state.get("required_docs"),
                         )
                         quality_audit = ask_json(
                             gorus_quality_audit_prompt(
@@ -5091,14 +5114,20 @@ elif work_type == "Görüş hazırlama":
                             images=source_state.get("model_images") or [],
                         )
                         validate_ai_quality_audit(quality_audit)
-                    # Sayfa/satır numaraları modelden alınmaz; fiziksel tarifname üzerinden burada hesaplanır.
-                    if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_clean_data:
-                        final_spec_bytes = st.session_state.gorus_clean_data
-                        final_spec_name = "revize_tarifname.docx"
+                    # Sayfa/satır numaraları modelden alınmaz. Markup üretildiyse TEK otorite kullanıcıya
+                    # verilecek son Markup Word dosyasının fiziksel render'ıdır; clean/orijinal sürüm kullanılmaz.
+                    if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
+                        final_spec_bytes = st.session_state.gorus_markup_data
+                        final_spec_name = "son_markup_tarifname.docx"
                     else:
                         final_spec_bytes = source_state["spec_bytes"]
                         final_spec_name = source_state["spec_name"]
-                    annotate_quote_locations(opinion, final_spec_name, final_spec_bytes)
+                    annotate_quote_locations(
+                        opinion, final_spec_name, final_spec_bytes, source_state.get("language") or "Türkçe"
+                    )
+                    validate_quote_locations_against_spec(
+                        opinion, final_spec_name, final_spec_bytes, source_state.get("language") or "Türkçe"
+                    )
                     figure_images = extract_cited_original_figure_pages(
                         opinion.get("cited_documents") or [],
                         source_state.get("sim_assets") or [],

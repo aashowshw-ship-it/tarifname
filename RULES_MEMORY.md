@@ -379,3 +379,11 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - EP tarifname literatür eklerinde D1/D2 etiketi kullanılmaz. Her X/Y paragrafı mevcut formatta `As a result of the research on the subject...` ile başlar, objektif doküman açıklamasından sonra `However,` ile başvurunun as-filed metninde zaten bulunan teknik farkı açıklar. Yeni özellik veya yeni teknik etki eklenmez.
 - Claim markup minimum-fark mantığıyla üretilir: değişmeyen kelime/cümle parçası silinip yeniden eklenmez. `the→a` yalnız artikel, `actor→authenticated actor (8)` yalnız actor tokenı, eksik harf yalnız karakter insertion olarak işaretlenir.
 - Word indirme kapısında minimum redline, EP However-fark dayanağı, X/Y kapsamı, Article 123(2) dayanağı ve font/punto eşleşmesi görünür kontrol satırlarıdır.
+
+
+## v5.4.28 — Dört görüş modu + son Markup fiziksel dayanak doğrulaması
+
+- Görüş hazırlama başlangıcında seçenek sırası değişmez: `Araştırma raporuna karşı`, `İnceleme raporuna karşı`, `EP araştırma raporu veya ofis aksiyon`, `Yurtdışı ofis aksiyon`. İlk iki mod Türkiye içindir.
+- Türkiye/EP araştırma raporlarında yalnız X ve Y kategorileri savunma kapsamıdır. A kategorisi arka plandır. İnceleme ve ofis aksiyonlarında yalnız uzmanın gerekçede fiilen kullandığı dokümanlar savunulur.
+- Markup üretildiyse görüşteki tüm tarifname dayanaklarının sayfa/satır konumu son Markup dosyasının fiziksel render'ına göre belirlenir. Orijinal veya clean tarifnameye göre sayfa/satır yazmak yasaktır.
+- Alıntı konumu Word üretiminden hemen önce ikinci kez doğrulanır. Metin, sayfa ve satır aralığı birebir eşleşmezse görüş dosyası oluşturulmaz.

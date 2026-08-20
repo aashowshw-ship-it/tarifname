@@ -118,40 +118,6 @@ def build_page_line_index(filename: str, data: bytes) -> list[dict[str, Any]]:
     return indexed
 
 
-def locate_quote_page_lines(filename: str, data: bytes, quote: str) -> tuple[int, int, int]:
-    q = _norm(quote)
-    if not q:
-        raise ValueError("Boş tarifname alıntısı için sayfa/satır bulunamaz.")
-    index = build_page_line_index(filename, data)
-    pages = sorted({int(x["page"]) for x in index})
-    for pno in pages:
-        lines = [x for x in index if int(x["page"]) == pno]
-        pieces: list[str] = []
-        spans: list[tuple[int, int, dict[str, Any]]] = []
-        cursor = 0
-        for ln in lines:
-            t = _norm(ln["text"])
-            if not t:
-                continue
-            if pieces:
-                cursor += 1
-            start = cursor
-            pieces.append(t)
-            cursor += len(t)
-            spans.append((start, cursor, ln))
-        joined = " ".join(pieces)
-        pos = joined.find(q)
-        if pos < 0:
-            continue
-        end = pos + len(q)
-        hit = [ln for s, e, ln in spans if e > pos and s < end]
-        nums = [int(ln["line"]) for ln in hit if ln.get("line") is not None]
-        if not nums:
-            raise ValueError(f"Tarifname alıntısı sayfa {pno}'da bulundu ancak basılı satır numaraları doğrulanamadı.")
-        return pno, min(nums), max(nums)
-    raise ValueError(f"Tarifname alıntısı fiziksel sayfa metninde birebir bulunamadı: {q[:140]}...")
-
-
 def _iter_quote_objects(opinion: dict[str, Any]):
     for section in opinion.get("sections") or []:
         for block in section.get("blocks") or []:
@@ -161,17 +127,101 @@ def _iter_quote_objects(opinion: dict[str, Any]):
             yield quote
 
 
-def annotate_quote_locations(opinion: dict[str, Any], spec_filename: str, spec_bytes: bytes) -> None:
+def locate_quote_page_line_span(filename: str, data: bytes, quote: str) -> tuple[int, int, int, int]:
+    """Locate a verbatim quote on the final rendered specification, including cross-page spans."""
+    q = _norm(quote)
+    if not q:
+        raise ValueError("Boş tarifname alıntısı için sayfa/satır bulunamaz.")
+    index = build_page_line_index(filename, data)
+    pieces: list[str] = []
+    spans: list[tuple[int, int, dict[str, Any]]] = []
+    cursor = 0
+    for ln in index:
+        t = _norm(ln.get("text", ""))
+        if not t:
+            continue
+        if pieces:
+            cursor += 1
+        begin = cursor
+        pieces.append(t)
+        cursor += len(t)
+        spans.append((begin, cursor, ln))
+    joined = " ".join(pieces)
+    pos = joined.find(q)
+    if pos < 0:
+        raise ValueError(f"Tarifname alıntısı fiziksel sayfa metninde birebir bulunamadı: {q[:140]}...")
+    finish = pos + len(q)
+    hit = [ln for a, b, ln in spans if b > pos and a < finish]
+    if not hit:
+        raise ValueError("Tarifname alıntısı bulundu ancak fiziksel satır eşleşmesi kurulamadı.")
+    if any(ln.get("line") is None for ln in hit):
+        raise ValueError("Tarifname alıntısının basılı satır numaraları doğrulanamadı.")
+    first, last = hit[0], hit[-1]
+    return int(first["page"]), int(first["line"]), int(last["page"]), int(last["line"])
+
+
+def locate_quote_page_lines(filename: str, data: bytes, quote: str) -> tuple[int, int, int]:
+    """Backward-compatible same-page locator used by older tests/callers."""
+    p1, l1, p2, l2 = locate_quote_page_line_span(filename, data, quote)
+    if p1 != p2:
+        raise ValueError(
+            f"Tarifname alıntısı iki fiziksel sayfaya taşıyor (sayfa {p1} satır {l1} → sayfa {p2} satır {l2}); "
+            "görüşte iki sayfa da açıkça belirtilmelidir."
+        )
+    return p1, l1, l2
+
+
+def _lead_for_span(p1: int, l1: int, p2: int, l2: int, language: str) -> str:
+    english = str(language or "").strip().casefold().startswith("ing") or str(language or "").strip().casefold().startswith("en")
+    if english:
+        if p1 == p2:
+            unit = "line" if l1 == l2 else "lines"
+            span = str(l1) if l1 == l2 else f"{l1}-{l2}"
+            return f"Description page {p1}, {unit} {span} states:"
+        return f"Description page {p1}, line {l1} and page {p2}, line {l2} state:"
+    if p1 == p2:
+        if l1 == l2:
+            return f"Tarifname sayfa {p1}, satır {l1}’de bu durum şu şekilde belirtilmiştir:"
+        return f"Tarifname sayfa {p1}, satır {l1}-{l2}’de bu durum şu şekilde belirtilmiştir:"
+    return f"Tarifname sayfa {p1}, satır {l1} ile sayfa {p2}, satır {l2} arasında bu durum şu şekilde belirtilmiştir:"
+
+
+def annotate_quote_locations(
+    opinion: dict[str, Any], spec_filename: str, spec_bytes: bytes, output_language: str = "Türkçe"
+) -> None:
     for q in _iter_quote_objects(opinion):
         text = str(q.get("text", "")).strip()
         if not text:
             continue
-        page, start, end = locate_quote_page_lines(spec_filename, spec_bytes, text)
-        dash = "-"
-        q["page"] = page
-        q["line_start"] = start
-        q["line_end"] = end
-        q["lead"] = f"Tarifname sayfa {page}, satır {start}{dash}{end}’te bu durum şu şekilde belirtilmiştir:"
+        p1, l1, p2, l2 = locate_quote_page_line_span(spec_filename, spec_bytes, text)
+        q["page"] = p1
+        q["line_start"] = l1
+        q["page_end"] = p2
+        q["line_end"] = l2
+        q["lead"] = _lead_for_span(p1, l1, p2, l2, output_language)
+
+
+def validate_quote_locations_against_spec(
+    opinion: dict[str, Any], spec_filename: str, spec_bytes: bytes, output_language: str = "Türkçe"
+) -> None:
+    """Hard gate: every stored page/line citation must match the FINAL physical markup render."""
+    for q in _iter_quote_objects(opinion):
+        text = str(q.get("text", "")).strip()
+        if not text:
+            continue
+        expected = locate_quote_page_line_span(spec_filename, spec_bytes, text)
+        actual = (
+            int(q.get("page", 0) or 0), int(q.get("line_start", 0) or 0),
+            int(q.get("page_end", q.get("page", 0)) or 0), int(q.get("line_end", 0) or 0),
+        )
+        if actual != expected:
+            raise ValueError(
+                "Görüş son-Markup sayfa/satır kapısı: kayıtlı dayanak fiziksel render ile eşleşmiyor. "
+                f"Beklenen {expected}, kayıtlı {actual}."
+            )
+        expected_lead = _lead_for_span(*expected, output_language)
+        if _norm(q.get("lead", "")) != _norm(expected_lead):
+            raise ValueError("Görüş son-Markup sayfa/satır kapısı: dayanak giriş metni fiziksel konumla senkron değil.")
 
 
 
@@ -314,6 +364,29 @@ def detect_ep_xy_documents(report_text: str) -> list[dict[str, str]]:
             key = _publication_key(token)
             if key:
                 xy_keys.add(key); raw_xy.append(token.strip())
+    # PDF text extraction may flatten the table into separate columns, placing category
+    # tokens (X/X/A/...) before all citation rows. Recover row order from the search-table
+    # section as a deterministic fallback. This is especially common in EPO Form 1503 PDFs.
+    if not xy_keys:
+        low = text.casefold()
+        a = low.find("documents considered to be relevant")
+        b = low.find("classification of the", a + 1) if a >= 0 else -1
+        table_text = text[a:b if b > a else len(text)] if a >= 0 else text
+        table_lines = [x.strip() for x in table_text.splitlines() if x.strip()]
+        cats = [x.upper() for x in table_lines if re.fullmatch(r"[XYA]", x, flags=re.I)]
+        pubs: list[str] = []
+        for m in pub_re.finditer(table_text):
+            token = re.sub(r"\s+", " ", m.group(0)).strip()
+            key = _publication_key(token)
+            if key and key not in {_publication_key(x) for x in pubs}:
+                pubs.append(token)
+        # The flattened category column preserves top-to-bottom row order. Mapping the
+        # first N category rows to the first N distinct citations safely recovers X/Y
+        # scope for the common EPO layout; duplicate later A rows do not promote docs.
+        for cat, token in zip(cats, pubs):
+            if cat in {"X", "Y"}:
+                xy_keys.add(_publication_key(token)); raw_xy.append(token)
+
     out: list[dict[str, str]] = []
     for label, number in mapping.items():
         key = _publication_key(number)
@@ -435,10 +508,11 @@ def validate_opinion_against_raw_sources(
     prior_opinion_text: str = "",
     similar_text: str = "",
     customer_text: str = "",
+    allowed_documents: list[dict[str, str]] | None = None,
 ) -> None:
     """Raw-source gate over all provided inputs before Word generation."""
     validate_opinion_payload(opinion, report_text, spec_text)
-    reasoned = detect_defense_documents(report_text)
+    reasoned = allowed_documents if allowed_documents is not None else detect_defense_documents(report_text)
     expected = {x.get("label", "").upper() for x in reasoned if x.get("label")}
     actual = {str(x.get("label", "")).upper() for x in (opinion.get("cited_documents") or []) if x.get("label")}
     if expected:
@@ -530,7 +604,7 @@ def validate_gorus_docx_content_flow(docx_data: bytes) -> None:
         text = p.text.strip()
         if not text:
             continue
-        if text.startswith("Tarifname sayfa "):
+        if text.startswith("Tarifname sayfa ") or text.startswith("Description page "):
             raise ValueError("Görüş paragraf devamlılığı kapısı: tarifname dayanağı ayrı paragraf başlamış.")
         narrative_only = re.sub(r"“[^”]*”", "", text, flags=re.S)
         if ";" in narrative_only:
@@ -556,7 +630,7 @@ def build_gorus_quality_report() -> dict[str, Any]:
         "Uzman gerekçelerine cevap",
         "Teknik katkı ve teknik etki",
         "Objektif teknik problem + motivasyon + hindsight",
-        "Tarifname birebir dayanak + fiziksel sayfa/satır",
+        "Tarifname birebir dayanak + SON MARKUP fiziksel sayfa/satır + ikinci doğrulama",
         "İstem kapsamı / new matter kontrolü",
         "Minimum Track Changes (karakter/kelime bazlı redline)",
         "EP markup: D1/D2 etiketsiz prior-art + However teknik fark dayanağı",
@@ -749,9 +823,9 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
     # Physical page/line quote lead + bold verbatim quote must be visible in the same paragraph and continue the substantive argument.
     quote_count = 0
     for p in doc.paragraphs:
-        if re.search(r"Tarifname sayfa\s+\d+,\s*satır\s+\d+-\d+’te", p.text):
+        if re.search(r"Tarifname sayfa\s+\d+,\s*satır\s+\d+[-–]\d+", p.text) or re.search(r"Description page\s+\d+,\s*lines?\s+\d+(?:[-–]\d+)?", p.text, flags=re.I):
             quote_count += 1
-            if p.text.strip().startswith("Tarifname sayfa "):
+            if p.text.strip().startswith("Tarifname sayfa ") or p.text.strip().startswith("Description page "):
                 raise ValueError("Görüş paragraf devamlılığı kapısı: tarifname dayanağı ayrı paragraf olarak başlamış.")
             if "“" not in p.text or "”" not in p.text:
                 raise ValueError("Görüş dayanak kapısı: sayfa/satır atfının yanında tırnak içi birebir pasaj yok.")

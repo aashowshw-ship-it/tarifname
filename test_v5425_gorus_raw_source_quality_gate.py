@@ -30,7 +30,7 @@ def base_opinion():
         "combined_assessment":{"heading":"D1 dokümanının inceleme gerekçesiyle birlikte değerlendirilmesi","paragraphs":[("Teknik fark ve teknik etki birlikte değerlendirildiğinde objektif teknik problem açık hale gelmektedir. D1’in somut öğretisinde başvurudaki teknik katkıya yönelik motivasyon veya yönlendirme yoktur. Uzman kişinin birden fazla yapısal ve işlevsel değişiklik yapması gerekir. Bu değişikliklerin başvuru bilindikten sonra seçilmesi geriye dönük değerlendirme riskidir. "*5)]},
         "conclusion":["İstem 1 ve İstem 2 bakımından buluş basamağı kriterinin sağlandığı değerlendirilmektedir."]}
 def test_version_bumped():
-    assert APP_VERSION == "v5.4.27" and RULESET_VERSION == "2026-08-20.v17"
+    assert APP_VERSION == "v5.4.28" and RULESET_VERSION == "2026-08-20.v18"
 def test_rules_capture_new_controls():
     low=GORUS_RULES.casefold()
     for phrase in ["noktalı virgül","aynı paragrafta","ham-kaynak","okuma kapisi","teknik katkı","savunmada gerekli dokümanlar","referans numaraları"]: assert phrase in low
@@ -52,4 +52,4 @@ def test_quote_attach_and_prior_art_ref_number():
     with pytest.raises(ValueError,match="referans"): validate_opinion_against_raw_sources(op,REPORT,SPEC)
 def test_app_wires_staged_scope_second_read_and_quality_report():
     src=(ROOT/"app.py").read_text(encoding="utf-8")
-    for phrase in ["İnceleme gerekçesini analiz et ve savunmada gerekli dokümanları belirle","detect_examiner_reasoned_documents","gorus_quality_audit_prompt","gorus_repair_prompt","validate_opinion_against_raw_sources","validate_gorus_docx_content_flow","Çıktı kalite kontrolü","_append_quote_with_location"]: assert phrase in src
+    for phrase in ["Raporu analiz et ve savunmada gerekli dokümanları belirle","detect_examiner_reasoned_documents","gorus_quality_audit_prompt","gorus_repair_prompt","validate_opinion_against_raw_sources","validate_gorus_docx_content_flow","Çıktı kalite kontrolü","_append_quote_with_location"]: assert phrase in src
