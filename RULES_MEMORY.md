@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-14.v14**
+Kural sürümü: **2026-08-21.v19**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -387,3 +387,15 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Türkiye/EP araştırma raporlarında yalnız X ve Y kategorileri savunma kapsamıdır. A kategorisi arka plandır. İnceleme ve ofis aksiyonlarında yalnız uzmanın gerekçede fiilen kullandığı dokümanlar savunulur.
 - Markup üretildiyse görüşteki tüm tarifname dayanaklarının sayfa/satır konumu son Markup dosyasının fiziksel render'ına göre belirlenir. Orijinal veya clean tarifnameye göre sayfa/satır yazmak yasaktır.
 - Alıntı konumu Word üretiminden hemen önce ikinci kez doğrulanır. Metin, sayfa ve satır aralığı birebir eşleşmezse görüş dosyası oluşturulmaz.
+
+
+## v5.4.29 / 2026-08-21.v19 — DP otomatik adlandırma ve kesin ham-veri kapanış kapısı
+
+- Yeni tarifname ekranında DP referansı verildiğinde çıktı dosya adı ayrıca sorulmaz. `DP=181267` doğrudan `Tarifname_181267.docx`; ayrı şekiller seçilmişse `Şekiller_181267.docx` anlamına gelir. DP referansı boşken çıktı üretilemez.
+- `technical_facts` içindeki bütün teknik maddeler zorunlu kapsamdadır. Teknik fact için `mandatory=false` artık geçerli bir kaçış yolu değildir.
+- İlk ham-pasaj auditinden ve taslak kalite turundan bağımsız olarak, **taslak tamamlandıktan sonra yeniden ham BBF ikinci okuması** yapılır. Her `technical` passage_id ve her technical_fact tam bir kez kontrol edilir, gerçek taslak içinden en az 20 karakterlik birebir evidence istenir; `source_coverage_map` bu ikinci okumada kanıt olarak kullanılamaz.
+- Son Word kapısı ham kaynak zincirini tekrar kurar: `source_passage_registry → source_passage_audit → technical_facts → source_coverage_map → final .docx`. Zincirde tek kopukluk varsa Word indirmesi gösterilmez.
+- Arayüz yalnız bütün kontroller geçince `Ham veri kontrolü yapıldı` mesajını ve ham pasaj/teknik pasaj/technical_fact sayılarını gösterir. Ardından beş son kapının tamamı görünür olarak onaylanır.
+- Sistem+yöntem istem yapısında TEKNİK ALAN ilk cümlesi `Buluş, ... sistemi ve yöntemi ile ilgilidir.` şeklinde biter.
+- Türkçe literatür paragrafı `Literatürde yapılan araştırmalar sonucu ...` ile başlayıp `Ancak ... ile ilgili bir emareye rastlanmamıştır.` ile biten bağlayıcı taslak dilini kullanır. `Buluşta ise ...` savunma dili reddedilir.
+- Son literatür/önceki teknik paragrafı ile `Sonuçta yukarıda bahsedilen...` cümlesi arasında şablondaki fiziksel boş paragraf korunur ve deterministik Word kapısında kontrol edilir.

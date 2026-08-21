@@ -42,7 +42,14 @@ from pypdf import PdfReader
 
 from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES
 from template_audit import validate_full_tarifname_template_fidelity
-from source_guards import build_source_passage_registry, validate_source_passage_audit, resolve_tarifname_claim_mode
+from source_guards import (
+    build_source_passage_registry,
+    validate_source_passage_audit,
+    resolve_tarifname_claim_mode,
+    derive_tarifname_output_names,
+    validate_final_source_coverage_chain,
+    validate_final_raw_source_audit,
+)
 from word_math import EQ_MARKER_RE, append_text_with_equations as _append_text_with_equations, add_display_equation
 from gorus_audit import (
     annotate_quote_locations,
@@ -1131,7 +1138,7 @@ Bu aşamada TARİFNAME YAZMA. Ham BBF ve ek teknik belgeleri SIFIRDAN yeniden ok
 
 EN ÜST KURAL: BBF ve ek teknik kaynaklardaki her teknik bilgi atomik `technical_facts` listesinde bulunmalıdır. Mevcut envantere güvenme; kaynakta olup listede olmayan teknik alan, problem, çözüm, unsur, işlev, işlem akışı, avantaj, teknik etki, kullanım, alternatif, ayırt edici yön veya görsel/şema bilgisi varsa EKLE. Özellikle kaynakta açıkça geçen performans/enerji/gecikme/fiyat-performans sonuçları ile cihaz, işletim sistemi veya operatör altyapısı bağımsızlığı gibi ifadeleri atlama.
 Kişi/sicil/ödül/imza, form talimatları, boş idari alanlar ve yalnız araştırma anahtar kelimeleri `excluded_nontechnical_items` içinde kalmalıdır; bunları technical_facts yapma.
-Her technical fact tek bir atomik teknik anlam taşısın, `id` alanları T001, T002... biçiminde benzersiz ve sıralı olsun, mandatory teknik bilgiler `mandatory=true` olsun.
+Her technical fact tek bir atomik teknik anlam taşısın, `id` alanları T001, T002... biçiminde benzersiz ve sıralı olsun. Teknik olarak sınıflandırılan HER fact tarifnameye aktarılması zorunlu olduğundan `mandatory=true` olmalıdır; teknik bir fact için `mandatory=false` kullanma.
 Mevcut elements/method_steps/formulas/tables/alternatives/use_cases/figure audit alanlarını kaynakla karşılaştır ve eksik teknik içerik varsa tamamla; kaynakta olmayan bilgi ekleme.
 
 HAM KAYNAK PASAJ KAPISI: Aşağıdaki SOURCE_PASSAGE_REGISTRY yerel kod tarafından ham dosyalardan deterministik çıkarılmıştır. HER passage_id `source_passage_audit` içinde TAM BİR KEZ yer almalıdır. Teknik pasaj classification=`technical` olmalı ve en az bir geçerli technical_facts id'sine bağlanmalıdır. Gerçekten idari/form niteliğindeki pasaj classification=`nontechnical` olabilir ancak reason boş bırakılamaz. Teknik içerikli pasajı nontechnical işaretleyerek atlamak yasaktır.
@@ -1169,6 +1176,11 @@ def _validate_technical_fact_inventory(extracted: dict[str, Any]) -> None:
         statement = str(fact.get("statement", "") or "").strip()
         if not fid or not statement:
             raise ValueError("BBF technical_facts envanterinde kimliği veya teknik açıklaması boş madde bulundu.")
+        if fact.get("mandatory", True) is not True:
+            raise ValueError(
+                f"BBF technical_facts envanterinde {fid} teknik bilgi olmasına rağmen mandatory=false işaretlenmiş. "
+                "Tarifname akışında bütün teknik bilgiler zorunlu kapsama tabidir."
+            )
         ids.append(fid)
     if len(ids) != len(set(ids)):
         raise ValueError("BBF technical_facts envanterinde tekrarlanan fact_id bulundu.")
@@ -1210,9 +1222,9 @@ KRİTİK TALİMATLAR:
 - BBF'nin bütün teknik bilgilerini kullan. Uzun önceki teknik, formüller, tablolar, deneysel sonuçlar, alternatifler ve referans tablosu atlanamaz.
 - Yapılandırılmış envanter yalnızca yardımcıdır. Çelişki halinde ham BBF ve açık teknik müşteri belgeleri esas alınır.
 - Örnek tarifnamelerden yalnızca kurguyu öğren; teknik bilgi aktarma.
-- technical_field iki paragraf olmalıdır ve paragraflar \n\n ile ayrılmalıdır. Türkçe çıktıda ilk paragraf yalnız “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile; İngilizce çıktıda ilk paragraf yalnız “The invention relates to ... .”, ikinci paragraf “In particular, the invention relates to ... .” ile başlamalıdır.
+- technical_field iki paragraf olmalıdır ve paragraflar \n\n ile ayrılmalıdır. Türkçe çıktıda ilk paragraf yalnız “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile; İngilizce çıktıda ilk paragraf yalnız “The invention relates to ... .”, ikinci paragraf “In particular, the invention relates to ... .” ile başlamalıdır. Seçilen istem modu “Sistem ve yöntem” ise Türkçe ilk paragrafın sonu özellikle “... sistemi ve yöntemi ile ilgilidir.” olmalıdır; yalnız sistemde “... sistemi ile ilgilidir.”, yalnız yöntemde “... yöntemi ile ilgilidir.” yapısı kullanılmalıdır.
 - ÖNCEKİ TEKNİK'teki aynı anlatımın devamı olan “Özellikle...”, “Bununla birlikte...”, “Bu nedenle...” gibi cümleleri ayrı paragraf yapma. Patent literatürü dokümanları ise ayrı ayrı paragraf olsun.
-- Türkçe tarifnamede her patent literatürü paragrafında doğrulanmış İngilizce başlık ile Türkçe başlık karşılığı birlikte yazılsın. İngilizce tarifnamede özgün İngilizce patent başlığı kullanılsın; Türkçe başlık karşılığı nihai İngilizce metne eklenmesin.
+- Türkçe tarifnamede her patent literatürü paragrafında doğrulanmış İngilizce başlık ile Türkçe başlık karşılığı birlikte yazılsın. Türkçe literatür paragrafı bağlayıcı taslak dilini izlesin: “Literatürde yapılan araştırmalar sonucu ... numaralı, İngilizce başlığı ‘...’ ve Türkçe karşılığı ‘...’ olan patent dokümanına rastlanmıştır. Söz konusu başvuru/doküman ... ile ilgilidir. Ancak bahsedilen başvuruda/dokümanda ... ile ilgili bir emareye rastlanmamıştır.” “Buluşta ise ...” biçiminde karşılaştırmalı görüş/savunma dili kullanılmasın. İngilizce tarifnamede özgün İngilizce patent başlığı kullanılsın; Türkçe başlık karşılığı nihai İngilizce metne eklenmesin.
 - BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı sistem/cihaz unsurlarını tek tek ayrı paragraf yapma; bütün unsur açıklamalarını teknik akış içinde tek sürekli paragrafta topla. Sistem unsuru-yöntem adımı ilişkisini açıklamak için “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü tablo oluşturma. Bu ilişkiyi modül (1), sonraki modül (2) ve ilgili yöntem adımı (1001, 1002...) arasındaki veri/işlev bağlantısını gösteren doğal teknik paragraf olarak yaz. Yalnız ham kaynakta gerçekten sayısal/deneysel veri tablosu olan tabloları tables alanında koru. Gerçekten ayrı bir yapılanma/alternatif/yöntem/çalışma prensibi ayrıca paragraf olabilir.
 - Ana istemde zorunlu teknik çekirdeği kapsayıcı biçimde ver. Aynı işlemin birinci/ikinci/k'ıncı tekrarlarını ana istemde gereksiz yere ayrı satırlara bölme. Bu ayrıntıları, aynı alt akışa aitse tek bağımlı istemde topla.
 - Buluş ağırlıklı olarak yazılım/algoritma/modül/birimlerden oluşuyorsa bağımsız istemleri soyut yazılım olarak bırakma. Kaynakta özel donanım zorunlu değilse geniş bir donanımsal taşıyıcı kullan. Türkçede “bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...”, İngilizcede “software executed on an electronic device ...” veya eşdeğer teknik taşıyıcı dili kullanılabilir. Gereksiz sunucu, cep telefonu/phone veya kişisel bilgisayar daraltması yapma; özel donanım uydurma.
@@ -1227,7 +1239,7 @@ KRİTİK TALİMATLAR:
 - Her bağımlı istem ana isteme göre gerçek bir daraltma sağlamalıdır.
 - Patent literatürü yalnızca ÖNCEKİ TEKNİK bölümünde kullanılsın.
 - Kullanıcıya sunulan tarifname metninde “BBF”, “buluş bildirim formu” veya kaynak dokümana atıf yapan benzer ifadeler kesinlikle bulunmasın; teknik bilgi doğrudan buluş anlatımı olarak yazılsın.
-- YAPILANDIRILMIŞ ENVANTER içindeki `technical_facts` listesinin HER `mandatory=true` maddesi nihai tarifnamede uygun yerde korunmalıdır. Taslak JSON'daki `source_coverage_map` alanında her fact_id için `covered=true`, karşılık bulunduğu bölüm(ler) ve tarifname taslağında birebir geçen en az 20 karakterlik kısa kanıt alıntısı verilmelidir. Bir teknik fact isteme uygun değilse isteme zorla koyma; teknik alan/önceki teknik/kısa açıklama/detaylı açıklama/çalışma prensibi/alternatif/özet içinde uygun yere koy. Hiçbir mandatory fact karşılıksız bırakılamaz.
+- YAPILANDIRILMIŞ ENVANTER içindeki `technical_facts` listesinin HER maddesi nihai tarifnamede uygun yerde korunmalıdır. Teknik olarak sınıflandırılmış bir fact için `mandatory=false` kullanılamaz. Taslak JSON'daki `source_coverage_map` alanında her fact_id için `covered=true`, karşılık bulunduğu bölüm(ler) ve tarifname taslağında birebir geçen en az 20 karakterlik kısa kanıt alıntısı verilmelidir. Bir teknik fact isteme uygun değilse isteme zorla koyma; teknik alan/önceki teknik/kısa açıklama/detaylı açıklama/çalışma prensibi/alternatif/özet içinde uygun yere koy. Hiçbir teknik fact karşılıksız bırakılamaz.
 - Sistem ve yöntem istemleri birlikte oluşturuluyorsa başlık seçilen dile uygun olarak “... Sistemi ve Yöntemi” veya “... System and Method” yapısını taşısın.
 - REFERANS NUMARALARI bölümünde unsur adlarında yalnızca ilk kelimenin ilk harfi büyük olsun; standart teknik kısaltmaları koru. Unsur adları cümle içinde geçtiğinde küçük harfle başlat.
 - Türkçe çıktıda “Buluşun bir gerçekleştirilmesinde” ifadesini kullanma; gerekli yerde “Buluşun bir yapılanmasında” yaz ve “Mevcut buluş” kullanma. İngilizce çıktıda doğal patent dili kullan.
@@ -1302,7 +1314,7 @@ def tarifname_quality_prompt(
     return f"""{TARIFNAME_RULES}
 {language_instruction}
 Aşağıdaki tarifname taslağını kaynaklarla SATIR SATIR ve `technical_facts` bazında karşılaştır ve eksik/yanlış hususları düzelterek tam JSON'u yeniden üret.
-Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi geri eklenmelidir. `technical_facts` içindeki HER mandatory madde için `source_coverage_map` kaydı oluştur; bölüm ve kanıt metni boş bırakılamaz; evidence alanı tarifname taslağında birebir geçen en az 20 karakterlik bir alıntı olmalıdır. Genel “tam” beyanı yeterli değildir.
+Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi geri eklenmelidir. `technical_facts` içindeki HER madde zorunludur ve her biri için `source_coverage_map` kaydı oluştur; bölüm ve kanıt metni boş bırakılamaz; evidence alanı tarifname taslağında birebir geçen en az 20 karakterlik bir alıntı olmalıdır. Genel “tam” beyanı yeterli değildir.
 
 ÖNCEKİ OTOMATİK DOĞRULAMA GERİ BİLDİRİMİ (varsa):
 {validation_feedback or "Yok"}
@@ -1323,9 +1335,9 @@ ZORUNLU KONTROL LİSTESİ:
 12. “Buluşun bir gerçekleştirilmesinde” veya “Mevcut buluş” kalıbı var mı? Varsa “Buluşun bir yapılanmasında” / “Buluş” diline dönüştür.
 13. REFERANS NUMARALARI unsur adları yalnızca ilk kelime büyük olacak biçimde mi? Cümle içindeki unsur adları küçük harfle mi başlıyor?
 14. Önceki teknik kaynakta verilen bütün müşteri teknik arka planını ve eksikliklerini içeriyor mu?
-15. Teknik alan seçilen dilde iki kademeli mi? Türkçede ilk paragraf yalnız “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile; İngilizcede ilk paragraf yalnız “The invention relates to ... .”, ikinci paragraf “In particular, the invention relates to ... .” ile başlamalıdır.
+15. Teknik alan seçilen dilde iki kademeli mi? Türkçede ilk paragraf yalnız “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile; İngilizcede ilk paragraf yalnız “The invention relates to ... .”, ikinci paragraf “In particular, the invention relates to ... .” ile başlamalıdır. İstem modu Sistem ve yöntem ise Türkçe ilk paragraf mutlaka “... sistemi ve yöntemi ile ilgilidir.” şeklinde bitmelidir; yalnız sistem/yöntem modlarında buna uygun tek tür adı kullanılmalıdır.
 16. ÖNCEKİ TEKNİK'te “Özellikle...”, “Bununla birlikte...”, “Bu nedenle...” gibi aynı anlatımın devamları gereksiz yere ayrı paragraf yapılmış mı? Yapılmışsa birleştir.
-17. Patent literatürü başlıkları seçilen dile uygun mu? Türkçe çıktıda İngilizce özgün başlık + Türkçe karşılığı; İngilizce çıktıda özgün İngilizce başlık kullanılmalı.
+17. Patent literatürü başlıkları seçilen dile uygun mu? Türkçe çıktıda İngilizce özgün başlık + Türkçe karşılığı kullanılmalı ve paragraf “Literatürde yapılan araştırmalar sonucu ... rastlanmıştır. Söz konusu başvuru/doküman ... ile ilgilidir. Ancak bahsedilen başvuruda/dokümanda ... ile ilgili bir emareye rastlanmamıştır.” taslak kalıbını izlemelidir. “Buluşta ise ...” dili kullanılmamalıdır. İngilizce çıktıda özgün İngilizce başlık kullanılmalı.
 18. BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı unsurlar gereksiz yere ayrı ayrı paragraflara bölünmüş mü? Bölündüyse tek sürekli unsur paragrafında birleştir.
 19. Detaylı açıklamadaki yöntem madde listesinde ara maddeler virgül, son madde nokta ile bitiyor mu? Kaynakta yöntem referansları verilmişse aynen korunmuş mu; kaynakta hiç referans yoksa 1001, 1002... varsayılan sırası kullanılmış mı? Bağımsız yöntem istemindeki son işlem adımı noktalamasız mı?
 20. Şekil açıklamaları kısa mı ve gerekli olmayan yöntem adımı numara aralıklarını tekrarlamıyor mu?
@@ -1359,7 +1371,7 @@ ZORUNLU KONTROL LİSTESİ:
 48. Türkçe özet tek paragraf ve tek cümle mi? Buluş adı özet bölümünde ayrı başlık olarak kalacak, abstract alanına ikinci paragraf/cümle eklenmeyecek.
 49. İstemlerde standart “olup, özelliği;” dışında noktalı virgül var mı? Varsa virgül veya noktayla düzelt.
 50. Son kalite kapısında şu soruların tamamı EVET mi: kaynak tamlığı, açık referans adları, unsur tanımlama sırası, uzman-nasıl testi, farklılaştırıcı çekirdek, gereksiz kapsam daraltma yokluğu, bağımlı istem tekrarının olmaması, geçerli bağımlılık, örnek ölçülerin istemden uzak tutulması, ürün istem dili, referans senkronizasyonu ve tek paragraf/tek cümle özet?
-51. YAPILANDIRILMIŞ ENVANTER içindeki her mandatory `technical_facts` maddesinin `source_coverage_map` içinde tek tek karşılığı var mı? Her kaydın `covered=true`, en az bir bölüm adı ve tarifname taslağında birebir geçen en az 20 karakterlik gerçek bir kanıt alıntısı var mı? Özellikle teknik avantajlar, ayırt edici yönler ve bağımsızlık/performans sonuçları “benzer anlam var” denilerek atlanmış mı?
+51. YAPILANDIRILMIŞ ENVANTER içindeki HER `technical_facts` maddesinin `source_coverage_map` içinde tek tek karşılığı var mı? Teknik fact için mandatory=false kabul edilmez; Her kaydın `covered=true`, en az bir bölüm adı ve tarifname taslağında birebir geçen en az 20 karakterlik gerçek bir kanıt alıntısı var mı? Özellikle teknik avantajlar, ayırt edici yönler ve bağımsızlık/performans sonuçları “benzer anlam var” denilerek atlanmış mı?
 52. Yazılım/modül ağırlıklı buluşta yalnız “işlemci/donanım” kelimesi geçmesiyle yetinilmiş mi, yoksa modül/yazılımın kaynakta dayanaklı teknik taşıyıcı üzerinde çalıştığı/koşturulduğu açık ilişkiyle yazılmış mı? Kaynak özel taşıyıcı veriyorsa genel elektronik cihaz ifadesi özel taşıyıcıyı silmiş mi?
 53. BULUŞUN DETAYLI AÇIKLAMASI giriş cümlesinde buluş adı cümle içi normal yazımla mı kullanılmış? Başlıktaki Title Case düzeni cümle içine kopyalanmamış mı; SIM/eSIM gibi kısaltmalar korunmuş mu?
 54. REFERANS NUMARALARI bölümündeki yöntem adımları `1001. ...` biçiminde önden yöntem numarasıyla mı yazılmış ve bu satırlarda sistem/cihaz `(1)`, `(2)` türü parantezli referans işaretleri kaldırılmış mı? Parantezli unsur referansları yalnız BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren mi başlıyor? Sistem ve yöntem alt istemlerinin tamamı semantik tekrar kontrolünden geçti mi?
@@ -1368,7 +1380,7 @@ ZORUNLU KONTROL LİSTESİ:
 57. Şekiller çıktı setinde REFERANS NUMARALARI bölümündeki bütün gerçek sistem unsur referansları en az bir kez gösteriliyor mu? Sistem+yöntem şekilleri varsa yöntem adımı referansları da akış şekillerinde tam mı?
 58. Ortak `elektronik işlem birimi üzerinde koşturulan yazılım` üst maddesinin altında yalnız gerçekten yürütülebilir yazılım/modül/kontrolör/arayüz/yığın mı var? Veritabanı/bellek/veri deposu gibi pasif veri taşıyan unsur kaynakça açıkça yürütülebilir değilse ortak gruptan çıkarılmış mı?
 59. BULUŞUN DETAYLI AÇIKLAMASI ve İSTEMLER içinde REFERANS NUMARALARI listesindeki bir unsur adı her geçtiğinde aynı/çekimli unsur adıyla doğru `(N)` referansını taşıyor mu? Özellikle bağımsız ve bağımlı yöntem istemlerindeki gNodeB, arayüz, kontrolör, veritabanı, yığın ve cihaz kullanımları numaralı mı?
-60. Nihai Word üretildikten sonra üç son kapının üçünün de tekrar geçmesi gerekiyor: BBF/KAYNAK TAMLIK, ANA+ALT İSTEM kalite/tekrar/gereklilik, DETAYLI AÇIKLAMA+İSTEMLER REFERANS NUMARASI tamlığı. Sistem alt istemlerinde `bulunmasıdır` kullanılmışsa mutlaka unsur merkezli `olmasıdır/içermesidir` diline dönüştür.
+60. Nihai Word üretildikten sonra ham kaynak zinciri ve beş son kapının tamamı tekrar geçmelidir: ham pasaj -> technical_fact -> nihai Word kanıtı; 1/5 BBF/KAYNAK TAMLIK, 2/5 ANA+ALT İSTEM kalite/tekrar/gereklilik, 3/5 DETAYLI AÇIKLAMA+İSTEMLER REFERANS NUMARASI tamlığı, 4/5 TAM ŞABLON, 5/5 UNSUR/YÖNTEM DİLİ. Sistem alt istemlerinde `bulunmasıdır` kullanılmışsa mutlaka unsur merkezli `olmasıdır/içermesidir` diline dönüştür.
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
 {TARIFNAME_DRAFT_SCHEMA}
@@ -1392,6 +1404,74 @@ EK TEKNİK BELGELER:
 KONTROL EDİLECEK TASLAK:
 {json.dumps(draft, ensure_ascii=False, indent=2)}
 """
+
+
+def _tarifname_visible_draft_for_audit(draft: dict[str, Any]) -> dict[str, Any]:
+    """Kaynak kapsam meta alanlarını dışarıda bırakarak kullanıcıya gidecek teknik taslak içeriğini döndürür."""
+    return {
+        key: value
+        for key, value in draft.items()
+        if key not in {"source_coverage_map", "coverage_audit"}
+    }
+
+
+def tarifname_final_raw_source_audit_prompt(
+    source_passage_registry: list[dict[str, str]],
+    extracted: dict[str, Any],
+    draft: dict[str, Any],
+    language: str = "Türkçe",
+) -> str:
+    visible_draft = _tarifname_visible_draft_for_audit(draft)
+    return f"""{TARIFNAME_RULES}
+Bu işlem tarifname TASLAĞI OLUŞTURULDUKTAN SONRA çalışan bağımsız SON HAM KAYNAK kontrolüdür. Tarifnameyi yeniden yazma.
+Çıktı dili: {language}.
+
+AMAÇ:
+1. Ham kaynak pasaj auditinde `technical` olarak sınıflandırılmış HER passage_id'yi nihai tarifname taslağıyla yeniden karşılaştır.
+2. `technical_facts` içindeki HER fact'i nihai tarifname taslağıyla bağımsız olarak yeniden karşılaştır.
+3. Örnek senaryo, çalışma koşulu, avantaj, teknik etki, alternatif, performans sonucu, karşılaştırma, süreç ayrıntısı ve görselden çıkarılmış teknik bilgi dahil hiçbir teknik anlamı “benzer bir cümle var” diyerek geçme.
+4. `source_coverage_map` ve `coverage_audit` bu kontrolde KANIT değildir; aşağıda bilerek verilmemiştir. Kanıt yalnız kullanıcıya gidecek tarifname taslağının gerçek metninden alınmalıdır.
+5. Her evidence öğesi taslakta BİREBİR geçen en az 20 karakterlik bir alıntı olmalıdır.
+6. En küçük teknik anlam kaybında `covered=false` yap ve `missing_detail` alanında neyin eksik olduğunu açıkça yaz.
+7. passage_checks içinde yalnız source_passage_audit tarafından `technical` sınıflandırılmış pasajlar TAM BİR KEZ yer almalıdır. fact_checks içinde bütün technical_facts kimlikleri TAM BİR KEZ yer almalıdır.
+8. Bütün satırlar covered=true değilse `all_pass=false` olmalıdır.
+
+JSON dışında hiçbir şey yazma.
+ŞEMA:
+{{
+  "passage_checks":[{{"passage_id":"B0001","covered":true,"evidence":["nihai taslaktan birebir alıntı"],"missing_detail":""}}],
+  "fact_checks":[{{"fact_id":"T001","covered":true,"evidence":["nihai taslaktan birebir alıntı"],"missing_detail":""}}],
+  "all_pass":true
+}}
+
+SOURCE_PASSAGE_REGISTRY:
+{json.dumps(source_passage_registry, ensure_ascii=False, indent=2)}
+
+KAYNAK PASAJ SINIFLANDIRMASI VE TECHNICAL FACT ENVANTERİ:
+{json.dumps({"source_passage_audit": extracted.get("source_passage_audit") or [], "technical_facts": extracted.get("technical_facts") or []}, ensure_ascii=False, indent=2)}
+
+KULLANICIYA GİDECEK NİHAİ TASLAK (coverage meta alanları hariç):
+{json.dumps(visible_draft, ensure_ascii=False, indent=2)}
+"""
+
+
+def _visible_draft_text_for_audit(draft: dict[str, Any]) -> str:
+    parts: list[str] = []
+
+    def collect(value: Any) -> None:
+        if isinstance(value, str):
+            if value.strip():
+                parts.append(value)
+        elif isinstance(value, list):
+            for item in value:
+                collect(item)
+        elif isinstance(value, dict):
+            for item in value.values():
+                collect(item)
+
+    collect(_tarifname_visible_draft_for_audit(draft))
+    return "\n".join(parts)
+
 
 def _strip_claim_number(text: str) -> str:
     return re.sub(r"^\s*\d+\s*[.)-]\s*", "", str(text or "")).strip()
@@ -2106,6 +2186,13 @@ def validate_tarifname_draft(
             raise ValueError('The first TECHNICAL FIELD paragraph must consist only of “The invention relates to ... .”')
         if not re.match(r"^In particular,\s*the invention relates to\b", tf_paragraphs[1], flags=re.IGNORECASE):
             raise ValueError('The second TECHNICAL FIELD paragraph must begin with “In particular, the invention relates to ...”.')
+        first_cf = tf_paragraphs[0].casefold()
+        if claim_mode == "Sistem ve yöntem" and not re.search(r"system\s+and\s+method\.?$", first_cf):
+            raise ValueError('For System and Method claim mode, the first TECHNICAL FIELD paragraph must identify the invention as a system and method.')
+        if claim_mode == "Yalnızca sistem" and not re.search(r"system\.?$", first_cf):
+            raise ValueError('For system-only claim mode, the first TECHNICAL FIELD paragraph must identify the invention as a system.')
+        if claim_mode == "Yalnızca yöntem" and not re.search(r"method\.?$", first_cf):
+            raise ValueError('For method-only claim mode, the first TECHNICAL FIELD paragraph must identify the invention as a method.')
     else:
         technical_field = re.sub(r"\s+", " ", technical_field_raw).strip()
         if technical_field and not re.match(r"^Buluş,\s+.+?ile ilgilidir\.", technical_field, flags=re.IGNORECASE):
@@ -2118,6 +2205,13 @@ def validate_tarifname_draft(
             raise ValueError('TEKNİK ALAN ilk paragrafı yalnız “Buluş, ... ile ilgilidir.” giriş cümlesinden oluşmalıdır.')
         if not re.match(r"^Buluş,\s*özellikle\b", tf_paragraphs[1], flags=re.IGNORECASE):
             raise ValueError('TEKNİK ALAN ikinci paragrafı “Buluş, özellikle ...” ile başlamalıdır.')
+        first_cf = tf_paragraphs[0].casefold()
+        if claim_mode == "Sistem ve yöntem" and not re.search(r"sistemi\s+ve\s+yöntemi\s+ile\s+ilgilidir\.$", first_cf):
+            raise ValueError('Sistem ve yöntem istem yapısında TEKNİK ALAN ilk paragrafı “... sistemi ve yöntemi ile ilgilidir.” şeklinde bitmelidir.')
+        if claim_mode == "Yalnızca sistem" and not re.search(r"sistemi\s+ile\s+ilgilidir\.$", first_cf):
+            raise ValueError('Yalnızca sistem istem yapısında TEKNİK ALAN ilk paragrafı “... sistemi ile ilgilidir.” şeklinde bitmelidir.')
+        if claim_mode == "Yalnızca yöntem" and not re.search(r"yöntemi\s+ile\s+ilgilidir\.$", first_cf):
+            raise ValueError('Yalnızca yöntem istem yapısında TEKNİK ALAN ilk paragrafı “... yöntemi ile ilgilidir.” şeklinde bitmelidir.')
 
     steps = draft.get("method_steps") or []
     numbers = [str(x.get("number", "")).strip() for x in steps]
@@ -2199,7 +2293,7 @@ def validate_tarifname_draft(
 
     # BBF atomik teknik bilgi kapsam kapısı.
     if extracted is not None:
-        mandatory_facts = [f for f in (extracted.get("technical_facts") or []) if f.get("mandatory", True)]
+        mandatory_facts = list(extracted.get("technical_facts") or [])
         coverage = draft.get("source_coverage_map") or []
         coverage_by_id = {str(x.get("fact_id", "") or "").strip(): x for x in coverage if str(x.get("fact_id", "") or "").strip()}
         missing_ids: list[str] = []
@@ -2222,7 +2316,7 @@ def validate_tarifname_draft(
             if len(evidence_norm) < 20 or evidence_norm not in searchable:
                 invalid_evidence.append(fid)
         if missing_ids:
-            raise ValueError("BBF tamlık kapısı başarısız: mandatory technical_facts maddelerinin tarifnamede kanıtlı karşılığı yok: " + ", ".join(missing_ids))
+            raise ValueError("BBF tamlık kapısı başarısız: technical_facts maddelerinin tarifnamede kanıtlı karşılığı yok: " + ", ".join(missing_ids))
         if invalid_evidence:
             raise ValueError("BBF tamlık kapısı başarısız: source_coverage_map kanıtı nihai tarifname metninde birebir doğrulanamayan fact_id: " + ", ".join(invalid_evidence))
 
@@ -2316,7 +2410,8 @@ def validate_tarifname_draft(
         if required not in str(draft.get("title", "")).casefold():
             raise ValueError("Sistem ve yöntem istem yapısında başlık yöntem/method ifadesini içermiyor.")
 
-    literature_text = " ".join(str(x or "") for x in (draft.get("literature_paragraphs") or []))
+    literature_paragraphs = [str(x or "").strip() for x in (draft.get("literature_paragraphs") or []) if str(x or "").strip()]
+    literature_text = " ".join(literature_paragraphs)
     for doc_info in literature or []:
         en = str(doc_info.get("title_en", "") or "").strip()
         tr = str(doc_info.get("title_tr", "") or "").strip()
@@ -2324,6 +2419,14 @@ def validate_tarifname_draft(
             raise ValueError(f"Literatür paragrafında patent başlığı eksik: {en}")
         if not _english_spec(language) and tr and tr not in literature_text:
             raise ValueError(f"Literatür paragrafında Türkçe patent başlığı eksik: {tr}")
+    if not _english_spec(language):
+        for idx, paragraph in enumerate(literature_paragraphs, start=1):
+            if not paragraph.startswith("Literatürde yapılan araştırmalar sonucu"):
+                raise ValueError(f"Literatür paragrafı {idx}, bağlayıcı taslaktaki ‘Literatürde yapılan araştırmalar sonucu ...’ başlangıcını kullanmalıdır.")
+            if re.search(r"\bBuluşta\s+ise\b", paragraph, flags=re.IGNORECASE):
+                raise ValueError(f"Literatür paragrafı {idx} görüş/savunma dili içeriyor; ‘Buluşta ise ...’ yerine taslaktaki ‘Ancak ... emareye rastlanmamıştır.’ kalıbı kullanılmalıdır.")
+            if not re.search(r"Ancak\s+.+?ile\s+ilgili\s+bir\s+emareye\s+rastlanmamıştır\.\s*$", paragraph, flags=re.IGNORECASE | re.DOTALL):
+                raise ValueError(f"Literatür paragrafı {idx}, ‘Ancak ... ile ilgili bir emareye rastlanmamıştır.’ kalıbıyla bitmelidir.")
     return warnings
 
 
@@ -2381,6 +2484,14 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
 
     ci, ai = index_of(claims_label), index_of(abstract_label)
     fi, ri = index_of(figures_label), index_of(refs_label)
+    conclusion_text = (
+        "Consequently, the problems described above, which remain unresolved in view of the prior art, have created a need for an improvement in the relevant technical field."
+        if en else
+        "Sonuçta yukarıda bahsedilen ve mevcut teknik ışığında çözülemeyen sorunlar, ilgili teknik alanda bir yenilik yapmayı zorunlu kılmıştır."
+    )
+    conclusion_index = index_of(conclusion_text)
+    if conclusion_index <= 0 or texts[conclusion_index - 1] != "":
+        raise ValueError("Word şablon kontrolü: son önceki-teknik/literatür paragrafı ile ‘Sonuçta/Consequently’ paragrafı arasındaki fiziksel boş paragraf eksik.")
     if paras[ci].alignment != WD_ALIGN_PARAGRAPH.CENTER:
         raise ValueError("Word şablon kontrolü: İSTEMLER/CLAIMS başlığı ortalı değil.")
     if paras[ai].alignment != WD_ALIGN_PARAGRAPH.CENTER:
@@ -2487,26 +2598,33 @@ def validate_tarifname_post_generation_quality(
     claim_mode: str,
     literature: list[dict[str, Any]] | None = None,
     language: str = "Türkçe",
-) -> dict[str, bool]:
-    """Word üretildikten sonra 5 zorunlu kalite kapısını nihai çıktı üzerinde yeniden çalıştırır."""
+    source_passage_registry: list[dict[str, str]] | None = None,
+    final_raw_audit: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Word üretildikten sonra ham-kaynak zincirini ve 5 zorunlu kalite kapısını nihai çıktı üzerinde yeniden çalıştırır."""
     doc = Document(io.BytesIO(data))
     final_text = "\n".join(p.text for p in doc.paragraphs)
 
-    # 1) Kaynak/BBF tamlık kapısı: mandatory fact coverage evidence nihai Word'de gerçekten bulunmalı.
-    mandatory_ids = {
-        str(f.get("id", "") or "").strip()
-        for f in (extracted.get("technical_facts") or [])
-        if f.get("mandatory", True) and str(f.get("id", "") or "").strip()
-    }
-    rows = {str(r.get("fact_id", "") or "").strip(): r for r in (draft.get("source_coverage_map") or [])}
-    missing: list[str] = []
-    for fid in mandatory_ids:
-        row = rows.get(fid) or {}
-        evidence = str(row.get("evidence", "") or "").strip()
-        if row.get("covered") is not True or not (row.get("sections") or []) or len(evidence) < 20 or evidence not in final_text:
-            missing.append(fid)
-    if missing:
-        raise ValueError("ÇIKTI SONRASI KAPI 1/5 — BBF/KAYNAK TAMLIK başarısız: " + ", ".join(sorted(missing)))
+    if not source_passage_registry:
+        raise ValueError("ÇIKTI SONRASI KAPI 1/5 — ham kaynak pasaj envanteri olmadan tarifname indirilemez.")
+    if not final_raw_audit:
+        raise ValueError("ÇIKTI SONRASI KAPI 1/5 — taslak sonrası bağımsız ham kaynak ikinci okuması yapılmadan tarifname indirilemez.")
+
+    # 1A) Taslak üretildikten sonra yapılan bağımsız ham kaynak ikinci okumasını tekrar doğrula.
+    validate_final_raw_source_audit(
+        final_raw_audit,
+        extracted,
+        source_passage_registry,
+        _visible_draft_text_for_audit(draft),
+    )
+
+    # 1B) Ham pasaj -> atomik technical_fact -> source_coverage_map -> nihai Word kanıt zinciri.
+    source_stats = validate_final_source_coverage_chain(
+        extracted,
+        source_passage_registry,
+        draft.get("source_coverage_map") or [],
+        final_text,
+    )
 
     # 2) Ana istem + alt istem kapısı: taslak denetimini Word üretiminden sonra tekrar çalıştır.
     validate_tarifname_draft(draft, claim_mode, literature or [], language, extracted)
@@ -2545,7 +2663,16 @@ def validate_tarifname_post_generation_quality(
     # Ek sert alt-kapı: formüller nihai .docx içinde düz metin değil gerçek Word matematik nesnesidir.
     _validate_word_math_format(data, draft)
 
-    return {"source_completeness": True, "claims": True, "references": True, "template": True, "element_step_language": True, "formula_format": True, "how_test": True}
+    return {
+        "source_completeness": True,
+        "claims": True,
+        "references": True,
+        "template": True,
+        "element_step_language": True,
+        "formula_format": True,
+        "how_test": True,
+        **source_stats,
+    }
 
 
 def render_tarifname_docx_smoke_test(data: bytes) -> None:
@@ -2643,8 +2770,8 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
     for paragraph in [*prior, *literature]:
         tpl_text(12, paragraph)
         tpl_blank(13)
-    # Son içerik paragrafından sonra eklenen normal boşluğu kaldır; şablonda sonuç paragrafının kendi after-space'i vardır.
-    trim_trailing_blanks()
+    # Bağlayıcı şablon: son önceki-teknik/literatür paragrafı ile “Sonuçta...” paragrafı arasında
+    # fiziksel olarak TAM BİR boş paragraf korunur. Bu boşluk trimlenmez.
     tpl_text(16, "Consequently, the problems described above, which remain unresolved in view of the prior art, have created a need for an improvement in the relevant technical field." if en else "Sonuçta yukarıda bahsedilen ve mevcut teknik ışığında çözülemeyen sorunlar, ilgili teknik alanda bir yenilik yapmayı zorunlu kılmıştır.")
     # Kullanıcı tarafından bağlayıcı hale getirilen ek şablon kuralı: sonuç paragrafı
     # ile BULUŞUN KISA AÇIKLAMASI arasında fiziksel olarak tam bir boş paragraf bulunur.
@@ -4450,7 +4577,7 @@ if work_type == "Tarifname oluşturma":
         with c1:
             bbf = st.file_uploader("BBF dosyası", type=["docx", "doc", "pdf", "txt"], key="tar_bbf")
             reference = st.text_input("DP referans numarası", value="")
-            output_name = st.text_input("Çıktı dosyasının adı", value="Tarifname_XXXXXX.docx")
+            st.caption("Tarifname çıktı adı DP referansından otomatik oluşturulur: Tarifname_<DP referansı>.docx")
         with c2:
             language_choice = st.selectbox("Tarifname dili", ["Türkçe", "İngilizce"], index=0)
             claim_choice = st.selectbox(
@@ -4474,17 +4601,15 @@ if work_type == "Tarifname oluşturma":
         )
 
         separate_figures = st.checkbox("Şekilleri ayrı Word dosyası olarak oluştur")
-        fc1, fc2 = st.columns(2)
-        with fc1:
-            figures_output_name = st.text_input("Şekiller dosyasının adı", value="Şekiller_XXXXXX.docx", disabled=not separate_figures)
-        with fc2:
-            figure_files = st.file_uploader(
-                "Ayrıca kullanılacak şekil dosyaları",
-                type=["png", "jpg", "jpeg", "webp", "svg", "docx", "pdf"],
-                accept_multiple_files=True,
-                key="tar_figures",
-                disabled=not separate_figures,
-            )
+        if separate_figures:
+            st.caption("Şekiller çıktı adı DP referansından otomatik oluşturulur: Şekiller_<DP referansı>.docx")
+        figure_files = st.file_uploader(
+            "Ayrıca kullanılacak şekil dosyaları",
+            type=["png", "jpg", "jpeg", "webp", "svg", "docx", "pdf"],
+            accept_multiple_files=True,
+            key="tar_figures",
+            disabled=not separate_figures,
+        )
         if separate_figures:
             st.caption(
                 "Şekiller Word'e alınmadan önce nihai REFERANS NUMARALARI ile otomatik çapraz kontrol edilir. "
@@ -4504,8 +4629,11 @@ if work_type == "Tarifname oluşturma":
     if submit:
         if bbf is None:
             st.error("BBF yükleyin.")
+        elif not str(reference or "").strip():
+            st.error("DP referans numarasını girin. Tarifname ve varsa Şekiller dosya adları bu numaradan otomatik oluşturulur.")
         else:
             try:
+                output_name, figures_output_name = derive_tarifname_output_names(reference)
                 progress = st.progress(0, text="Kaynak dosyalar okunuyor...")
                 bbf_asset = UploadedAsset(bbf.name, bbf.getvalue(), bbf.type)
                 source = extract_text_from_asset(bbf_asset)
@@ -4588,6 +4716,7 @@ if work_type == "Tarifname oluşturma":
 
                 validation_feedback = ""
                 warnings: list[str] = []
+                final_raw_audit: dict[str, Any] = {}
                 for repair_round in range(3):
                     if mode == "Yalnızca sistem":
                         draft["method_claim"] = None
@@ -4600,6 +4729,19 @@ if work_type == "Tarifname oluşturma":
                     draft = apply_tarifname_house_style(draft, mode, lit_docs, language_choice)
                     try:
                         warnings = validate_tarifname_draft(draft, mode, lit_docs, language_choice, extracted)
+                        progress.progress(80 + repair_round * 3, text="Taslak oluşturuldu; ham BBF ve ek teknik kaynaklarla bağımsız son ikinci okuma yapılıyor...")
+                        final_raw_audit = ask_json(
+                            tarifname_final_raw_source_audit_prompt(
+                                source_passage_registry, extracted, draft, language_choice
+                            ),
+                            images=model_images,
+                        )
+                        validate_final_raw_source_audit(
+                            final_raw_audit,
+                            extracted,
+                            source_passage_registry,
+                            _visible_draft_text_for_audit(draft),
+                        )
                         break
                     except ValueError as validation_exc:
                         validation_feedback = str(validation_exc)
@@ -4616,9 +4758,9 @@ if work_type == "Tarifname oluşturma":
                 for warning in warnings:
                     st.warning(warning)
 
-                technical_facts = [f for f in (extracted.get("technical_facts") or []) if f.get("mandatory", True)]
+                technical_facts = list(extracted.get("technical_facts") or [])
                 coverage_rows = draft.get("source_coverage_map") or []
-                with st.expander(f"BBF teknik bilgi kapsam kontrolü ({len(technical_facts)}/{len(technical_facts)} zorunlu teknik bilgi eşleştirildi)", expanded=False):
+                with st.expander(f"BBF teknik bilgi kapsam kontrolü ({len(technical_facts)}/{len(technical_facts)} teknik bilgi eşleştirildi)", expanded=False):
                     by_id = {str(r.get("fact_id", "")): r for r in coverage_rows}
                     for fact in technical_facts:
                         fid = str(fact.get("id", ""))
@@ -4626,14 +4768,30 @@ if work_type == "Tarifname oluşturma":
                         sections = ", ".join(map(str, row.get("sections") or []))
                         st.write(f"✅ {fid}: {fact.get('statement','')} — {sections}")
 
-                progress.progress(88, text="Word dosyası hazırlanıyor ve şablon yapısı doğrulanıyor...")
+                progress.progress(88, text="Word dosyası hazırlanıyor; ham kaynak zinciri ve beş son kalite kapısı nihai Word üzerinde tekrar doğrulanıyor...")
                 data = build_tarifname_docx(draft, language_choice)
                 validate_tarifname_docx_structure(data, draft, language_choice)
                 final_gates = validate_tarifname_post_generation_quality(
-                    data, draft, extracted, mode, lit_docs, language_choice
+                    data,
+                    draft,
+                    extracted,
+                    mode,
+                    lit_docs,
+                    language_choice,
+                    source_passage_registry=source_passage_registry,
+                    final_raw_audit=final_raw_audit,
                 )
                 render_tarifname_docx_smoke_test(data)
-                st.success("Son kalite kapıları: ✅ 1/5 Ham kaynak/BBF tamlığı  ✅ 2/5 Ana + alt istemler  ✅ 3/5 Referanslar  ✅ 4/5 Tam şablon  ✅ 5/5 Unsur/yöntem dili")
+                required_final_gates = ["source_completeness", "claims", "references", "template", "element_step_language"]
+                if not all(final_gates.get(key) is True for key in required_final_gates):
+                    raise ValueError("Nihai tarifname kalite kapılarının tamamı doğrulanmadan indirme açılamaz.")
+                st.success(
+                    f"Ham veri kontrolü yapıldı: {final_gates['raw_passages_total']} ham kaynak pasajı tam bir kez sınıflandırıldı; "
+                    f"{final_gates['technical_passages']} teknik ham pasaj ve {final_gates['technical_facts']} atomik teknik bilgi "
+                    "nihai Word metnindeki gerçek kanıtlarla doğrulandı."
+                )
+                st.success("Kontrol kapıları tamamlandı: ✅ 1/5 Ham kaynak/BBF tamlığı  ✅ 2/5 Ana + alt istemler  ✅ 3/5 Referanslar  ✅ 4/5 Tam şablon  ✅ 5/5 Unsur/yöntem dili")
+                st.caption("Tarifname Word indirmesi yalnız ham veri ikinci okuması ve bütün son kalite kapıları başarıyla tamamlandığında açılır.")
 
                 figure_data = None
                 figure_reports: list[dict[str, Any]] = []
@@ -4690,7 +4848,7 @@ if work_type == "Tarifname oluşturma":
                 st.download_button(
                     "Tarifname Word dosyasını indir",
                     data=data,
-                    file_name=safe_output_name(output_name, "Tarifname.docx"),
+                    file_name=safe_output_name(output_name, f"Tarifname_{str(reference).strip()}.docx"),
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     type="primary",
                 )
@@ -4717,7 +4875,7 @@ if work_type == "Tarifname oluşturma":
                     st.download_button(
                         "Şekiller Word dosyasını indir",
                         data=figure_data,
-                        file_name=safe_output_name(figures_output_name, "Şekiller.docx"),
+                        file_name=safe_output_name(figures_output_name, f"Şekiller_{str(reference).strip()}.docx"),
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     )
             except Exception as exc:

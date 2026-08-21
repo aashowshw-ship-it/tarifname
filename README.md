@@ -1,6 +1,6 @@
-# Patent Atölyesi v5.4.28
+# Patent Atölyesi v5.4.29
 
-Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 14.08.2026 tarihli güncel tam sürümüdür.
+Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 21.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme — ESKİ DOSYALARIN KALMAMASI ÖNEMLİ
 
@@ -86,9 +86,9 @@ Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün
 - Önceki teknik bölümündeki müşteri anlatımı eksiksiz korunur; patent literatürü bunun yerine geçmez.
 - Tarifname oluşturma arayüzünde `Mevcut/revize tarifname` alanı yoktur. Mevcut bir tarifnamenin değiştirilmesi ileride ayrı `Tarifname düzenleme` iş akışında ele alınacaktır; yeni tarifname oluşturma akışına karıştırılmaz.
 - Şekiller seçimi literatür araştırmasından önce gösterilir.
-- `TEKNİK ALAN` **iki paragraf** halinde kurulur. İlk paragraf yalnızca tek giriş cümlesidir ve `Buluş, ... ile ilgilidir.` biçiminde biter. Ardından mutlaka yeni paragraf açılır; ikinci paragraf `Buluş, özellikle ...` ile başlar ve teknik alanın ayrıntısını verir. İkinci paragraf `Sistem ve yöntem...` gibi bir ifadeyle başlatılmaz.
+- `TEKNİK ALAN` **iki paragraf** halinde kurulur. İlk paragraf yalnızca tek giriş cümlesidir. Sistem+yöntem istem yapısında ilk paragraf `Buluş, ... sistemi ve yöntemi ile ilgilidir.` şeklinde; yalnız sistemde `... sistemi ile ilgilidir.`, yalnız yöntemde `... yöntemi ile ilgilidir.` şeklinde biter. Ardından mutlaka yeni paragraf açılır; ikinci paragraf `Buluş, özellikle ...` ile başlar ve teknik alanın ayrıntısını verir. İkinci paragraf `Sistem ve yöntem...` gibi bir ifadeyle başlatılmaz.
 - `ÖNCEKİ TEKNİK` içinde aynı anlatımın devamı olan `Özellikle`, `Bununla birlikte`, `Bu nedenle` gibi cümleler gereksiz yere ayrı paragraf yapılmaz.
-- Türkçe tarifnamede patent literatürü paragraflarında doğrulanmış İngilizce başlık ve Türkçe karşılığı birlikte yazılır. İngilizce tarifnamede özgün İngilizce patent başlığı kullanılır.
+- Türkçe tarifnamede patent literatürü paragraflarında doğrulanmış İngilizce başlık ve Türkçe karşılığı birlikte yazılır. Paragraf bağlayıcı taslak dilinde `Literatürde yapılan araştırmalar sonucu ... rastlanmıştır. Söz konusu başvuru/doküman ... ile ilgilidir. Ancak bahsedilen başvuruda/dokümanda ... ile ilgili bir emareye rastlanmamıştır.` yapısını izler; `Buluşta ise ...` biçiminde görüş/savunma dili kullanılmaz. İngilizce tarifnamede özgün İngilizce patent başlığı kullanılır.
 - `BULUŞUN DETAYLI AÇIKLAMASI` içinde referanslı unsurlar tek tek ayrı paragraf yapılmaz; unsur açıklamaları tek sürekli paragrafta birleştirilir.
 - Detaylı açıklamadaki yöntem işlem adımlarında ara maddeler virgülle, son madde noktayla biter. Türkçe bağımsız yöntem isteminde ara işlem adımları virgülle, **son işlem adımı noktalamasız** biter ve ardından `işlem adımlarını içermesidir.` yazılır. İngilizce istemlerde doğal `comprising:` claim yapısı kullanılır.
 - `Tarifname_181176_template.docx` fontların yanı sıra boş satır, 1,5 satır aralığı, gerçek Word madde işaretleri/numaralandırması ve istemler arası boşluk bakımından da birebir bağlayıcıdır.
@@ -317,3 +317,15 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Araştırma raporlarında yalnız X/Y dokümanları savunulur; A kategorisi savunma dokümanı değildir.
 - Revizyon/Markup varsa bütün fiziksel sayfa-satır dayanakları son Markup dosyasından hesaplanır. Temiz sürüm veya ilk yüklenen tarifname bu iş için kullanılmaz.
 - Word üretiminden hemen önce alıntı metni ve sayfa/satır konumu ikinci kez doğrulanır; eşleşme yoksa çıktı bloke edilir.
+
+
+## v5.4.29 — DP otomatik çıktı adı + son ham-BBF ikinci okuma kapısı (21.08.2026)
+
+- Tarifname oluşturma ekranında **DP referans numarası çıktı adının tek kaynağıdır**. Ayrı `Çıktı dosyasının adı` ve `Şekiller dosyasının adı` soruları kaldırıldı. Örneğin DP `181267` ise çıktılar otomatik `Tarifname_181267.docx` ve şekiller seçilmişse `Şekiller_181267.docx` olur. DP referansı boşsa üretim başlamaz.
+- `technical_facts` listesine alınmış teknik bir bilgi artık `mandatory=false` ile kapsam dışına çıkarılamaz. Kaynaktaki bütün teknik facts, örnek senaryo/koşul/avantaj/teknik etki/alternatif dahil, nihai tarifnamede uygun bir bölümde korunmak zorundadır.
+- Tarifname taslağı üretildikten sonra **bağımsız son ham kaynak ikinci okuması** çalışır. Bu tur önceki `source_coverage_map` beyanını kanıt saymaz; her technical ham pasajı ve her technical_fact'i kullanıcıya gidecek gerçek taslak metninden birebir alıntıyla yeniden kontrol eder. Eksik tek pasaj/fact varsa aynı tıklama içinde düzeltme turuna dönülür.
+- Word üretildikten sonra `ham pasaj → technical_fact → source_coverage_map → nihai Word kanıtı` zinciri deterministik olarak tekrar doğrulanır. Sonrasında 5 kapı yeniden çalışır: **1/5 Ham kaynak/BBF tamlığı, 2/5 Ana+alt istemler, 3/5 Referanslar, 4/5 Tam şablon, 5/5 Unsur/yöntem dili**. Bunlardan herhangi biri geçmezse indirme düğmesi açılmaz.
+- Başarılı üretimde arayüz açıkça `Ham veri kontrolü yapıldı` mesajını verir ve kontrol edilen ham pasaj, teknik pasaj ve atomik teknik bilgi sayılarını gösterir. Bu mesaj yalnız gerçek kontroller başarıyla tamamlandığında gösterilir.
+- Sistem+yöntem tarifnamesinde TEKNİK ALAN ilk cümlesi `Buluş, ... sistemi ve yöntemi ile ilgilidir.` kalıbıyla bitmek zorundadır.
+- Türkçe patent literatürü paragrafı bağlayıcı taslaktaki `Ancak ... ile ilgili bir emareye rastlanmamıştır.` diliyle biter; `Buluşta ise ...` kullanımı kalite kapısında reddedilir.
+- Son patent literatürü/önceki teknik paragrafı ile `Sonuçta yukarıda bahsedilen...` paragrafı arasında **tam bir fiziksel boş paragraf** zorunludur; bu boşluk Word tam şablon kapısında ayrıca doğrulanır.

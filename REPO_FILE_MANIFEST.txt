@@ -33,3 +33,4 @@ test_v5425_gorus_raw_source_quality_gate.py
 test_v5426_ep_xy_rules.py
 test_v5427_minimal_markup.py
 test_v5428_opinion_modes_page_line_gate.py
+test_v5429_dp_name_raw_source_gate.py
