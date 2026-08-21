@@ -5,9 +5,9 @@ from gorus_audit import build_gorus_quality_report
 ROOT=Path(__file__).resolve().parent
 
 def test_version_and_readme_are_synced():
-    assert APP_VERSION == "v5.4.30"
-    assert RULESET_VERSION == "2026-08-21.v20"
-    assert (ROOT/'README.md').read_text(encoding='utf-8').startswith('# Patent Atölyesi v5.4.30')
+    assert APP_VERSION == "v5.4.32"
+    assert RULESET_VERSION == "2026-08-21.v22"
+    assert (ROOT/'README.md').read_text(encoding='utf-8').startswith('# Patent Atölyesi v5.4.32')
 
 def test_exact_four_opinion_modes_are_visible_in_order():
     src=(ROOT/'app.py').read_text(encoding='utf-8')

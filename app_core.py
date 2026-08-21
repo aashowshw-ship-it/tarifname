@@ -377,29 +377,39 @@ def extract_embedded_images(asset: UploadedAsset) -> list[UploadedAsset]:
     return images
 
 
-def _append_word_field(run, field_name: str) -> None:
+def _append_word_field(paragraph, field_name: str, cached_text: str = "1") -> None:
+    """Geçerli Word fldSimple alanı ekler; alan doğrudan paragraf altında, biçimli sonuç run'ı içerir."""
     fld = OxmlElement("w:fldSimple")
     fld.set(qn("w:instr"), field_name)
-    run._r.append(fld)
+    fld.set(qn("w:dirty"), "true")
+    r = OxmlElement("w:r")
+    rpr = OxmlElement("w:rPr")
+    fonts = OxmlElement("w:rFonts")
+    fonts.set(qn("w:ascii"), "Arial")
+    fonts.set(qn("w:hAnsi"), "Arial")
+    rpr.append(fonts)
+    sz = OxmlElement("w:sz"); sz.set(qn("w:val"), "22"); rpr.append(sz)
+    szcs = OxmlElement("w:szCs"); szcs.set(qn("w:val"), "22"); rpr.append(szcs)
+    b = OxmlElement("w:b"); b.set(qn("w:val"), "0"); rpr.append(b)
+    r.append(rpr)
+    t = OxmlElement("w:t"); t.text = cached_text; r.append(t)
+    fld.append(r)
+    paragraph._p.append(fld)
 
 
 def _add_figures_page_counter(section) -> None:
-    """Şekiller şablonundaki `1 / 3` mantığını dinamik PAGE / NUMPAGES alanlarıyla kurar."""
+    """Şekiller şablonundaki `1 / 3` mantığını dinamik PAGE / NUMPAGES alanlarıyla, üstte ortalı Arial 11 olarak kurar."""
     header = section.header
     p = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    # Header tekrar üretilirse eski içeriği temizle.
+    # Header tekrar üretilirse eski içeriği temizle; pPr hizalama bilgisi korunur.
     for child in list(p._element):
-        p._element.remove(child)
-    r1 = p.add_run()
-    _append_word_field(r1, "PAGE")
-    p.add_run(" / ")
-    r2 = p.add_run()
-    _append_word_field(r2, "NUMPAGES")
-    for run in p.runs:
-        run.font.name = "Arial"
-        run.font.size = Pt(10)
-        run.bold = True
+        if child.tag != qn("w:pPr"):
+            p._element.remove(child)
+    _append_word_field(p, "PAGE", "1")
+    sep = p.add_run(" / ")
+    sep.font.name = "Arial"; sep.font.size = Pt(11); sep.bold = False
+    _append_word_field(p, "NUMPAGES", "1")
 
 
 def _figure_dimensions_cm(data: bytes, max_width_cm: float = 16.5, max_height_cm: float = 20.5) -> tuple[float, float]:
@@ -761,6 +771,46 @@ def prepare_figures_with_reference_audit(
         unresolved.append("Şekil/akış setinde gösterilmeyen yöntem adımı referansları: " + ", ".join(missing_methods))
 
     return prepared, reports, unresolved
+
+
+def validate_figures_docx_structure(data: bytes) -> None:
+    """Ayrı şekiller Word'ünde üst PAGE / NUMPAGES sayacı ve Arial 11 biçimini doğrular."""
+    doc = Document(io.BytesIO(data))
+    if not doc.sections:
+        raise ValueError("ŞEKİLLER kalite kapısı: section bulunamadı.")
+    for sec_idx, section in enumerate(doc.sections, start=1):
+        header = section.header
+        instr = []
+        for node in header._element.iter():
+            tag = str(node.tag)
+            if tag.endswith("}instrText") or tag.endswith("instrText"):
+                instr.append((node.text or "").strip().upper())
+            if tag.endswith("}fldSimple") or tag.endswith("fldSimple"):
+                for key, value in node.attrib.items():
+                    if str(key).endswith("}instr") or str(key).endswith("instr"):
+                        instr.append(str(value or "").strip().upper())
+        if "PAGE" not in instr or "NUMPAGES" not in instr:
+            raise ValueError(f"ŞEKİLLER kalite kapısı: {sec_idx}. section üst bilgisinde PAGE / NUMPAGES alanları yok.")
+        if not header.paragraphs or header.paragraphs[0].alignment != WD_ALIGN_PARAGRAPH.CENTER:
+            raise ValueError("ŞEKİLLER kalite kapısı: sayfa sayacı sayfanın üstünde ortalı olmalıdır.")
+        # fldSimple Word alanları doğrudan paragraf altında bulunmalı; run içine gömülen geçersiz alanlar
+        # LibreOffice/Word render'ında yalnız '/' görünmesine yol açabildiği için reddedilir.
+        fld_nodes = [node for node in header._element.iter() if str(node.tag).endswith("}fldSimple") or str(node.tag).endswith("fldSimple")]
+        for fld in fld_nodes:
+            parent = fld.getparent()
+            if parent is None or not str(parent.tag).endswith("}p"):
+                raise ValueError("ŞEKİLLER kalite kapısı: PAGE / NUMPAGES alanı doğrudan header paragrafı altında olmalıdır.")
+            cached = [str(x.text or "").strip() for x in fld.iter() if str(x.tag).endswith("}t") and str(x.text or "").strip()]
+            if not cached:
+                raise ValueError("ŞEKİLLER kalite kapısı: PAGE / NUMPAGES alanının render edilebilir önbellek sonucu bulunmalıdır.")
+        runs = [r for p in header.paragraphs for r in p.runs if (r.text or "").strip() or 'fldChar' in r._r.xml or 'instrText' in r._r.xml]
+        for run in runs:
+            if run.font.name not in {None, "Arial"}:
+                raise ValueError("ŞEKİLLER kalite kapısı: sayfa sayacı Arial olmalıdır.")
+            if run.font.size is not None and abs(run.font.size.pt - 11.0) > 0.05:
+                raise ValueError("ŞEKİLLER kalite kapısı: sayfa sayacı Arial 11 punto olmalıdır.")
+            if run.bold is True:
+                raise ValueError("ŞEKİLLER kalite kapısı: sayfa sayacı normal kalınlıkta olmalıdır.")
 
 
 def build_figures_docx(images: list[UploadedAsset], language: str = "Türkçe") -> bytes:
@@ -1816,6 +1866,10 @@ def apply_tarifname_house_style(
         for old, new in [
             ("Buluşun bir gerçekleştirilmesinde", "Buluşun bir yapılanmasında"),
             ("buluşun bir gerçekleştirilmesinde", "buluşun bir yapılanmasında"),
+            ("Bir gerçekleştirimde", "Buluşun bir yapılanmasında"),
+            ("bir gerçekleştirimde", "buluşun bir yapılanmasında"),
+            ("Bir gerçekleştirmede", "Buluşun bir yapılanmasında"),
+            ("bir gerçekleştirmede", "buluşun bir yapılanmasında"),
             ("Mevcut buluş", "Buluş"),
             ("mevcut buluş", "buluş"),
             ("Buluş özellikle", "Buluş, özellikle"),
@@ -1828,6 +1882,12 @@ def apply_tarifname_house_style(
         if alternatives:
             draft["alternatives"] = [" ".join(alternatives)]
     draft["title"] = _ensure_title_for_claim_mode(draft.get("title", ""), claim_mode, language)
+    if not _english_spec(language):
+        draft["title"] = _normalize_turkish_invention_title(draft.get("title", ""))
+        prior_paras = [str(x or "").strip() for x in (draft.get("prior_art_general_paragraphs") or []) if str(x or "").strip()]
+        if prior_paras and re.match(r"^Bu eksiklikler\b", prior_paras[-1], flags=re.IGNORECASE):
+            prior_paras[-1] = re.sub(r"^Bu eksiklikler", "Yukarıda belirtilen eksiklikler", prior_paras[-1], flags=re.IGNORECASE)
+            draft["prior_art_general_paragraphs"] = prior_paras
     _assign_missing_element_numbers(draft)
     _normalize_method_step_numbers(draft)
     _convert_mapping_tables_to_prose(draft, language)
@@ -2277,12 +2337,127 @@ def _validate_turkish_reference_sentence_case(draft: dict[str, Any], language: s
         raise ValueError("BULUŞUN DETAYLI AÇIKLAMASI/İSTEMLER içinde unsur adları Title Case yazılamaz. Yasak varyant: " + "; ".join(sorted(set(forbidden))))
 
 
+def _normalize_turkish_invention_title(title: str) -> str:
+    """Bağlayıcı tarifname başlık biçimi: anlam taşıyan normal sözcükler Title Case, bağlaç/ilgeçler küçük, teknik kısaltmalar korunur."""
+    text = re.sub(r"\s+", " ", str(title or "").strip())
+    stop = {"ve", "ile", "veya", "için", "ile", "de", "da"}
+    first_seen = False
+
+    def repl(match: re.Match[str]) -> str:
+        nonlocal first_seen
+        word = match.group(0)
+        is_acronym = len(word) > 1 and word.isupper()
+        low = _tr_lower(word)
+        if is_acronym:
+            first_seen = True
+            return word
+        if first_seen and low in stop:
+            return low
+        first_seen = True
+        return low[:1].upper() + low[1:]
+
+    return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşüÂâÎîÛû]+", repl, text)
+
+
+def _strip_claim_reference_marks(text: str, refs: list[str] | None = None) -> str:
+    """Yalnız gerçek unsur/işlem referans parantezlerini kaldırır; (RRC), (QoS) gibi teknik kısaltmaları korur."""
+    out = str(text or "")
+    known = [str(x or "").strip() for x in (refs or []) if str(x or "").strip()]
+    if known:
+        for ref in sorted(set(known), key=len, reverse=True):
+            out = re.sub(r"\s*\(\s*" + re.escape(ref) + r"\s*\)", "", out)
+    else:
+        out = re.sub(r"\s*\(\s*\d{1,6}\s*\)", "", out)
+    return out.strip()
+
+
+def _validate_unumbered_claim_mirror(draft: dict[str, Any], claim_mode: str, language: str = "Türkçe") -> None:
+    if _english_spec(language):
+        return
+    definition = str(draft.get("unumbered_invention_definition") or draft.get("unumbered_system_definition") or "").strip()
+    features = [str(x or "").strip() for x in (draft.get("unumbered_invention_features") or draft.get("unumbered_system_elements") or []) if str(x or "").strip()]
+    source_claim = draft.get("system_claim") if draft.get("system_claim") else draft.get("method_claim")
+    if not source_claim:
+        return
+    preamble = str(source_claim.get("preamble", "") or "").strip().rstrip(" ,;:")
+    refs = [str(e.get("number", "") or "").strip() for e in (draft.get("elements") or [])]
+    refs += [str(x.get("number", "") or "").strip() for x in (draft.get("method_steps") or [])]
+    expected_definition = _strip_claim_reference_marks(preamble, refs) + " olup, özelliği;"
+    claim_items = _system_claim_all_texts(source_claim) if draft.get("system_claim") else [str(x or "") for x in (source_claim.get("steps") or [])]
+    expected_features = [_strip_claim_reference_marks(x, refs) for x in claim_items]
+    def norm(x: str) -> str:
+        return re.sub(r"\s+", " ", str(x or "").strip())
+    if norm(definition) != norm(expected_definition):
+        raise ValueError("BULUŞUN KISA AÇIKLAMASI numarasız buluş tanımı ana istem preamble metninin yalnız referansları çıkarılmış birebir kopyası olmalıdır.")
+    if [norm(x) for x in features] != [norm(x) for x in expected_features]:
+        raise ValueError("BULUŞUN KISA AÇIKLAMASI numarasız teknik özellik listesi ana istem unsurlarının/işlem adımlarının yalnız parantezli referansları çıkarılmış birebir kopyası olmalıdır; salt unsur adı listesi kullanılamaz.")
+
+
+def _validate_detailed_element_cohesion(draft: dict[str, Any], language: str = "Türkçe") -> None:
+    if _english_spec(language) or not (draft.get("elements") or []):
+        return
+    paras = [str(x or "").strip() for x in (draft.get("detailed_paragraphs") or []) if str(x or "").strip()]
+    if not paras:
+        raise ValueError("BULUŞUN DETAYLI AÇIKLAMASI unsur-açıklama paragrafı bulunamadı.")
+    first = paras[0]
+    missing = []
+    for e in draft.get("elements") or []:
+        n = str(e.get("number", "") or "").strip(); name = str(e.get("name", "") or "").strip()
+        if n and name and not re.search(_reference_mention_pattern(name).pattern + r"\s*\(\s*" + re.escape(n) + r"\s*\)", first, flags=re.IGNORECASE):
+            missing.append(f"{name} ({n})")
+    if missing:
+        raise ValueError("BULUŞUN DETAYLI AÇIKLAMASI ilk sürekli unsur paragrafı bütün sistem unsurlarını içermelidir; ayrı modül paragraflarına bölünemez. Eksik: " + "; ".join(missing))
+    # Sonraki paragraflar aynı unsur zincirini yeni paragraf gibi başlatamaz.
+    for idx, para in enumerate(paras[1:], start=2):
+        for e in draft.get("elements") or []:
+            n = str(e.get("number", "") or "").strip(); name = str(e.get("name", "") or "").strip()
+            if n and name and re.match(r"^" + _reference_mention_pattern(name).pattern + r"\s*\(\s*" + re.escape(n) + r"\s*\)\s*,", para, flags=re.IGNORECASE):
+                raise ValueError(f"BULUŞUN DETAYLI AÇIKLAMASI {idx}. paragrafı aynı unsur zincirini '{name} ({n})' ile yeniden başlatıyor; unsur açıklamaları tek sürekli paragrafta birleştirilmelidir.")
+
+
+def _validate_realization_wording(draft: dict[str, Any], language: str = "Türkçe") -> None:
+    if _english_spec(language):
+        return
+    visible = json.dumps(draft, ensure_ascii=False)
+    if re.search(r"\bbir\s+gerçekleştirim(?:de|inde)?\b|\bbir\s+gerçekleştirme(?:de|sinde)?\b|\bbuluşun\s+bir\s+gerçekleştirilmesinde\b", visible, flags=re.IGNORECASE):
+        raise ValueError("Tarifname dilinde 'bir gerçekleştirimde/bir gerçekleştirmede/buluşun bir gerçekleştirilmesinde' kullanılamaz; 'Buluşun bir yapılanmasında' yazılmalıdır.")
+
+
+def _validate_figure_description_style(draft: dict[str, Any], language: str = "Türkçe") -> None:
+    if _english_spec(language):
+        return
+    for idx, txt in enumerate(draft.get("figure_descriptions") or [], start=1):
+        t = str(txt or "").strip()
+        if re.search(r"\b\d{1,4}\s*[-–]\s*\d{1,4}\b", t) or re.search(r"\b(?:referanslı|numaralı)\s+(?:teknik\s+)?(?:unsur|işlem\s+adım)", t, flags=re.IGNORECASE):
+            raise ValueError(f"Şekil {idx} kısa açıklamasında unsur/adım numarası veya numara aralığı tekrarlanamaz; yalnız şeklin gösterdiği veri/kontrol/işlem ilişkisi açıklanmalıdır.")
+
+
+def _validate_prior_art_bridge_and_depth(draft: dict[str, Any], extracted: dict[str, Any] | None, language: str = "Türkçe") -> None:
+    if _english_spec(language):
+        return
+    paras = [str(x or "").strip() for x in (draft.get("prior_art_general_paragraphs") or []) if str(x or "").strip()]
+    if paras and not re.match(r"^Yukarıda belirtilen eksiklikler\b", paras[-1], flags=re.IGNORECASE):
+        raise ValueError("ÖNCEKİ TEKNİK son genel köprü paragrafı 'Yukarıda belirtilen eksiklikler, ...' biçiminde önceki paragraflara açıkça bağlanmalıdır.")
+    if not extracted:
+        return
+    relevant = [f for f in (extracted.get("technical_facts") or []) if str(f.get("category", "") or "").strip().casefold() in {"önceki_teknik", "onceki_teknik", "problem"}]
+    if len(relevant) >= 4:
+        required = min(7, max(4, len(relevant)))
+        if len(paras) < required:
+            raise ValueError(f"ÖNCEKİ TEKNİK kaynakta {len(relevant)} ayrı önceki-teknik/problem fact'i içeriyor; müşteri anlatımı kısa özetlenemez ve en az {required} gelişmiş genel paragrafla kapsanmalıdır (patent literatürü hariç).")
+        if sum(len(x) for x in paras) < 2400:
+            raise ValueError("ÖNCEKİ TEKNİK müşteri kaynak anlatımına göre fazla kısa; genel önceki teknik gövdesi en az 2400 karakter ayrıntılı teknik neden-sonuç açıklaması içermelidir.")
+
+
 def _validate_turkish_title_style(draft: dict[str, Any], language: str = "Türkçe") -> None:
     if _english_spec(language):
         return
     title = str(draft.get("title", "") or "").strip()
     if "(" in title or ")" in title:
         raise ValueError("Türkçe buluş başlığında parantez içi İngilizce karşılık/kısaltma bulunamaz; daha genel kaynak destekli başlık kullanın.")
+    expected = _normalize_turkish_invention_title(title)
+    if title != expected:
+        raise ValueError(f"Türkçe buluş başlığı bağlayıcı Title Case biçiminde olmalıdır. Beklenen: {expected}")
 
 
 def _validate_related_alternative_paragraphs(draft: dict[str, Any], language: str = "Türkçe") -> None:
@@ -2331,6 +2506,11 @@ def validate_tarifname_draft(
     _validate_turkish_reference_sentence_case(draft, language)
     _validate_related_alternative_paragraphs(draft, language)
     _validate_prior_art_source_placement(draft, extracted, language)
+    _validate_prior_art_bridge_and_depth(draft, extracted, language)
+    _validate_unumbered_claim_mirror(draft, claim_mode, language)
+    _validate_detailed_element_cohesion(draft, language)
+    _validate_realization_wording(draft, language)
+    _validate_figure_description_style(draft, language)
     technical_field_raw = str(draft.get("technical_field", "") or "").strip()
     tf_paragraphs = [x.strip() for x in re.split(r"\n\s*\n", technical_field_raw) if x.strip()]
     if _english_spec(language):
@@ -2574,7 +2754,16 @@ def validate_tarifname_draft(
         if not _english_spec(language) and tr and tr not in literature_text:
             raise ValueError(f"Literatür paragrafında Türkçe patent başlığı eksik: {tr}")
     if not _english_spec(language):
+        for doc_info in literature or []:
+            en_title = str(doc_info.get("title_en", "") or "").strip()
+            tr_title = str(doc_info.get("title_tr", "") or "").strip()
+            if en_title and tr_title:
+                expected_title_pair = f"{en_title} ({tr_title})"
+                if expected_title_pair not in literature_text:
+                    raise ValueError(f"Literatür patent başlığı 'İngilizce başlık (Türkçe başlık)' biçiminde yazılmalıdır: {expected_title_pair}")
         for idx, paragraph in enumerate(literature_paragraphs, start=1):
+            if re.search(r"Türkçe\s+karşılığı", paragraph, flags=re.IGNORECASE):
+                raise ValueError(f"Literatür paragrafı {idx} içinde 'Türkçe karşılığı' meta-dili kullanılamaz; başlık 'English title (Türkçe başlık)' biçiminde verilmelidir.")
             if not paragraph.startswith("Literatürde yapılan araştırmalar sonucu"):
                 raise ValueError(f"Literatür paragrafı {idx}, bağlayıcı taslaktaki ‘Literatürde yapılan araştırmalar sonucu ...’ başlangıcını kullanmalıdır.")
             if re.search(r"\bBuluşta\s+ise\b", paragraph, flags=re.IGNORECASE):
@@ -2644,6 +2833,10 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
 
     ci, ai = index_of(claims_label), index_of(abstract_label)
     fi, ri = index_of(figures_label), index_of(refs_label)
+    if not en:
+        expected_title = _normalize_turkish_invention_title(str(draft.get("title", "") or "").strip())
+        if str(draft.get("title", "") or "").strip() != expected_title:
+            raise ValueError("Word şablon kontrolü: buluş başlığı bağlayıcı Title Case yazımında değil.")
     conclusion_text = (
         "Consequently, the problems described above, which remain unresolved in view of the prior art, have created a need for an improvement in the relevant technical field."
         if en else
@@ -2948,7 +3141,15 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
             text = objective
         else:
             prefix = "Buluşun ana amacı, " if index == 0 else "Buluşun diğer bir amacı, "
-            text = prefix + (objective[:1].lower() + objective[1:] if objective else "")
+            if objective:
+                first_token = re.match(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9_-]+", objective)
+                if first_token and len(first_token.group(0)) > 1 and first_token.group(0).isupper():
+                    body = objective
+                else:
+                    body = objective[:1].lower() + objective[1:]
+            else:
+                body = ""
+            text = prefix + body
         tpl_text(21, text)
         tpl_blank(22)
 

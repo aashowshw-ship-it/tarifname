@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-21.v20**
+Kural sürümü: **2026-08-21.v22**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -10,7 +10,7 @@ Bu dosya arayüzde kullanılan kuralların okunabilir özetidir. Uygulamanın ç
 
 BBF'de bulunan bütün teknik bilgiler kullanılmalıdır. Önceki teknik açıklamaları, teknik problem, çözüm, unsurlar, işlevler, yöntem akışı, formüller, matematiksel ilişkiler, deneysel sonuçlar, tablolar, alternatif gerçekleştirmeler, kullanım senaryoları, şekil açıklamaları, referans tablosu ve teknik etkiler atlanamaz.
 
-Yeni tarifname oluşturma akışında teknik kaynak BBF ve açıkça teknik kaynak olarak yüklenen müşteri belgeleridir. `Mevcut/revize tarifname` bu ekranda kullanılmaz; mevcut tarifnameyi değiştirme işlemi ileride ayrı `Tarifname düzenleme` iş akışında ele alınacaktır. Önceden hazırlanmış benzer tarifnameler yalnızca unsur ve istem kurgusunu görmek için kullanılır; bunların teknik içeriği yeni buluşa taşınmaz.
+Yeni tarifname oluşturma akışında teknik kaynak BBF ve açıkça teknik kaynak olarak yüklenen müşteri belgeleridir. `Mevcut/revize tarifname` bu ekranda kullanılmaz; mevcut tarifnameyi değiştirme işlemi ayrı `Tarifname düzenleme` iş akışında ele alınır. Önceden hazırlanmış benzer tarifnameler yalnızca unsur ve istem kurgusunu görmek için kullanılır; bunların teknik içeriği yeni buluşa taşınmaz.
 
 ## 2. Her buluş aynı istem mantığında değildir
 
@@ -401,7 +401,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Son literatür/önceki teknik paragrafı ile `Sonuçta yukarıda bahsedilen...` cümlesi arasında şablondaki fiziksel boş paragraf korunur ve deterministik Word kapısında kontrol edilir.
 
 
-## v5.4.30 / 2026-08-21.v20 — Unsur sentence-case, genel başlık, birleşik alternatif paragraf ve güçlü önceki teknik kapısı
+## v5.4.31 / 2026-08-21.v21 — Unsur sentence-case, genel başlık, birleşik alternatif paragraf ve güçlü önceki teknik kapısı
 
 - `REFERANS NUMARALARI` içindeki Türkçe unsur adları Title Case yazılmaz. Yalnız ilk normal kelimenin ilk harfi büyük, sonraki normal kelimeler küçük olur; teknik kısaltmalar korunur. `Ev içi dijital ikiz simülatörü` doğru, `Ev İçi Dijital İkiz Simülatörü` yanlıştır. Word üretiminden önce bu biçim yalnız doğrulanmaz, unsur adının detaylı açıklama/istem/yöntem adımlarındaki eşleşmeleri de deterministik olarak normalize edilir.
 - Aynı referanslı unsur detaylı açıklama ve istemlerde cümle içinde geçtiğinde de Title Case'e dönüştürülmez. Cümle başında yalnız ilk kelimenin doğal büyük harfi kullanılabilir.
@@ -409,3 +409,29 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Aynı kategoriye ait alternatif kullanım örnekleri ayrı kısa paragraflara bölünmez; tek sürekli paragrafta birleştirilir. Ayrı paragraf yalnız farklı teknik yapılanma/mekanizma için kullanılır.
 - `önceki_teknik` ve `problem` kategorisindeki technical_facts yalnız başka bölümlerde bulunarak tamamlanmış sayılamaz; ÖNCEKİ TEKNİK gövdesinde gerçek evidence ile bulunmalıdır. Kaynakta dört veya daha fazla böyle fact varsa en az üç gelişmiş önceki-teknik paragrafı zorunludur.
 - Bu beş yazım/içerik kuralı taslak kalite kapısında ve nihai Word öncesi doğrulamada deterministik olarak kontrol edilir; yalnız `coverage_audit=true` beyanı yeterli değildir.
+
+
+## v5.4.31 — Tarifname bağlayıcı biçim kapıları
+- Türkçe buluş başlığı bağlayıcı Title Case biçimine normalize edilir; teknik kısaltmalar korunur, bağlaçlar küçük bırakılır.
+- Patent literatürü `English title (Türkçe başlık)` biçiminde yazılır; `Türkçe karşılığı` meta-dili reddedilir.
+- BULUŞUN KISA AÇIKLAMASI içindeki numarasız buluş tanımı ana istemin yalnız referans işaretleri çıkarılmış birebir kopyasıdır.
+- Detaylı açıklamadaki bütün sistem unsurlarının temel tanımları tek sürekli paragrafta bulunur; modül zinciri ayrı paragraflara bölünemez.
+- `bir gerçekleştirimde / bir gerçekleştirmede / buluşun bir gerçekleştirilmesinde` yasaktır; `Buluşun bir yapılanmasında` kullanılır.
+- ÖNCEKİ TEKNİK müşteri problem kümeleri kısa özetlenemez; son genel paragraf `Yukarıda belirtilen eksiklikler, ...` ile bağlanır.
+- Şekil kısa açıklamalarında referans/adım numarası aralıkları yazılmaz.
+- Ayrı şekiller Word dosyasında üst PAGE / NUMPAGES sayacı Arial 11 ve normal kalınlıkta olmak zorundadır ve indirme öncesi doğrulanır.
+
+
+## v5.4.32 / 2026-08-21.v22 — Tarifname Düzenleme / müşteri dönüşü modu
+
+- `Tarifname düzenleme` yeni tarifname oluşturmadan tamamen ayrıdır. Ana kaynak müşteriye gönderilmiş son Word tarifnamesidir; müşteri dönüşü ayrı dosya veya aynı Word içindeki comment/Track Changes olabilir.
+- Aynı Word müşteri değişikliklerini taşıyorsa müşteri revizyonları otomatik kabul edilmez. Review içeriği talep olarak çıkarılır; baz metinde customer insertion reddedilir, customer deletion geri getirilir, eski yorumlar temizlenir ve yalnız Patent Atölyesi'nin onayladığı değişiklikler yeni markup katmanında uygulanır.
+- Başvuru durumu revizyon öncesi zorunlu kapıdır. Başvuru sonrası yalnız müşteri kaynağına dayanan yeni teknik bilgi otomatik eklenmez. Rüçhan sonrası sonraki başvuruya yeni özellik eklenmesi de rüçhan etkisi nedeniyle kullanıcı kararı gerektirir.
+- Müşterinin her talebi/sorusu ayrı `request_id` ile `apply / partial / explain / clarification / figure_action / procedural_action` sonuçlarından birine bağlanır. İkinci ham müşteri-dönüşü okuması `coverage_complete=true` vermeden Markup oluşturulamaz.
+- Revizyon ana ilkesi **EN AZ DEĞİŞİKLİK**tir. Word çıktısı gerçek OOXML Track Changes'tir; değişmeyen kelime/ek/noktalama silinip yeniden yazılmaz. Mevcut font/run, paragraf, numaralandırma, section ve marjin yapısı korunur.
+- Her değişiklik `existing_spec` veya `customer_request` dayanak türü ve birebir/çok yakın `basis_quote` ile doğrulanır.
+- Müşterinin önerdiği claim wording bağlayıcı değildir. Bağımsız istem gereksiz daraltılmaz; dayanaklı tercihli uygulama ayrıntıları bağımlı fallback istemlere taşınabilir. Antecedent basis ve bağımlı istem fallback değeri ayrıca kontrol edilir.
+- Uygulanmayan/kısmi talepler cevapsız bırakılamaz; mail ve gerekiyorsa Word comment ile açıklanır. Patent gövdesine müşteri notu paragrafı yazılmaz.
+- Şekiller otomatik revize edilmez; metinle uyumsuz/eski/okunaksız şekiller için somut figure action üretilir ve gerekiyorsa editable kaynak istenir.
+- Müşteriye gönderilecek mail zorunludur; ana değişiklik gruplarını, açık soruları, stratejik cevapları ve şekil aksiyonlarını kapsar.
+- Varsayılan çıktı adı kaynak dosya adından türetilen `_markup.docx` dosyasıdır; browser duplicate `(1)` eki otomatik temizlenir. Clean sürüm varsayılan kullanıcı çıktısı değildir.

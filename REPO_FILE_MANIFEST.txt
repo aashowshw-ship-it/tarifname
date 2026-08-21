@@ -3,7 +3,6 @@ Gorus_metni_696809_template.docx
 On_Arastirma_Raporu_181612_template.docx
 README.md
 REPO_FILE_MANIFEST.txt
-REPO_FILE_MANIFEST.txt.tmp
 RULES_MEMORY.md
 Tarifname_181176_template.docx
 __init__.py
@@ -21,6 +20,7 @@ requirements.txt
 rules.py
 secrets.toml.example
 source_guards.py
+tarifname_update.py
 template_audit.py
 test_v5418_rules.py
 test_v5419_three_gates.py
@@ -35,5 +35,7 @@ test_v5427_minimal_markup.py
 test_v5428_opinion_modes_page_line_gate.py
 test_v5429_dp_name_raw_source_gate.py
 test_v5430_sentence_case_detail_cohesion.py
+test_v5431_strict_tarifname_format.py
+test_v5432_tarifname_update.py
 validators.py
 word_math.py

@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.30
+# Patent Atölyesi v5.4.32
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 21.08.2026 tarihli güncel tam sürümüdür.
 
@@ -20,6 +20,7 @@ Depo kökünde en az şu dosyalar doğrudan görünmelidir:
 
 - `app.py`
 - `rules.py`
+- `tarifname_update.py`
 - `RULES_MEMORY.md`
 - `Dockerfile`
 - `render.yaml`
@@ -84,7 +85,7 @@ Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün
 - `İSTEMLER` ve `ÖZET` ayrı yeni sayfalardan başlar; başlıklar kalındır. İstemlerde sonradan değişiklik yapılsa da `ÖZET` öncesindeki sayfa geçişi korunur.
 - `Buluşun bir gerçekleştirilmesinde` kullanılmaz; `Buluşun bir yapılanmasında` kullanılır.
 - Önceki teknik bölümündeki müşteri anlatımı eksiksiz korunur; patent literatürü bunun yerine geçmez.
-- Tarifname oluşturma arayüzünde `Mevcut/revize tarifname` alanı yoktur. Mevcut bir tarifnamenin değiştirilmesi ileride ayrı `Tarifname düzenleme` iş akışında ele alınacaktır; yeni tarifname oluşturma akışına karıştırılmaz.
+- Tarifname oluşturma arayüzünde `Mevcut/revize tarifname` alanı yoktur. Mevcut bir tarifnamenin değiştirilmesi ayrı `Tarifname düzenleme` iş akışında ele alınır; yeni tarifname oluşturma akışına karıştırılmaz.
 - Şekiller seçimi literatür araştırmasından önce gösterilir.
 - `TEKNİK ALAN` **iki paragraf** halinde kurulur. İlk paragraf yalnızca tek giriş cümlesidir. Sistem+yöntem istem yapısında ilk paragraf `Buluş, ... sistemi ve yöntemi ile ilgilidir.` şeklinde; yalnız sistemde `... sistemi ile ilgilidir.`, yalnız yöntemde `... yöntemi ile ilgilidir.` şeklinde biter. Ardından mutlaka yeni paragraf açılır; ikinci paragraf `Buluş, özellikle ...` ile başlar ve teknik alanın ayrıntısını verir. İkinci paragraf `Sistem ve yöntem...` gibi bir ifadeyle başlatılmaz.
 - `ÖNCEKİ TEKNİK` içinde aynı anlatımın devamı olan `Özellikle`, `Bununla birlikte`, `Bu nedenle` gibi cümleler gereksiz yere ayrı paragraf yapılmaz.
@@ -151,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-13.v7`
+Kural sürümü: `2026-08-21.v22`
 
 ## Yerel çalıştırma
 
@@ -331,7 +332,23 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Son patent literatürü/önceki teknik paragrafı ile `Sonuçta yukarıda bahsedilen...` paragrafı arasında **tam bir fiziksel boş paragraf** zorunludur; bu boşluk Word tam şablon kapısında ayrıca doğrulanır.
 
 
-## v5.4.30 — Tarifname yazım biçimi ve önceki teknik sert kalite kapıları (21.08.2026)
+
+## v5.4.32 — Tarifname Düzenleme / müşteri revizyonu iş akışı (21.08.2026)
+
+- Arayüze yeni ve bağımsız **Tarifname düzenleme** iş türü eklendi. Yeni tarifname oluşturma akışına karışmaz.
+- Ana giriş müşteriye gönderilmiş son `.docx` tarifnamedir. Müşteri revizyon/soruları ayrı PDF/DOCX/DOC/TXT/MD/ZIP olarak yüklenebilir veya aynı Word içindeki **yorumlar ve Track Changes** doğrudan müşteri talebi olarak okunabilir.
+- Aynı müşteri Word'ü kaynak olarak kullanıldığında mevcut müşteri Track Changes'i otomatik kabul edilmez: sistem önce yorum/değişiklikleri talep bağlamı olarak çıkarır, ardından müşteri insertions'larını reddedip deletions'larını geri getirerek temiz baz üretir ve kendi değerlendirdiği değişiklikleri yeni bir Patent Atölyesi markup katmanı olarak uygular.
+- Başvuru durumu zorunlu girdidir: **henüz başvuru yapılmadı / başvuru yapıldı / rüçhan başvurusu yapıldı; sonraki başvuru hazırlanıyor**. Post-filing veya rüçhan sonrası yalnız yeni müşteri bilgisine dayanan teknik ekleme otomatik uygulanmaz; new-matter/rüçhan etkisi için kullanıcı kararı gerekir.
+- Müşterinin bütün talepleri ayrı karar matrisine alınır: `apply`, `partial`, `explain`, `clarification`, `figure_action`, `procedural_action`. İkinci bağımsız okuma `coverage_complete=true` vermeden çıktı üretilemez.
+- Word revizyonları gerçek **OOXML Track Changes** ile ve **EN AZ DEĞİŞİKLİK** prensibiyle uygulanır. Değişmeyen ön/son kelimeler yeniden silinip eklenmez; mevcut run biçimleri, sayfa/section ölçüleri ve numaralandırma korunur.
+- Yeni paragraf gerçekten gerekliyse mevcut paragraf komple yeniden yazılmaz; komşu paragraf biçimi kopyalanarak Track Changes içinde yeni paragraf eklenir.
+- Teknik/hukuki olarak uygulanmayan veya stratejik açıklama gerektiren müşteri talepleri gerektiğinde gerçek **Word comment** ile açıklanabilir. Patent metninin gövdesine müşteri notu eklenmez.
+- Şekiller bu modda otomatik yeniden çizilmez. Yüklenmiş mevcut şekiller tarifnameyle teknik uyum, okunabilirlik ve başvuru biçimi bakımından analiz edilir; gerekiyorsa hangi şeklin hangi nedenle güncellenmesi gerektiği ve editable Mermaid/DWG/Visio kaynağı talebi listelenir.
+- Müşteriye gönderilecek **mail taslağı zorunlu çıktıdır**. Mail; yapılan ana değişiklikleri, uygulanmayan/kısmen uygulanan taleplerin nedenini, doğrudan soruların cevaplarını, açık stratejik konuları ve şekil taleplerini özetler.
+- Kullanıcıya varsayılan Word çıktısı yalnız `<kaynak_adı>_markup.docx` dosyasıdır. Clean/accepted sürüm yalnız iç kalite kontrolünde oluşturulur; ayrıca istenmedikçe indirme olarak verilmez.
+- Yeni çekirdek modül: `tarifname_update.py`. Yeni regresyon paketi: `test_v5432_tarifname_update.py`.
+
+## v5.4.31 — Tarifname yazım biçimi ve önceki teknik sert kalite kapıları (21.08.2026)
 
 - Türkçe referans unsur adları sentence-case zorunludur: yalnız ilk normal kelime büyük başlar; teknik kısaltmalar korunur. Word üretiminden önce bu biçim yalnız doğrulanmaz, unsur adının detaylı açıklama/istem/yöntem adımlarındaki eşleşmeleri de deterministik olarak normalize edilir.
 - Detaylı açıklama ve istemlerde aynı unsurun Title Case yazımı kalite kapısında reddedilir.
@@ -339,3 +356,14 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Aynı gruptaki alternatif kullanım örnekleri tek sürekli paragrafta oluşturulur.
 - BBF'deki önceki-teknik/problem technical_facts'in tamamı özellikle ÖNCEKİ TEKNİK bölümünde kanıtlanır; kaynak ayrıntılıysa bölüm kısa iki paragrafa sıkıştırılamaz.
 - Bu kontroller hem taslakta hem Word indirme öncesi kalite kapısında çalışır.
+
+
+## v5.4.31 — Tarifname bağlayıcı biçim kapıları
+- Türkçe buluş başlığı bağlayıcı Title Case biçimine normalize edilir; teknik kısaltmalar korunur, bağlaçlar küçük bırakılır.
+- Patent literatürü `English title (Türkçe başlık)` biçiminde yazılır; `Türkçe karşılığı` meta-dili reddedilir.
+- BULUŞUN KISA AÇIKLAMASI içindeki numarasız buluş tanımı ana istemin yalnız referans işaretleri çıkarılmış birebir kopyasıdır.
+- Detaylı açıklamadaki bütün sistem unsurlarının temel tanımları tek sürekli paragrafta bulunur; modül zinciri ayrı paragraflara bölünemez.
+- `bir gerçekleştirimde / bir gerçekleştirmede / buluşun bir gerçekleştirilmesinde` yasaktır; `Buluşun bir yapılanmasında` kullanılır.
+- ÖNCEKİ TEKNİK müşteri problem kümeleri kısa özetlenemez; son genel paragraf `Yukarıda belirtilen eksiklikler, ...` ile bağlanır.
+- Şekil kısa açıklamalarında referans/adım numarası aralıkları yazılmaz.
+- Ayrı şekiller Word dosyasında üst PAGE / NUMPAGES sayacı Arial 11 ve normal kalınlıkta olmak zorundadır ve indirme öncesi doğrulanır.
