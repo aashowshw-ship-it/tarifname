@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-21.v19**
+Kural sürümü: **2026-08-21.v20**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -399,3 +399,13 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Sistem+yöntem istem yapısında TEKNİK ALAN ilk cümlesi `Buluş, ... sistemi ve yöntemi ile ilgilidir.` şeklinde biter.
 - Türkçe literatür paragrafı `Literatürde yapılan araştırmalar sonucu ...` ile başlayıp `Ancak ... ile ilgili bir emareye rastlanmamıştır.` ile biten bağlayıcı taslak dilini kullanır. `Buluşta ise ...` savunma dili reddedilir.
 - Son literatür/önceki teknik paragrafı ile `Sonuçta yukarıda bahsedilen...` cümlesi arasında şablondaki fiziksel boş paragraf korunur ve deterministik Word kapısında kontrol edilir.
+
+
+## v5.4.30 / 2026-08-21.v20 — Unsur sentence-case, genel başlık, birleşik alternatif paragraf ve güçlü önceki teknik kapısı
+
+- `REFERANS NUMARALARI` içindeki Türkçe unsur adları Title Case yazılmaz. Yalnız ilk normal kelimenin ilk harfi büyük, sonraki normal kelimeler küçük olur; teknik kısaltmalar korunur. `Ev içi dijital ikiz simülatörü` doğru, `Ev İçi Dijital İkiz Simülatörü` yanlıştır. Word üretiminden önce bu biçim yalnız doğrulanmaz, unsur adının detaylı açıklama/istem/yöntem adımlarındaki eşleşmeleri de deterministik olarak normalize edilir.
+- Aynı referanslı unsur detaylı açıklama ve istemlerde cümle içinde geçtiğinde de Title Case'e dönüştürülmez. Cümle başında yalnız ilk kelimenin doğal büyük harfi kullanılabilir.
+- Türkçe buluş başlığında parantez içi İngilizce karşılık/kısaltma bulunmaz. Başlık mümkün olan en genel kaynak destekli teknik kavramla kurulur; salt uygulama alanı kısaltması zorunlu değilse başlıktan çıkarılır.
+- Aynı kategoriye ait alternatif kullanım örnekleri ayrı kısa paragraflara bölünmez; tek sürekli paragrafta birleştirilir. Ayrı paragraf yalnız farklı teknik yapılanma/mekanizma için kullanılır.
+- `önceki_teknik` ve `problem` kategorisindeki technical_facts yalnız başka bölümlerde bulunarak tamamlanmış sayılamaz; ÖNCEKİ TEKNİK gövdesinde gerçek evidence ile bulunmalıdır. Kaynakta dört veya daha fazla böyle fact varsa en az üç gelişmiş önceki-teknik paragrafı zorunludur.
+- Bu beş yazım/içerik kuralı taslak kalite kapısında ve nihai Word öncesi doğrulamada deterministik olarak kontrol edilir; yalnız `coverage_audit=true` beyanı yeterli değildir.

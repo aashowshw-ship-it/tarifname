@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.29
+# Patent Atölyesi v5.4.30
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 21.08.2026 tarihli güncel tam sürümüdür.
 
@@ -329,3 +329,13 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Sistem+yöntem tarifnamesinde TEKNİK ALAN ilk cümlesi `Buluş, ... sistemi ve yöntemi ile ilgilidir.` kalıbıyla bitmek zorundadır.
 - Türkçe patent literatürü paragrafı bağlayıcı taslaktaki `Ancak ... ile ilgili bir emareye rastlanmamıştır.` diliyle biter; `Buluşta ise ...` kullanımı kalite kapısında reddedilir.
 - Son patent literatürü/önceki teknik paragrafı ile `Sonuçta yukarıda bahsedilen...` paragrafı arasında **tam bir fiziksel boş paragraf** zorunludur; bu boşluk Word tam şablon kapısında ayrıca doğrulanır.
+
+
+## v5.4.30 — Tarifname yazım biçimi ve önceki teknik sert kalite kapıları (21.08.2026)
+
+- Türkçe referans unsur adları sentence-case zorunludur: yalnız ilk normal kelime büyük başlar; teknik kısaltmalar korunur. Word üretiminden önce bu biçim yalnız doğrulanmaz, unsur adının detaylı açıklama/istem/yöntem adımlarındaki eşleşmeleri de deterministik olarak normalize edilir.
+- Detaylı açıklama ve istemlerde aynı unsurun Title Case yazımı kalite kapısında reddedilir.
+- Türkçe buluş başlığında parantez içi İngilizce karşılık/kısaltma reddedilir; kaynak destekliyorsa daha genel teknik başlık tercih edilir.
+- Aynı gruptaki alternatif kullanım örnekleri tek sürekli paragrafta oluşturulur.
+- BBF'deki önceki-teknik/problem technical_facts'in tamamı özellikle ÖNCEKİ TEKNİK bölümünde kanıtlanır; kaynak ayrıntılıysa bölüm kısa iki paragrafa sıkıştırılamaz.
+- Bu kontroller hem taslakta hem Word indirme öncesi kalite kapısında çalışır.
