@@ -61,6 +61,7 @@ from tarifname_update import (
     build_updated_spec_docx,
     validate_update_result,
 )
+from tarifname_figure_update import prepare_customer_figure_edits
 
 from gorus_audit import (
     annotate_quote_locations,
@@ -250,6 +251,29 @@ def legacy_doc_text(data: bytes, filename: str) -> str:
         except Exception as exc:
             raise ValueError("Eski .doc dosyası okunamadı; .docx olarak kaydedip yükleyin.") from exc
     raise ValueError("Eski .doc dosyası okunamadı.")
+
+
+def legacy_doc_to_docx_bytes(data: bytes, filename: str) -> bytes:
+    """Convert a legacy .doc baseline to DOCX so Track Changes can be applied on the preserved Word layout."""
+    with tempfile.TemporaryDirectory() as td:
+        source = Path(td) / Path(filename).name
+        source.write_bytes(data)
+        outdir = Path(td) / "converted"
+        outdir.mkdir()
+        try:
+            subprocess.run(
+                ["libreoffice", "--headless", "--convert-to", "docx", "--outdir", str(outdir), str(source)],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=120,
+            )
+        except Exception as exc:
+            raise ValueError("Eski .doc tarifname Track Changes için .docx biçimine dönüştürülemedi.") from exc
+        files = list(outdir.glob("*.docx"))
+        if not files:
+            raise ValueError("Eski .doc tarifname dönüştürüldü ancak .docx çıktı bulunamadı.")
+        return files[0].read_bytes()
 
 
 def extract_text_from_asset(asset: UploadedAsset) -> str:
@@ -5299,17 +5323,18 @@ elif work_type == "Tarifname düzenleme":
     st.subheader("Tarifname düzenleme")
     st.caption(
         "Akış: müşteriye gönderilmiş son Word tarifnamesi → müşteri revizyon/soruları → başvuru durumu → "
-        "talep bazlı karar matrisi → en az değişiklikle gerçek Word Track Changes → Word yorumları → şekil aksiyonları → müşteri maili."
+        "talep bazlı karar matrisi → en az değişiklikle gerçek Word Track Changes → Word yorumları → "
+        "güvenli/kaynak-destekli şekil revizyonları → müşteri maili."
     )
 
     with st.form("tarifname_duzenleme_form"):
         c1, c2 = st.columns(2)
         with c1:
             update_spec = st.file_uploader(
-                "Müşteriye gönderilmiş son tarifname / istem seti (.docx)",
-                type=["docx"],
+                "Müşteriye gönderilmiş son tarifname / istem seti (.docx / .doc)",
+                type=["docx", "doc"],
                 key="upd_spec",
-                help="Markup mevcut Word dosyası üzerinde üretileceğinden ana dosya .docx olmalıdır.",
+                help=".doc dosyaları biçim korunarak LibreOffice ile .docx tabanına dönüştürülür; Markup gerçek OOXML Track Changes olarak üretilir.",
             )
             filing_status = st.selectbox(
                 "Başvuru durumu",
@@ -5338,7 +5363,10 @@ elif work_type == "Tarifname düzenleme":
             type=["pdf", "docx", "doc", "txt", "md", "png", "jpg", "jpeg", "webp", "svg", "zip"],
             accept_multiple_files=True,
             key="upd_support_files",
-            help="Bu mod şekilleri otomatik değiştirmez; yüklenen şekiller tarifnameyle uyum ve gerekli revizyonlar bakımından değerlendirilir.",
+            help=(
+                "Yüklenen şekiller tarifnameyle uyum bakımından değerlendirilir. Kaynakla açıkça desteklenen, hedef şekli belirli "
+                "ve sınırlı değişiklikler ikinci görsel doğrulamayı geçerse otomatik uygulanabilir; güvenli değilse yalnız şekil aksiyonu gösterilir."
+            ),
         )
         update_user_instruction = st.text_area(
             "Ek yönlendirme (varsa)",
@@ -5350,11 +5378,14 @@ elif work_type == "Tarifname düzenleme":
 
     if update_submit:
         if update_spec is None:
-            st.error("Müşteriye gönderilmiş son .docx tarifnameyi yükleyin.")
+            st.error("Müşteriye gönderilmiş son .docx veya .doc tarifnameyi yükleyin.")
         else:
             try:
                 progress = st.progress(0, text="Mevcut tarifname ve müşteri dönüşleri okunuyor...")
                 raw_spec_bytes = update_spec.getvalue()
+                if Path(update_spec.name).suffix.lower() == ".doc":
+                    progress.progress(5, text="Eski .doc tarifname Word Track Changes tabanına dönüştürülüyor...")
+                    raw_spec_bytes = legacy_doc_to_docx_bytes(raw_spec_bytes, update_spec.name)
                 review_context = extract_docx_review_context(raw_spec_bytes)
                 # Eğer aynı Word müşteri comment/Track Changes taşıyorsa bunları talep olarak okur,
                 # fakat esas markup katmanını müşteri değişiklikleri reddedilmiş temiz baz üzerinde üretiriz.
@@ -5373,6 +5404,20 @@ elif work_type == "Tarifname düzenleme":
 
                 support_assets = assets_from_uploads(update_support_files)
                 support_text, support_images = combine_asset_text("EK TEKNİK / ŞEKİL", support_assets)
+
+                # Tarifname düzenleme şekil revizyonunda mümkünse tek bir özgün şekiller Word dosyasının
+                # gömülü görselleri sırayla ŞEKİL 1..N olarak kullanılır. Böyle bir Word yoksa doğrudan
+                # yüklenen teknik görseller kullanılabilir.
+                update_figure_images: list[UploadedAsset] = []
+                for asset in support_assets:
+                    embedded = extract_embedded_images(asset)
+                    if Path(asset.name).suffix.lower() == ".docx" and embedded:
+                        update_figure_images = embedded
+                        break
+                if not update_figure_images:
+                    direct_support = [a for a in support_assets if Path(a.name).suffix.lower() in IMAGE_SUFFIXES]
+                    update_figure_images = [_model_ready_image(a) for a in direct_support]
+
                 model_images: list[UploadedAsset] = [*customer_images, *support_images]
                 for asset in [*customer_assets, *support_assets]:
                     model_images.extend(extract_embedded_images(asset))
@@ -5470,13 +5515,56 @@ elif work_type == "Tarifname düzenleme":
                     )
 
                 figure_actions = list(final_plan.get("figure_actions") or [])
+                figure_update_data = None
+                figure_update_unresolved: list[str] = []
                 if figure_actions:
-                    with st.expander("Şekiller için önerilen revizyonlar", expanded=True):
+                    auto_actions = [x for x in figure_actions if bool(x.get("safe_auto_edit"))]
+                    if auto_actions and not blocking:
+                        if not update_figure_images:
+                            figure_update_unresolved.append(
+                                "Otomatik şekil revizyonu planlandı ancak ŞEKİL 1..N olarak eşlenebilecek bir şekiller Word/görsel seti yüklenmedi."
+                            )
+                        else:
+                            source_payload = [
+                                {"name": a.name, "data": a.data, "mime": a.mime or "image/png"}
+                                for a in update_figure_images
+                            ]
+                            prepared_payload, figure_reports, figure_update_unresolved = prepare_customer_figure_edits(
+                                source_payload,
+                                figure_actions,
+                                model=MODEL,
+                                confidence_threshold=FIGURE_REFERENCE_CONFIDENCE,
+                                client=get_client(),
+                            )
+                            if not figure_update_unresolved:
+                                prepared_assets = [
+                                    UploadedAsset(str(x.get("name") or f"figure_{i}.png"), bytes(x["data"]), str(x.get("mime") or "image/png"))
+                                    for i, x in enumerate(prepared_payload, 1)
+                                ]
+                                figure_update_data = build_figures_docx(prepared_assets, "Türkçe")
+
+                    with st.expander("Şekiller için revizyonlar", expanded=True):
                         for item in figure_actions:
+                            auto_note = " [otomatik düzenleme adayı]" if bool(item.get("safe_auto_edit")) else ""
                             st.write(
-                                f"**{item.get('figure', 'Genel')}** — {item.get('issue', '')} "
+                                f"**{item.get('figure', 'Genel')}**{auto_note} — {item.get('issue', '')} "
                                 f"→ {item.get('recommended_change', '')}"
                             )
+                        for message in figure_update_unresolved:
+                            st.warning(message)
+
+                    if figure_update_data is not None:
+                        stem = re.sub(r"\s*\(\d+\)\s*$", "", Path(update_spec.name).stem).strip()
+                        if re.search(r"tarifname", stem, flags=re.I):
+                            fig_stem = re.sub(r"tarifname", "Şekiller", stem, count=1, flags=re.I)
+                        else:
+                            fig_stem = f"Şekiller_{stem}"
+                        st.download_button(
+                            "Revize Şekiller Word dosyasını indir",
+                            data=figure_update_data,
+                            file_name=f"{fig_stem}_revize.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        )
 
                 open_items = [str(x).strip() for x in (final_plan.get("open_procedural_items") or []) if str(x).strip()]
                 if open_items:

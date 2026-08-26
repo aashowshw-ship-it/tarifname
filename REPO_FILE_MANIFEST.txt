@@ -21,6 +21,7 @@ rules.py
 secrets.toml.example
 source_guards.py
 tarifname_update.py
+tarifname_figure_update.py
 template_audit.py
 test_v5418_rules.py
 test_v5419_three_gates.py
@@ -39,5 +40,6 @@ test_v5431_strict_tarifname_format.py
 test_v5432_tarifname_update.py
 test_v5433_gorus_revision_basis_order.py
 test_v5434_extra_controls_prior_art.py
+test_v5435_tarifname_visibility_figures.py
 validators.py
 word_math.py

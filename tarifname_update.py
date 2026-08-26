@@ -51,8 +51,18 @@ def _find_relaxed_phrase_span(text: str, phrase: str) -> tuple[int, int] | None:
     return (match.start(), match.end()) if match else None
 
 
+def _ooxml_run_is_customer_red(run: Any, W: str) -> bool:
+    """Recognize explicit red-font customer notes without treating ordinary black text as review content."""
+    color = run.find(f"{{{W}}}rPr/{{{W}}}color")
+    if color is None:
+        return False
+    value = str(color.get(f"{{{W}}}val", "") or "").strip().upper().lstrip("#")
+    # Strict red shades only. Theme/automatic/black text is never stripped.
+    return value in {"FF0000", "C00000", "E60000", "D90000", "CC0000"}
+
+
 def extract_docx_review_context(data: bytes) -> str:
-    """Extract comments and tracked insertions/deletions from a customer-returned DOCX.
+    """Extract comments, tracked changes and explicit red-font customer notes from a returned DOCX.
 
     This is intentionally review-only context; it does not replace the clean specification text.
     """
@@ -77,11 +87,23 @@ def extract_docx_review_context(data: bytes) -> str:
                 inserted = [_norm(x) for x in p.xpath(".//w:ins//w:t/text()", namespaces=ns) if _norm(x)]
                 deleted = [_norm(x) for x in p.xpath(".//w:del//w:delText/text()", namespaces=ns) if _norm(x)]
                 cids = [x.get(f"{{{W}}}id", "") for x in p.xpath(".//w:commentRangeStart", namespaces=ns)]
-                if not (inserted or deleted or any(cid in comments for cid in cids)):
+                red_parts: list[str] = []
+                for run in p.xpath(".//w:r", namespaces=ns):
+                    if not _ooxml_run_is_customer_red(run, W):
+                        continue
+                    # Tracked insertions/deletions are already represented separately.
+                    if run.xpath("ancestor::w:ins|ancestor::w:del", namespaces=ns):
+                        continue
+                    text = _norm("".join(run.xpath(".//w:t/text()", namespaces=ns)))
+                    if text:
+                        red_parts.append(text)
+                if not (inserted or deleted or red_parts or any(cid in comments for cid in cids)):
                     continue
                 para_text = _norm("".join(normal_parts))
                 if para_text:
                     blocks.append(f"PARAGRAPH: {para_text}")
+                for text in red_parts:
+                    blocks.append(f"RED CUSTOMER NOTE: {text}")
                 for text in deleted:
                     blocks.append(f"TRACK DELETE: {text}")
                 for text in inserted:
@@ -134,6 +156,54 @@ def _quote_is_supported(quote: str, source_text: str) -> bool:
     return _find_relaxed_phrase_span(source_text, quote) is not None
 
 
+def _claims_section_text(source_text: str) -> str:
+    text = str(source_text or "")
+    match = re.search(r"\bİSTEMLER\b", text, flags=re.I)
+    if not match:
+        return ""
+    tail = text[match.end():]
+    end = re.search(r"\bÖZET\b", tail, flags=re.I)
+    return tail[: end.start()] if end else tail
+
+
+def _validate_explicit_claim_visibility(plan: dict[str, Any], source_text: str, customer_text: str) -> None:
+    """Deterministic backstop for 'make it explicit in the claims' customer requests.
+
+    The AI may correctly notice that a test/function is semantically present yet still fail to make
+    the customer-requested terminology visible. If the customer explicitly asks for claim visibility,
+    every technical acronym that is both requested and already supported somewhere in the source
+    specification must either already occur in the claims or be introduced by a planned operation.
+    Unsupported acronyms are deliberately ignored here; they remain subject to the normal basis gate.
+    """
+    customer = str(customer_text or "")
+    trigger = bool(
+        re.search(r"istem(?:ler|lere|lerde|e|in)?", customer, flags=re.I)
+        and re.search(r"açıkça|vurgula|vurgulan|görün|ekle|eklen", customer, flags=re.I)
+    )
+    if not trigger:
+        return
+    acronyms = sorted(set(re.findall(r"(?<![A-Za-zÇĞİÖŞÜçğıöşü0-9])([A-ZÇĞİÖŞÜ]{2,8})(?![A-Za-zÇĞİÖŞÜçğıöşü0-9])", customer)))
+    if not acronyms:
+        return
+    claims_text = _claims_section_text(source_text)
+    planned_new = "\n".join(str(op.get("new_text", "")) for op in (plan.get("operations") or []))
+    missing: list[str] = []
+    for acronym in acronyms:
+        # Only enforce terminology that has technical basis in the existing specification.
+        if re.search(rf"(?<![A-Za-z0-9]){re.escape(acronym)}(?![A-Za-z0-9])", source_text) is None:
+            continue
+        already_visible = re.search(rf"(?<![A-Za-z0-9]){re.escape(acronym)}(?![A-Za-z0-9])", claims_text) is not None
+        planned_visible = re.search(rf"(?<![A-Za-z0-9]){re.escape(acronym)}(?![A-Za-z0-9])", planned_new) is not None
+        if not (already_visible or planned_visible):
+            missing.append(acronym)
+    if missing:
+        raise ValueError(
+            "Tarifname düzenleme istem-görünürlük kapısı: müşteri istemlerde açıkça vurgulanmasını istediği ve "
+            "mevcut tarifnamede dayanağı bulunan terminolojinin bir kısmı planlanan istem değişikliklerinde görünmüyor: "
+            + ", ".join(missing)
+        )
+
+
 def validate_update_plan(plan: dict[str, Any], source_docx: bytes, customer_text: str, filing_status: str) -> None:
     requests = list(plan.get("requests") or [])
     if not requests:
@@ -171,6 +241,7 @@ def validate_update_plan(plan: dict[str, Any], source_docx: bytes, customer_text
     doc = Document(io.BytesIO(source_docx))
     paragraphs = iter_document_paragraphs(doc)
     source_text = document_text(doc)
+    _validate_explicit_claim_visibility(plan, source_text, customer_text)
 
     for op in operations:
         rid = str(op.get("request_id", "")).strip()
@@ -218,6 +289,35 @@ def validate_update_plan(plan: dict[str, Any], source_docx: bytes, customer_text
             if len(matches) != 1:
                 raise ValueError(
                     f"Tarifname düzenleme hedef kapısı: {rid} anchor_text tek bir paragrafı göstermiyor (eşleşme={len(matches)})."
+                )
+
+    for fa in figure_actions:
+        rid = str(fa.get("request_id", "")).strip()
+        if rid not in by_id:
+            raise ValueError(f"Tarifname düzenleme şekil kapısı: bilinmeyen request_id: {rid}")
+        figure = str(fa.get("figure", "")).strip()
+        recommended_change = _norm(fa.get("recommended_change", ""))
+        if not figure or not recommended_change:
+            raise ValueError(f"Tarifname düzenleme şekil kapısı: {rid} için figure/recommended_change zorunludur.")
+        if bool(fa.get("safe_auto_edit")):
+            basis_source = str(fa.get("basis_source", "")).strip()
+            if basis_source not in ALLOWED_BASIS_SOURCES:
+                raise ValueError(f"Tarifname düzenleme şekil kapısı: {rid} otomatik şekil revizyonu için basis_source geçersiz.")
+            basis_quote = str(fa.get("basis_quote", "")).strip()
+            basis_pool = source_text if basis_source == "existing_spec" else customer_text
+            if not _quote_is_supported(basis_quote, basis_pool):
+                raise ValueError(f"Tarifname düzenleme şekil kaynak kapısı: {rid} dayanak alıntısı `{basis_source}` içinde doğrulanamadı.")
+            if not _norm(fa.get("edit_instructions", "")):
+                raise ValueError(f"Tarifname düzenleme şekil kapısı: {rid} safe_auto_edit=true ise edit_instructions zorunludur.")
+            if filing_status == "Başvuru yapıldı" and basis_source == "customer_request":
+                raise ValueError(
+                    f"Tarifname düzenleme şekil new-matter kapısı: {rid} yalnız müşteri dönüşündeki yeni teknik bilgiye dayanıyor; "
+                    "başvuru yapılmış dosyada otomatik şekil revizyonu yapılamaz."
+                )
+            if filing_status.startswith("Rüçhan başvurusu") and basis_source == "customer_request":
+                raise ValueError(
+                    f"Tarifname düzenleme şekil rüçhan kapısı: {rid} yalnız sonraki müşteri bilgisine dayanıyor; "
+                    "otomatik şekil revizyonu için kullanıcı kararı gerekir."
                 )
 
     for c in comments:
@@ -542,9 +642,12 @@ Görevin mevcut tarifnameyi sıfırdan yeniden yazmak değildir. Müşterinin HE
 - Başvuru yapılmışsa yalnız müşteri dönüşünde ortaya çıkan yeni teknik içeriği otomatik ekleme; clarification olarak işaretle.
 - Rüçhan başvurusu yapılmış ve sonraki başvuru hazırlanıyorsa yalnız sonraki müşteri bilgisindeki yeni teknik içeriği otomatik ekleme; rüçhan etkisi için clarification olarak işaretle.
 - Müşterinin önerdiği claim wording bağlayıcı değildir. Teknik niyeti koruyup patent dilini sen belirle.
+- Müşteri bir teknik işlev/terim/kısaltmanın istemlerde AÇIKÇA görünmesini veya vurgulanmasını istiyorsa ve aynı teknik içerik mevcut tarifnamede zaten anlam olarak destekleniyorsa bunu `zaten var` diyerek sessizce geçme. En küçük kelime/ibare değişikliğiyle görünür hale getir. Tam teknik ad ile kısaltmayı birlikte kullanmak uygunsa `tam ad (KISALTMA)` biçimini tercih et. Müşteri iki mevcut alternatifi slash ile görünür istemişse teknik belirsizlik yaratmıyorsa `tam ad (A) / tam ad (B)` biçimi kullanılabilir.
+- Aynı müşteri maddesinde birden çok test/işlev/özellik sayılmışsa her birini ayrı ayrı dayanak açısından kontrol et. Bazıları istemde, bazıları yalnız detaylı açıklamada destekleniyor olabilir; desteklenenleri uygun isteme minimum müdahaleyle açıkça taşı, desteklenmeyeni ekleme.
 - Bağımsız istem gereksiz daraltılmaz; tercihli implementation ayrıntıları dayanak varsa bağımlı isteme taşınabilir.
 - Buluş bütünlüğü, PCT/EP stratejisi, ISA, rüçhan, maliyet gibi usuli soruları tarifnameye zorla yazma; mail cevabı/stratejik açıklama olarak ele al.
-- Şekiller verilmişse tarifnameyle teknik uyumunu değerlendir; şekli bu modda değiştirme, figure_actions üret.
+- Şekiller verilmişse tarifnameyle teknik uyumunu değerlendir ve figure_actions üret. Yalnız kaynakla desteklenen, hedef şekli açıkça belirli ve sınırlı bir revizyon (ör. mevcut iki unsur arasında istenen kablo/bağlantı çizgisi, mevcut monitör üzerinde istenen PLR/MFC düğmesi, referans/ok düzeltmesi) güvenle otomatik uygulanabiliyorsa `safe_auto_edit=true` ver; aksi halde false ver.
+- `safe_auto_edit=true` için `basis_source`, doğrulanabilir `basis_quote` ve tek anlamlı `edit_instructions` zorunludur. Başvuru sonrası yalnız müşteri talebinden gelen yeni teknik geometri safe_auto_edit olamaz.
 - Word comment yalnız değişiklik yapılmayan veya stratejik açıklamanın dokümanda görünmesi gerçekten faydalıysa öner. comment.anchor_text mevcut ve DEĞİŞMEYECEK bir ifadeyi hedeflemelidir.
 
 JSON dışında yazma.
@@ -581,7 +684,7 @@ JSON dışında yazma.
     {{"request_id":"R1","anchor_text":"mevcut ve değişmeden kalacak kısa ifade","text":""}}
   ],
   "figure_actions":[
-    {{"request_id":"R1","figure":"Şekil/Figure X veya genel","issue":"","recommended_change":""}}
+    {{"request_id":"R1","figure":"Şekil/Figure X veya genel","issue":"","recommended_change":"","safe_auto_edit":false,"basis_source":"existing_spec|customer_request","basis_quote":"","edit_instructions":""}}
   ],
   "blocking_clarifications":[""],
   "open_procedural_items":[""],
@@ -619,6 +722,11 @@ Kullanıcının ek yönlendirmesi: {user_instruction or '(yok)'}
 Aşağıdaki müşteri dönüşünü ve mevcut tarifnameyi SIFIRDAN yeniden oku. İlk planın doğru olduğunu varsayma. Müşterinin her ana maddesini, alt talebini ve doğrudan sorusunu tek tek karşılaştır. Eksik kalan talep/soru varsa plana ekle. Uygun olmayan müşteri talebini sırf müşteri istedi diye uygulama; nedenini `answer_for_customer` ve gerekiyorsa Word comment ile açıkla. Minimum metin farkı kuralını tekrar uygula.
 
 `coverage_complete=true` yalnız bütün müşteri talepleri bir sonuç durumuna bağlandıysa verilebilir. Her request şu sonuçlardan birine sahip olmalı: apply, partial, explain, clarification, figure_action, procedural_action. Hiçbiri sessizce atlanamaz.
+
+İKİNCİ OKUMADA ÖZELLİKLE:
+- Müşteri `istemlerde açıkça vurgulansın/görülsün` dediği bir teknik içeriği mevcut istem veya tarifnamede semantik olarak buluyorsan, `zaten var` sonucu yeterli değildir; requested terminology/kısaltma görünürlüğünü minimum Track Changes ile gerçekten sağla.
+- Aynı talepte sayılan her teknik test/işlevi tek tek kontrol et; bir kısmını uygulayıp diğerlerini sessizce atlama.
+- Şekil aksiyonunda otomatik düzenleme güvenliyse `safe_auto_edit=true` + dayanak + edit_instructions ver; yalnız öneri bırakılması gerekiyorsa false ver.
 
 Mail:
 - Markup dosyasının ekte olduğunu belirt.
@@ -703,6 +811,28 @@ def prepare_review_baseline_docx(data: bytes) -> bytes:
                         parent.insert(idx, run)
                         idx += 1
                     parent.remove(dele)
+                # Remove explicit red-font customer note runs from the baseline. They remain available
+                # through extract_docx_review_context as request text and are not silently accepted into the patent body.
+                red_note_paragraphs: list[Any] = []
+                for run in list(root.xpath(".//w:r", namespaces=ns)):
+                    if not _ooxml_run_is_customer_red(run, W):
+                        continue
+                    paragraph = next(iter(run.xpath("ancestor::w:p[1]", namespaces=ns)), None)
+                    if paragraph is not None and paragraph not in red_note_paragraphs:
+                        red_note_paragraphs.append(paragraph)
+                    parent = run.getparent()
+                    if parent is not None:
+                        parent.remove(run)
+                # Only paragraphs touched by red-note stripping may be removed; unrelated template blank
+                # paragraphs are part of the original Word geometry and must remain intact.
+                for p in red_note_paragraphs:
+                    has_text = bool(p.xpath(".//w:t[normalize-space(.) != '']", namespaces=ns))
+                    has_object = bool(p.xpath(".//w:drawing|.//w:pict|.//w:object|.//w:br|.//w:fldSimple", namespaces=ns))
+                    if not has_text and not has_object:
+                        parent = p.getparent()
+                        if parent is not None:
+                            parent.remove(p)
+
                 # Remove old comment anchors/references.
                 for node in list(root.xpath(".//w:commentRangeStart|.//w:commentRangeEnd", namespaces=ns)):
                     parent = node.getparent()

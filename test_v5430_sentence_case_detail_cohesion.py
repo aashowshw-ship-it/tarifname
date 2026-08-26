@@ -41,8 +41,8 @@ def extracted():
 
 
 def test_versions():
-    assert APP_VERSION=='v5.4.34'
-    assert RULESET_VERSION=='2026-08-26.v24'
+    assert APP_VERSION=='v5.4.35'
+    assert RULESET_VERSION=='2026-08-26.v25'
 
 
 def test_sentence_case_reference_names():

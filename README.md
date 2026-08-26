@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.34
+# Patent Atölyesi v5.4.35
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 26.08.2026 tarihli güncel tam sürümüdür.
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-26.v24`
+Kural sürümü: `2026-08-26.v25`
 
 ## Yerel çalıştırma
 
@@ -385,3 +385,13 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - ÖNCEKİ TEKNİK müşteri problem kümeleri kısa özetlenemez; son genel paragraf `Yukarıda belirtilen eksiklikler, ...` ile bağlanır.
 - Şekil kısa açıklamalarında referans/adım numarası aralıkları yazılmaz.
 - Ayrı şekiller Word dosyasında üst PAGE / NUMPAGES sayacı Arial 11 ve normal kalınlıkta olmak zorundadır ve indirme öncesi doğrulanır.
+
+
+## v5.4.35 — Tarifname Düzenleme istem görünürlüğü ve güvenli şekil revizyonu (26.08.2026)
+
+- Müşterinin `istemlerde açıkça vurgulansın/görülsün` talebi, teknik içerik tarifnamede zaten destekleniyorsa `zaten var` diye kapatılmaz. Tam teknik ad + kısaltma görünürlüğü minimum Track Changes ile sağlanır; aynı müşteri maddesinde sayılan her test/işlev ayrı dayanak kontrolünden geçer.
+- `figure_actions` kayıtları `safe_auto_edit`, `basis_source`, `basis_quote` ve `edit_instructions` alanlarını destekler.
+- Kaynakla desteklenen ve hedef Şekil numarası açık olan sınırlı şekil değişiklikleri otomatik uygulanabilir. Revize şekil özgün şekille ikinci görsel kontrolden geçmezse reddedilir.
+- Tarifname Düzenleme arayüzü, güvenli revizyon başarıyla tamamlandığında ayrıca `Revize Şekiller Word dosyasını indir` çıktısı verir; güvenli olmayan değişiklikler yalnız şekil aksiyonu olarak kalır.
+
+- Aynı Word içindeki açık kırmızı müşteri revizyon notları yorum/Track Changes gibi revizyon kaynağı sayılır; baz metinden çıkarılır ve otomatik kabul edilmez. Eski `.doc` ana tarifnameler LibreOffice üzerinden `.docx` tabanına dönüştürülerek gerçek OOXML Markup akışına alınır.

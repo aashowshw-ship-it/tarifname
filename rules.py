@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.34"
-RULESET_VERSION = "2026-08-26.v24"
+APP_VERSION = "v5.4.35"
+RULESET_VERSION = "2026-08-26.v25"
 
 EXTRA_CONTROLS_NOTICE = "EKSTRA KONTROLLER YAPILDI"
 EXTRA_CONTROL_GATE_KEYS = (
@@ -212,8 +212,9 @@ TARİFNAME DÜZENLEME / MÜŞTERİ REVİZYONU KURALLARI
 
 A. AKIŞ VE KAYNAKLAR
 1. Tarifname Düzenleme, yeni tarifname oluşturmadan ayrı bir iş akışıdır. Mevcut müşteri tarifnamesi sıfırdan yeniden yazılmaz; mevcut Word dosyası ana kaynak ve biçim taşıyıcısıdır.
-2. İşlem başlangıcında müşteriye gönderilmiş son tarifname/istem seti ve müşterinin revizyon talepleri/soruları istenir. Müşteri dönüşü ayrı PDF/DOCX/TXT olabilir veya aynı tarifname içindeki Word yorumları/Track Changes olabilir.
-3. Müşteri dönüşü aynı Word içindeyse yorumlar, eklemeler ve silmeler ayrıca okunup müşteri talep kaynağına dahil edilir.
+2. İşlem başlangıcında müşteriye gönderilmiş son tarifname/istem seti ve müşterinin revizyon talepleri/soruları istenir. Müşteri dönüşü ayrı PDF/DOCX/TXT olabilir veya aynı tarifname içindeki Word yorumları/Track Changes/kırmızı müşteri notları olabilir. Ana tarifname `.docx` veya eski `.doc` olabilir; `.doc` dosyası Track Changes uygulanmadan önce biçim korunarak `.docx` tabanına dönüştürülür.
+3. Müşteri dönüşü aynı Word içindeyse yorumlar, Track Changes ekleme/silmeleri ve açık kırmızı fontla yazılmış müşteri notları ayrıca okunup müşteri talep kaynağına dahil edilir.
+3A. Aynı Word içindeki kırmızı müşteri notu patent metninin kabul edilmiş parçası sayılmaz. Talep kaynağına çıkarıldıktan sonra temiz bazdan kaldırılır; yalnız teknik/hukuki değerlendirme sonunda uygun bulunan kısım Destek Patent Track Changes katmanıyla yeniden eklenir. Siyah/orijinal metin ve ilgisiz boş paragraf geometrisi korunur.
 4. Başvuru durumu zorunlu olarak sorulur: henüz başvuru yapılmadı / başvuru yapıldı / rüçhan başvurusu yapıldı ve sonraki başvuru hazırlanıyor.
 5. Ana kaynak mevcut tarifnamedir. Müşteri dönüşü teknik niyet, soru ve revizyon kaynağıdır; üçüncü taraf veya örnek metin teknik dayanak olarak sessizce kullanılamaz.
 6. Ek şekil ve teknik belgeler yüklenebilir; bunlar yalnız ilgili talebi değerlendirmek ve şekil uyumunu kontrol etmek için kullanılır.
@@ -247,12 +248,17 @@ D. DAYANAK, NEW MATTER VE İSTEM STRATEJİSİ
 28. Antecedent basis otomatik kontrol edilir; özellikle İngilizce istemlerde ilk kez tanıtılan unsur `the` ile dayanıksız başlatılmaz.
 29. Birbirinden bağımsız teknik özellikler tek bağımlı istemde gereksiz yere bağlanmaz; fallback değeri korunur.
 30. İstem, detaylı açıklama, referans numaraları, yöntem adımları, kısa açıklama, özet ve şekil açıklamaları arasında revizyonla etkilenen terminoloji senkronize edilir.
+30A. Müşteri bir teknik işlevin, testin, terimin veya kısaltmanın istemlerde açıkça görünmesini/vurgulanmasını istiyorsa ve aynı teknik içerik mevcut tarifname veya başvuru öncesi müşteri teknik bilgisinde zaten destekleniyorsa sistem `zaten semantik olarak var` diyerek talebi kapatamaz. Koruma kapsamını gereksiz daraltmadan en küçük kelime/ibare değişikliğiyle görünür terminoloji sağlanır. Uygunsa tam teknik ad ile kısaltma birlikte `tam ad (KISALTMA)` biçiminde yazılır; kullanıcı iki mevcut alternatifi slash ile açıkça görünür istemişse teknik belirsizlik yaratmıyorsa `tam ad (A) / tam ad (B)` biçimi kullanılabilir.
+30B. Aynı müşteri talebinde birden fazla test/işlev/özellik birlikte sayılmışsa her biri ayrı dayanak kontrolünden geçirilir. Bir kısmının istemde, diğer kısmının yalnız detaylı açıklamada bulunması diğerlerinin sessizce atlanmasına gerekçe değildir. Mevcut tarifnamede desteklenen fakat istemde adı açıkça geçmeyen özellik, istem stratejisi bakımından uygunsa bağımlı isteme minimum müdahaleyle taşınır; dayanağı olmayan özellik eklenmez.
 
 E. SORULAR, ŞEKİLLER VE MAIL
 31. Unity, PCT/EP stratejisi, aynı kategoride bağımsız istem, ISA, rüçhan, ülke, maliyet gibi usuli/stratejik sorular tarifnameye zorla yazılmaz; mailde cevaplanır veya açık konu olarak gösterilir.
 32. Kesin cevap verilemeyen hukuki/stratejik konuda kaynakların desteklemediği kesinlikte ifade kullanılmaz; değerlendirme sınırı açıkça belirtilir.
 33. Tarifname revizyonu unsur adını, yöntem akışını, mimariyi veya zorunlu/opsiyonel teknik yapıyı değiştiriyorsa mevcut şekillerin yeni metinle uyumu ayrıca kontrol edilir.
-34. Şekiller sırf müşteri istedi diye otomatik yeniden çizilmez. Teknik olarak eski veya okunabilirlik/başvuru formatı bakımından sorunluysa güncellenecek şekiller ve yapılacak değişiklikler somut biçimde listelenir; gerekiyorsa editable Mermaid/DWG/Visio vb. kaynak istenir.
+34. Şekiller sırf müşteri istedi diye bütünüyle yeniden çizilmez. Ancak müşteri talebi veya mevcut tarifname tarafından açıkça desteklenen, hedef şekli belirli ve sınırlı bir revizyon güvenilir biçimde uygulanabiliyorsa otomatik şekil düzenlemesi yapılabilir. Örnek olarak mevcut iki unsur arasında istenen kablo/bağlantı çizgisinin eklenmesi, mevcut monitör/ekran üzerinde tarifnamede zaten açıklanan test başlatma düğmesinin gösterilmesi veya referans numarası/kılavuz çizgisi düzeltmesi bu kapsamdadır.
+34A. Otomatik şekil düzenlemesi için `safe_auto_edit=true`, açık `Şekil/Figure X` hedefi, `existing_spec` veya `customer_request` dayanağı, doğrulanabilir birebir/çok yakın `basis_quote` ve tek anlamlı `edit_instructions` zorunludur. Başvuru yapılmış dosyada yalnız sonradan gelen müşteri bilgisine dayanan yeni teknik geometri otomatik şekle eklenemez; rüçhan sonrası yeni teknik geometri de kullanıcı kararı olmadan uygulanamaz.
+34B. Şekil otomatik düzenlendikten sonra özgün ve revize görsel bağımsız ikinci görsel kontrolden geçirilir. İstenen değişikliğin eksiksiz uygulanması, istenen değişiklik dışındaki teknik geometri/perspektif/referans/formüllerin korunması, istenmeyen yeni unsur veya bağlantı eklenmemesi ve okunabilirlik birlikte doğrulanır. Bu kontrol güvenilir biçimde geçmezse revize görsel reddedilir, özgün şekil korunur ve yalnız figure action kullanıcıya gösterilir.
+34C. Güvenli otomatik düzenleme yapılamıyorsa güncellenecek şekiller ve yapılacak değişiklikler somut biçimde listelenir; gerekiyorsa editable Mermaid/DWG/Visio vb. kaynak istenir.
 35. Şekil değerlendirmesinde yalnız yazı var/yok kriteri kullanılmaz; okunabilirlik, küçültmede anlaşılabilirlik, gerekli kısa metin, siyah-beyaz çoğaltılabilirlik ve tarifnameyle teknik uyum birlikte değerlendirilir.
 36. Müşteriye gönderilecek mail zorunlu çıktıdır. Mail; markup dosyasının ekte olduğunu, ana değişiklik gruplarını, uygulanmayan/kısmen uygulanan taleplerin nedenini, doğrudan soruların cevaplarını, açık konuları ve gerekiyorsa şekil/ek belge talebini içerir; kelime kelime change-log değildir.
 37. İşlem sonunda kullanıcıya iç kontrol özeti gösterilir: kaç talep uygulandı, kısmen uygulandı, açıklamayla cevaplandı, netleştirme/şekil/usuli aksiyon olarak kaldı. Hiçbir talep `işlenmemiş` durumda bırakılamaz.
