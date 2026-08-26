@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-26.v23**
+Kural sürümü: **2026-08-26.v24**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -445,3 +445,11 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Şekiller otomatik revize edilmez; metinle uyumsuz/eski/okunaksız şekiller için somut figure action üretilir ve gerekiyorsa editable kaynak istenir.
 - Müşteriye gönderilecek mail zorunludur; ana değişiklik gruplarını, açık soruları, stratejik cevapları ve şekil aksiyonlarını kapsar.
 - Varsayılan çıktı adı kaynak dosya adından türetilen `_markup.docx` dosyasıdır; browser duplicate `(1)` eki otomatik temizlenir. Clean sürüm varsayılan kullanıcı çıktısı değildir.
+
+
+## v5.4.34 / 2026-08-26.v24 — ÖNCEKİ TEKNİK derinlik + görünür ekstra kontrol bildirimi
+
+- Kaynakta `önceki_teknik` ve `problem` kategorisinde dört veya daha fazla teknik fact varsa patent literatürü hariç ÖNCEKİ TEKNİK genel gövdesi en az üç gelişmiş paragraf ve en az 2400 karakter olmak zorundadır. İlgili facts yalnız başka bölümlerde bulunarak kapatılamaz; özellikle ÖNCEKİ TEKNİK içinde gerçek evidence gerekir. Son genel paragraf `Yukarıda belirtilen eksiklikler, ...` ile başlar.
+- Taslak tamamlandıktan sonra ham BBF/ek teknik kaynak ikinci okuması, ÖNCEKİ TEKNİK kaynak yerleşim ve derinlik kontrolü, tam taslak kalite kontrolü, nihai Word beş kalite kapısı + formül/HOW alt kapıları ve Word render kontrolü ayrı ayrı fiilen çalıştırılır.
+- Bütün bu kontroller gerçekten PASS olmadan `EKSTRA KONTROLLER YAPILDI` ifadesi gösterilemez. Tamamı başarılıysa arayüzün sonunda görünür uyarı olarak tam olarak `EKSTRA KONTROLLER YAPILDI` gösterilir. Arayüz dışı çağrılar da aynı ortak boolean kapıyı kullanır; kontrol yapılmadıysa başarı mesajı uydurulmaz.
+- Nihai kalite sonuç sözlüğü artık `prior_art` ve `draft_quality` durumlarını da taşır; görünür ekstra kontrol bildirimi `source_completeness + prior_art + draft_quality + claims + references + template + element_step_language + formula_format + how_test + render` birleşik kapısına bağlıdır.

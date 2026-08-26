@@ -1,7 +1,25 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.33"
-RULESET_VERSION = "2026-08-26.v23"
+APP_VERSION = "v5.4.34"
+RULESET_VERSION = "2026-08-26.v24"
+
+EXTRA_CONTROLS_NOTICE = "EKSTRA KONTROLLER YAPILDI"
+EXTRA_CONTROL_GATE_KEYS = (
+    "source_completeness",
+    "prior_art",
+    "draft_quality",
+    "claims",
+    "references",
+    "template",
+    "element_step_language",
+    "formula_format",
+    "how_test",
+)
+
+def tarifname_extra_controls_completed(final_gates: dict | None, *, render_passed: bool = False) -> bool:
+    """Exact notice may be shown only after every extra tariff specification check actually passed."""
+    gates = final_gates or {}
+    return bool(render_passed and all(gates.get(key) is True for key in EXTRA_CONTROL_GATE_KEYS))
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI
@@ -118,6 +136,8 @@ F. SON KALİTE KONTROLÜ
 56. “Buluşun bir gerçekleştirilmesinde”, “bir gerçekleştirimde” ve “bir gerçekleştirmede” kalıpları kullanılmaz. Bu anlatım gereken yerde “Buluşun bir yapılanmasında” yazılır.
 57. Önceki teknik bölümünde kaynakta müşterinin verdiği teknik arka plan, eksiklik, problem ve karşılaştırma bilgileri eksiksiz aktarılır; seçilen patent literatürü bu bilgilerin yerine geçmez ve yalnızca bunlara eklenir.
 58. Kısa açıklamadaki şekillere geçiş cümlesi “Mevcut buluş...” ile başlamaz; “Buluşun yapılanması...” yapısında yazılır. Çizim açıklama kapanışında da “mevcut buluş” kullanılmaz; “buluş” kullanılır.
+59. ÖNCEKİ TEKNİK için ayrı sert derinlik kapısı uygulanır. Kaynakta `önceki_teknik` ve `problem` kategorisinde dört veya daha fazla teknik fact varsa patent literatürü hariç müşteri kaynaklı genel önceki teknik gövdesi en az üç gelişmiş paragraf ve en az 2400 karakter olmalıdır. Bu facts özellikle ÖNCEKİ TEKNİK bölümünde gerçek metin kanıtıyla bulunmalı; son genel paragraf `Yukarıda belirtilen eksiklikler, ...` ile başlamalıdır.
+60. Tarifname sonunda `EKSTRA KONTROLLER YAPILDI` uyarısı yalnız şu kontrollerin tamamı GERÇEKTEN çalıştırılıp başarılı olduğunda gösterilir: (i) taslak tamamlandıktan sonra bağımsız ham BBF/ek teknik kaynak ikinci okuması, (ii) ÖNCEKİ TEKNİK kaynak yerleşimi + paragraf/derinlik kontrolü, (iii) tam taslak kalite kontrolü, (iv) nihai Word üzerinde beş son kalite kapısı ve formül/HOW alt kapıları, (v) Word render kontrolü. Bu kontrollerden biri yapılmadıysa veya başarısızsa söz konusu uyarının gösterilmesi yasaktır. Arayüz dışı çağrılarda da aynı boolean durum kullanılmalı; yalnız başarılıysa tam olarak `EKSTRA KONTROLLER YAPILDI` ifadesi kullanıcıya bildirilmelidir.
 59. Otomatik kalite kontrolünde TEKNİK ALAN giriş kalıbı, önceki teknik devam paragrafları, literatürde İngilizce+Türkçe başlık, detaylı açıklamadaki unsur paragraf bütünlüğü, yöntem adımlarının noktalaması ve şablon boşluk yapısı ayrıca kontrol edilir.
 60. BULUŞUN KISA AÇIKLAMASI bölümündeki amaç cümleleri çıplak mastarla bitmez. "Buluşun ana amacı, ... karşılaştırmaktır.", "Buluşun diğer bir amacı, ... sağlamaktır." gibi tam yüklemli ve dilbilgisel olarak tamamlanmış cümleler kullanılır.
 61. Tarifnamenin açıklama bölümlerinde noktalı virgül gereksiz yere kullanılmaz. Normal teknik anlatımda virgül veya nokta tercih edilir. İstemlerin standart "olup, özelliği;" kalıbındaki noktalı virgül korunabilir.

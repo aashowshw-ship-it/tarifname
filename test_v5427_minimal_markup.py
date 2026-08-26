@@ -37,8 +37,8 @@ def test_ep_prior_art_requires_however_and_no_d_labels():
 
 
 def test_v5427_rules_present():
-    assert APP_VERSION=='v5.4.33'
-    assert RULESET_VERSION=='2026-08-26.v23'
+    assert APP_VERSION=='v5.4.34'
+    assert RULESET_VERSION=='2026-08-26.v24'
     low=GORUS_RULES.casefold()
     assert 'minimum track changes' in low
     assert 'however,' in low

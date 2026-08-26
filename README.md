@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.33
+# Patent Atölyesi v5.4.34
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 26.08.2026 tarihli güncel tam sürümüdür.
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-26.v23`
+Kural sürümü: `2026-08-26.v24`
 
 ## Yerel çalıştırma
 
@@ -333,6 +333,13 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 
 
 
+
+## v5.4.34 — ÖNCEKİ TEKNİK derinlik ve Ekstra Kontroller bildirimi (26.08.2026)
+
+- Tarifname üretiminde kaynakta 4+ önceki-teknik/problem fact varsa müşteri kaynaklı ÖNCEKİ TEKNİK gövdesi patent literatürü hariç en az 3 gelişmiş paragraf ve en az 2400 karakter olarak doğrulanır; son genel paragraf `Yukarıda belirtilen eksiklikler, ...` ile başlar.
+- Son kalite durumu artık ham BBF ikinci okumasının yanında `prior_art` ve `draft_quality` PASS bilgisini de taşır.
+- Ham BBF ikinci okuması + ÖNCEKİ TEKNİK kaynak/derinlik + tam taslak + nihai Word kapıları + formül/HOW + render kontrollerinin tamamı fiilen geçtiğinde arayüz sonunda **EKSTRA KONTROLLER YAPILDI** uyarısı gösterilir. Herhangi bir kontrol yapılmadıysa veya başarısızsa bu mesaj kesinlikle gösterilmez.
+- Arayüz dışı kullanım için aynı şartı uygulayan `tarifname_extra_controls_completed(...)` ortak kapısı eklendi.
 
 ## v5.4.33 — Görüş revizyon sırası, dayanak bölümü ve Destek Patent markup yazarı (26.08.2026)
 

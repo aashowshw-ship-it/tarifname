@@ -38,5 +38,6 @@ test_v5430_sentence_case_detail_cohesion.py
 test_v5431_strict_tarifname_format.py
 test_v5432_tarifname_update.py
 test_v5433_gorus_revision_basis_order.py
+test_v5434_extra_controls_prior_art.py
 validators.py
 word_math.py

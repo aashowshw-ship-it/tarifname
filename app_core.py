@@ -42,7 +42,7 @@ except ImportError:  # pragma: no cover - bağımlılık Render üzerinde requir
     fitz = None
 from pypdf import PdfReader
 
-from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES
+from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES, EXTRA_CONTROLS_NOTICE, tarifname_extra_controls_completed
 from template_audit import validate_full_tarifname_template_fidelity
 from source_guards import (
     build_source_passage_registry,
@@ -2980,8 +2980,10 @@ def validate_tarifname_post_generation_quality(
         final_text,
     )
 
-    # 2) Ana istem + alt istem kapısı: taslak denetimini Word üretiminden sonra tekrar çalıştır.
+    # 2) Tam taslak + ÖNCEKİ TEKNİK kapısı: Word üretiminden sonra tekrar çalıştır.
     validate_tarifname_draft(draft, claim_mode, literature or [], language, extracted)
+    _validate_prior_art_source_placement(draft, extracted, language)
+    _validate_prior_art_bridge_and_depth(draft, extracted, language)
 
     # 3) Referans kapısı: detaylı açıklama ve istemlerde canonical unsur kullanımları numaralı olmalı.
     _validate_reference_identity(draft)
@@ -3019,6 +3021,8 @@ def validate_tarifname_post_generation_quality(
 
     return {
         "source_completeness": True,
+        "prior_art": True,
+        "draft_quality": True,
         "claims": True,
         "references": True,
         "template": True,

@@ -40,7 +40,7 @@ except ImportError:  # pragma: no cover - bağımlılık Render üzerinde requir
     fitz = None
 from pypdf import PdfReader
 
-from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES, TARIFNAME_DUZENLEME_RULES
+from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES, TARIFNAME_DUZENLEME_RULES, EXTRA_CONTROLS_NOTICE, tarifname_extra_controls_completed
 from template_audit import validate_full_tarifname_template_fidelity
 from source_guards import (
     build_source_passage_registry,
@@ -2989,8 +2989,10 @@ def validate_tarifname_post_generation_quality(
         final_text,
     )
 
-    # 2) Ana istem + alt istem kapısı: taslak denetimini Word üretiminden sonra tekrar çalıştır.
+    # 2) Tam taslak + ÖNCEKİ TEKNİK kapısı: Word üretiminden sonra tekrar çalıştır.
     validate_tarifname_draft(draft, claim_mode, literature or [], language, extracted)
+    _validate_prior_art_source_placement(draft, extracted, language)
+    _validate_prior_art_bridge_and_depth(draft, extracted, language)
 
     # 3) Referans kapısı: detaylı açıklama ve istemlerde canonical unsur kullanımları numaralı olmalı.
     _validate_reference_identity(draft)
@@ -3028,6 +3030,8 @@ def validate_tarifname_post_generation_quality(
 
     return {
         "source_completeness": True,
+        "prior_art": True,
+        "draft_quality": True,
         "claims": True,
         "references": True,
         "template": True,
@@ -5195,6 +5199,10 @@ if work_type == "Tarifname oluşturma":
                     "nihai Word metnindeki gerçek kanıtlarla doğrulandı."
                 )
                 st.success("Kontrol kapıları tamamlandı: ✅ 1/5 Ham kaynak/BBF tamlığı  ✅ 2/5 Ana + alt istemler  ✅ 3/5 Referanslar  ✅ 4/5 Tam şablon  ✅ 5/5 Unsur/yöntem dili")
+                extra_controls_done = tarifname_extra_controls_completed(final_gates, render_passed=True)
+                if extra_controls_done:
+                    st.warning(EXTRA_CONTROLS_NOTICE)
+                    st.caption("Ham BBF ikinci okuması, ÖNCEKİ TEKNİK kaynak/derinlik kontrolü, tam taslak kalite kontrolü, nihai Word kalite kapıları ve render kontrolü başarıyla tamamlandı.")
                 st.caption("Tarifname Word indirmesi yalnız ham veri ikinci okuması ve bütün son kalite kapıları başarıyla tamamlandığında açılır.")
 
                 figure_data = None
