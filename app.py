@@ -72,6 +72,7 @@ from gorus_audit import (
     is_ep_search_report,
     validate_gorus_template_fidelity,
     validate_opinion_payload,
+    validate_revision_amendment_section,
     validate_opinion_against_raw_sources,
     validate_gorus_docx_content_flow,
     validate_minimal_tracked_changes,
@@ -3544,6 +3545,7 @@ JSON dışında yazma.
 ŞEMA:
 {{
  "application_no":"", "applicant":"", "reference":"{reference}", "report_date":"", "intro":"",
+ "amendment_assessment":{{"heading":"","blocks":[{{"type":"paragraph","text":""}},{{"type":"quote","text":"","attach_to_previous":true}}]}},
  "cited_documents":[{{"label":"D1","number":"","title":"","category":"","summary":""}}],
  "sections":[
    {{
@@ -3579,6 +3581,9 @@ JSON dışında yazma.
 - Genel değerlendirme en az birkaç güçlü paragraf olsun, yalnız dokümanı özetleme, uzmanı teknik katkı üzerinden ikna et.
 - Müşteri bilgisinin tarifname dayanağı yoksa kullanma.
 - Onaylı istem setine yeni değişiklik ekleme.
+- `revision_status` kullanıcı tarafından onaylanmış revize istem setini gösteriyorsa `amendment_assessment` ZORUNLUDUR ve önceki teknik savunmasından ayrı tutulur. Başlığı Türkçe çıktıda `İstemlerde Yapılan Değişiklikler ve Dayanakları`, İngilizce çıktıda `Amendments and Basis in the Application as Filed` mantığında kur. Her esas değişikliği önce kısa teknik gerekçeyle açıkla, hemen ardından final onaylı tarifnamede birebir bulunan bir `quote` bloğunu `attach_to_previous=true` ile ekle. Bu bölümde D1/D2/X/Y dokümanlarına karşı yenilik veya buluş basamağı savunması yapma.
+- Revizyon yapılmamışsa `amendment_assessment` alanını boş heading ve boş blocks ile döndür.
+- Fonksiyonel taşıyıcı terimler sırf uzman eleştirdi diye silinmiş gibi gerekçe kurma. Kullanıcının onaylı nihai istem setindeki minimum değişiklikleri esas al ve yalnız kaynakla doğrulanabilen değişiklikleri açıkla.
 - Türkiye araştırma raporunda ve EP araştırma raporunda cited_documents ve sections alanlarında yalnız X/Y kategori dokümanları yer alsın. A kategorisi görüş bölümü değildir. İnceleme/ofis aksiyonunda yalnız uzmanın gerekçede fiilen kullandığı dokümanlara bölüm aç.
 - EP ve İngilizce çıktıysa `intro` şu formatı izlesin: `In the Extended European Search Report dated [date], objections were raised under ... Applicant’s observations and amendments in response to the objections raised in the communication are hereby submitted below.` Doküman listesi intro içine gömülmez, cited_documents alanı üzerinden hemen arkasından gelir.
 - EP ve İngilizce çıktıysa `conclusion` son paragrafı şu bağlayıcı formatta kur: `In the light of above explanations and defence, we believe that our claims meet the [applicable criteria] criteria. However, in case of probable rejection, we kindly request to be given opportunity for further amendments or at least oral proceedings.`
@@ -3603,7 +3608,7 @@ def gorus_quality_audit_prompt(
     opinion: dict[str, Any],
 ) -> str:
     return f"""{GORUS_RULES}
-Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını ve önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını kontrol et.
+Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını ve önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu ve görüşte önce geldiğini de kontrol et.
 
 JSON dışında yazma.
 ŞEMA:
@@ -3616,6 +3621,7 @@ JSON dışında yazma.
     "technical_effect_problem": {{"pass":true,"note":""}},
     "motivation_hindsight": {{"pass":true,"note":""}},
     "spec_support_new_matter": {{"pass":true,"note":""}},
+    "amendment_basis_order": {{"pass":true,"note":""}},
     "intro_concision": {{"pass":true,"note":""}},
     "paragraph_flow_inline_basis": {{"pass":true,"note":""}},
     "punctuation": {{"pass":true,"note":""}},
@@ -3659,6 +3665,13 @@ MÜŞTERİ BİLGİLERİ:\n{customer_text}\n
 
 def validate_quotes(opinion: dict[str, Any], spec_text: str) -> None:
     normalized_spec = re.sub(r"\s+", " ", spec_text).strip()
+    amendment = opinion.get("amendment_assessment") or {}
+    for block in amendment.get("blocks") or []:
+        if str(block.get("type", "")).lower() != "quote":
+            continue
+        text = re.sub(r"\s+", " ", str(block.get("text", ""))).strip()
+        if text and text not in normalized_spec:
+            raise ValueError(f"Revizyon dayanağı tarifnamede birebir doğrulanamadı: {text[:120]}...")
     for section in opinion.get("sections") or []:
         for block in section.get("blocks") or []:
             if str(block.get("type", "")).lower() != "quote":
@@ -3785,6 +3798,26 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
     # Template p4 intro, p5 blank, p6/7 cited-document rows, p8 blank.
     _clone_paragraph_with_text(doc, template.paragraphs[4], opinion.get("intro", ""), bold=False)
     _clone_blank(doc, template.paragraphs[5])
+
+    # If claims were amended, explain the approved changes and their as-filed basis
+    # BEFORE any X/Y/D prior-art defence. Existing template paragraph archetypes are
+    # reused so the binding font/spacing geometry remains unchanged.
+    amendment = opinion.get("amendment_assessment") or {}
+    amendment_heading = str(amendment.get("heading", "")).strip()
+    amendment_blocks = amendment.get("blocks") or []
+    if amendment_heading and amendment_blocks:
+        _clone_paragraph_with_text(doc, template.paragraphs[9], amendment_heading, bold=True)
+        for block in amendment_blocks:
+            typ = str(block.get("type", "paragraph")).lower()
+            if typ == "quote":
+                if bool(block.get("attach_to_previous", True)) and doc.paragraphs and doc.paragraphs[-1].text.strip():
+                    _append_quote_with_location(doc.paragraphs[-1], block)
+                else:
+                    _add_quote_with_location(doc, template.paragraphs[10], block)
+            else:
+                _clone_paragraph_with_text(doc, template.paragraphs[10], block.get("text", ""), bold=False)
+        _clone_blank(doc, template.paragraphs[8])
+
     docs = opinion.get("cited_documents") or []
     for i, d in enumerate(docs):
         cat = str(d.get("category", "")).strip()
@@ -3954,7 +3987,7 @@ def _append_revision(parent, text: str, *, kind: str, change_id: int, rpr: Any =
         return
     wrapper = OxmlElement("w:del" if kind == "delete" else "w:ins")
     wrapper.set(qn("w:id"), str(change_id))
-    wrapper.set(qn("w:author"), "Patent Atölyesi")
+    wrapper.set(qn("w:author"), "Destek Patent")
     wrapper.set(qn("w:date"), datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
     _append_plain_run(wrapper, text, rpr, deleted=(kind == "delete"))
     parent.append(wrapper)
@@ -5453,7 +5486,7 @@ elif work_type == "Tarifname düzenleme":
 # GÖRÜŞ
 elif work_type == "Görüş hazırlama":
     st.subheader("Görüş hazırlama")
-    st.caption("Akış: görüş türü → rapor ve önceki görüş → tarifname → araştırma raporunda X/Y veya ofis aksiyonunda gerekçede fiilen kullanılan savunma dokümanları → teknik analiz/revizyon kararı → ham-kaynak ikinci okuma → son Markup fiziksel sayfa/satır kontrolü → Word kalite kapıları → görüş çıktısı.")
+    st.caption("Akış: görüş türü → rapor ve önceki görüş → tarifname → araştırma raporunda X/Y veya ofis aksiyonunda gerekçede fiilen kullanılan savunma dokümanları → TÜM kaynaklar birlikte teknik analiz edilerek revizyon kararı → revizyon varsa minimum Track Changes + temiz sürüm ve kullanıcı onayı → görüşte önce yapılan değişiklikler + son Markup dayanakları → ardından X/Y/D savunmaları → ham-kaynak ikinci okuma → son Markup fiziksel sayfa/satır kontrolü → Word kalite kapıları → görüş çıktısı.")
 
     opinion_modes = [
         "Araştırma raporuna karşı",
@@ -5800,6 +5833,9 @@ elif work_type == "Görüş hazırlama":
                     )
                     if source_state.get("applicant_override"):
                         opinion["applicant"] = source_state["applicant_override"]
+                    validate_revision_amendment_section(
+                        opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
+                    )
                     validate_quotes(opinion, final_spec_text)
                     validate_opinion_against_raw_sources(
                         opinion, source_state["report_text"], final_spec_text,
@@ -5827,6 +5863,9 @@ elif work_type == "Görüş hazırlama":
                         )
                         if source_state.get("applicant_override"):
                             opinion["applicant"] = source_state["applicant_override"]
+                        validate_revision_amendment_section(
+                            opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
+                        )
                         validate_quotes(opinion, final_spec_text)
                         validate_opinion_against_raw_sources(
                             opinion, source_state["report_text"], final_spec_text,

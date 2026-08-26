@@ -37,5 +37,6 @@ test_v5429_dp_name_raw_source_gate.py
 test_v5430_sentence_case_detail_cohesion.py
 test_v5431_strict_tarifname_format.py
 test_v5432_tarifname_update.py
+test_v5433_gorus_revision_basis_order.py
 validators.py
 word_math.py

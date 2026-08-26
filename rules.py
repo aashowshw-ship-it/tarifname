@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.32"
-RULESET_VERSION = "2026-08-21.v22"
+APP_VERSION = "v5.4.33"
+RULESET_VERSION = "2026-08-26.v23"
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI
@@ -293,6 +293,13 @@ TÜRK PATENT GÖRÜŞ ÇALIŞMASI KURALLARI
 50. EP görüş ham-kaynak ve ikinci-okuma kontrolünde ayrıca şu kapılar zorunludur: `yalnız X/Y savunma dokümanları`, `EP giriş formatı`, `EP sonuç formatı`, `tüm itirazlı istem/istem gruplarına cevap`, `dependent claims technical contribution`, `markup literatüründe D1/D2 etiketi yok`, `markup literatüründe However ile kaynak-destekli teknik fark`, `markup literatür font/punto eşleşmesi`, `Article 123(2) dayanakları`, `minimum Track Changes karakter/kelime farkı`. Bunlardan biri geçmezse Word indirme açılmaz.
 51. Markup minimum-fark kalite kapısı, yan yana gelen `w:del`/`w:ins` çiftlerinde silinen ve eklenen metnin ortak değişmemiş ön/son parçasını yeniden redline içine almayı yasaklar. Aynı kelime/cümle parçası hem silinip hem tekrar eklenebiliyorsa redline gereğinden geniş kabul edilir ve çıktı durdurulur. Yazım hatasında yalnız eksik/yanlış karakter, artikel değişiminde yalnız artikel, unsur adı değişiminde yalnız değişen unsur adı redline edilir.
 52. EP önceki teknik paragraf kalite kapısı, her yeni X/Y literatür paragrafında `As a result of the research on the subject` başlangıcını, `However,` fark cümlesini, D1/D2 etiket yasağını ve fark cümlesindeki teknik içeriğin başvuru as-filed metninde dayanağını ayrı ayrı doğrular.
+53. İstem revizyonu gerekip gerekmediğine ilişkin nihai karar, rapor + mevcut tarifname/istemler + araştırma raporu akışında X/Y savunma dokümanları veya ofis aksiyonu akışında gerekçede fiilen kullanılan dokümanlar + varsa önceki görüş + varsa müşteri bilgisinin birlikte teknik analizinden SONRA verilir. Savunma dokümanları görülmeden sadece rapora bakılarak nihai revizyon kararı verilmez.
+54. Kullanıcının onayladığı istem değişikliği varsa görüş metninde X/Y veya diğer önceki teknik doküman savunmalarından ÖNCE ayrı bir `İstemlerde Yapılan Değişiklikler ve Dayanakları` bölümü bulunur. Bu bölümde her esas değişiklik için neyin değiştirildiği, uzmanın hangi açıklık/kategori/biçim itirazını gidermeyi amaçladığı ve değişikliğin başvurunun ilk kapsamını aşmadığı somut tarifname dayanağıyla açıklanır. Bu bölüm önceki teknik doküman savunması yapmaz.
+55. Revizyon dayanakları görüşte genel atıfla bırakılmaz. Önemli her değişiklik için birebir tarifname pasajı kullanılır ve son Markup dosyasının fiziksel render'ından `Tarifname sayfa X, satır Y-Z` / `Description page X, lines Y-Z` konumu deterministik olarak eklenir. Markup varsa bu bölümün sayfa/satır otoritesi de son Markup'tır.
+56. Uzman `bileşen`, `modül`, `mekanizma`, `motor` gibi fonksiyonel taşıyıcı ifadeleri eleştirdi diye bu mevcut taşıyıcılar otomatik silinmez. Tarifnamede açık teknik dayanakları varsa EN AZ DEĞİŞİKLİK ilkesiyle korunur, gerekiyorsa aynı istem içinde somut teknik işlem/bağlantı ile açıklığa kavuşturulur. Bir itirazı gidermek için gerekli olandan fazla metin çıkarılamaz.
+57. Yöntem bağımlı istemlerinde yalnız sonuç bildiren `... engellenmesidir`, `... önlenmesidir`, `... atlatılamaz olmasıdır` gibi kapanışlar, mevcut tarifname dayanağı izin verdiği ölçüde sonucu sağlayan teknik işlemi koruyarak `... engellenmesi/önlenmesi işlem adımını (veya işlem adımlarını) içermesidir` biçiminde yöntem diline dönüştürülür. Bu dönüşüm yeni teknik özellik ekleyemez. Sistem istemleri ise yöntem kapanışıyla yazılmaz, yapısal unsur/özellik dili korunur.
+58. Görüş revizyonlarında üretilen Track Changes dosyalarının `w:author` değeri varsayılan olarak `Destek Patent` olmalıdır. `Patent Atölyesi` revizyon yazarı olarak kullanıcıya görünmez.
+59. Görüş Word kalite kapısı, onaylı revizyon varsa `İstemlerde Yapılan Değişiklikler ve Dayanakları` bölümünün tüm D1/D2/X/Y savunma başlıklarından önce geldiğini, değişiklik gerekçesi + birebir dayanak içerdiğini ve önceki teknik savunmasını bu bölüme karıştırmadığını ayrıca doğrular.
 """
 
 ARASTIRMA_RULES = r"""

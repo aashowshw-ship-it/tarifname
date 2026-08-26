@@ -277,7 +277,7 @@ def _append_revision(parent, text: str, *, kind: str, change_id: int, rpr: Any =
         return
     wrapper = OxmlElement("w:del" if kind == "delete" else "w:ins")
     wrapper.set(qn("w:id"), str(change_id))
-    wrapper.set(qn("w:author"), "Patent Atölyesi")
+    wrapper.set(qn("w:author"), "Destek Patent")
     wrapper.set(qn("w:date"), datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
     _append_plain_run(wrapper, text, rpr, deleted=(kind == "delete"))
     parent.append(wrapper)
@@ -411,7 +411,7 @@ def _add_comment(doc: Document, anchor_para: Paragraph, text: str) -> None:
         raise ValueError("Word yorumu için değişmeden kalmış yorum anchor run'ı bulunamadı.")
     if not hasattr(doc, "add_comment"):
         raise ValueError("Kurulu python-docx sürümü Word comment API'sini desteklemiyor.")
-    doc.add_comment(runs=[runs[0]], text=text, author="Patent Atölyesi", initials="PA")
+    doc.add_comment(runs=[runs[0]], text=text, author="Destek Patent", initials="DP")
 
 
 def build_updated_spec_docx(source_docx: bytes, plan: dict[str, Any], *, track_changes: bool, add_comments: bool = False) -> bytes:
@@ -663,7 +663,7 @@ def prepare_review_baseline_docx(data: bytes) -> bytes:
 
     This lets a customer-returned file serve as both the request carrier and the baseline source:
     customer insertions are treated as requests rather than silently accepted, customer deletions are
-    restored, and Patent Atölyesi then writes a fresh markup layer after substantive review.
+    restored, and Destek Patent then writes a fresh markup layer after substantive review.
     """
     from lxml import etree
 

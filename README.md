@@ -1,6 +1,6 @@
-# Patent Atölyesi v5.4.32
+# Patent Atölyesi v5.4.33
 
-Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 21.08.2026 tarihli güncel tam sürümüdür.
+Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 26.08.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme — ESKİ DOSYALARIN KALMAMASI ÖNEMLİ
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-21.v22`
+Kural sürümü: `2026-08-26.v23`
 
 ## Yerel çalıştırma
 
@@ -333,11 +333,22 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 
 
 
+
+## v5.4.33 — Görüş revizyon sırası, dayanak bölümü ve Destek Patent markup yazarı (26.08.2026)
+
+- Görüşte istem değişikliği kararı artık bağlayıcı olarak rapor, tarifname/istemler, gerekli X/Y veya gerekçede kullanılan önceki teknik dokümanlar, varsa önceki görüş ve müşteri bilgisinin birlikte analizinden sonra verilir.
+- Kullanıcı revizyonu onayladıysa görüş metninde önce **İstemlerde Yapılan Değişiklikler ve Dayanakları** bölümü üretilir. Değişiklik gerekçeleri ve birebir tarifname dayanakları burada verilir, X/Y/D savunmaları daha sonra başlar.
+- Bu değişiklik dayanaklarının sayfa/satır numaraları da revizyonlu dosyada son Markup fiziksel render'ından alınır.
+- `bileşen/modül/mekanizma` gibi mevcut fonksiyonel taşıyıcılar sırf açıklık itirazı bulunduğu için otomatik silinmez. Açık dayanak varsa minimum değişiklikle korunur ve yalnız gerektiği kadar somutlaştırılır.
+- Yöntem bağımlı istemlerinde sonuç-odaklı kapanışlar, kaynak desteklediğinde `... işlem adımını/adımlarını içermesidir` yöntem diline dönüştürülür. Yeni teknik bilgi eklenmez.
+- Görüş ve tarifname düzenleme Track Changes yazarı **Destek Patent** olarak standardize edildi.
+- Word görüş üreticisi, revizyon-dayanak bölümünü D1/D2/X/Y bölümlerinden önce yerleştirir ve birebir alıntıları mevcut sayfa/satır kalite kapısına dahil eder.
+
 ## v5.4.32 — Tarifname Düzenleme / müşteri revizyonu iş akışı (21.08.2026)
 
 - Arayüze yeni ve bağımsız **Tarifname düzenleme** iş türü eklendi. Yeni tarifname oluşturma akışına karışmaz.
 - Ana giriş müşteriye gönderilmiş son `.docx` tarifnamedir. Müşteri revizyon/soruları ayrı PDF/DOCX/DOC/TXT/MD/ZIP olarak yüklenebilir veya aynı Word içindeki **yorumlar ve Track Changes** doğrudan müşteri talebi olarak okunabilir.
-- Aynı müşteri Word'ü kaynak olarak kullanıldığında mevcut müşteri Track Changes'i otomatik kabul edilmez: sistem önce yorum/değişiklikleri talep bağlamı olarak çıkarır, ardından müşteri insertions'larını reddedip deletions'larını geri getirerek temiz baz üretir ve kendi değerlendirdiği değişiklikleri yeni bir Patent Atölyesi markup katmanı olarak uygular.
+- Aynı müşteri Word'ü kaynak olarak kullanıldığında mevcut müşteri Track Changes'i otomatik kabul edilmez: sistem önce yorum/değişiklikleri talep bağlamı olarak çıkarır, ardından müşteri insertions'larını reddedip deletions'larını geri getirerek temiz baz üretir ve kendi değerlendirdiği değişiklikleri yeni bir Destek Patent markup katmanı olarak uygular.
 - Başvuru durumu zorunlu girdidir: **henüz başvuru yapılmadı / başvuru yapıldı / rüçhan başvurusu yapıldı; sonraki başvuru hazırlanıyor**. Post-filing veya rüçhan sonrası yalnız yeni müşteri bilgisine dayanan teknik ekleme otomatik uygulanmaz; new-matter/rüçhan etkisi için kullanıcı kararı gerekir.
 - Müşterinin bütün talepleri ayrı karar matrisine alınır: `apply`, `partial`, `explain`, `clarification`, `figure_action`, `procedural_action`. İkinci bağımsız okuma `coverage_complete=true` vermeden çıktı üretilemez.
 - Word revizyonları gerçek **OOXML Track Changes** ile ve **EN AZ DEĞİŞİKLİK** prensibiyle uygulanır. Değişmeyen ön/son kelimeler yeniden silinip eklenmez; mevcut run biçimleri, sayfa/section ölçüleri ve numaralandırma korunur.

@@ -119,6 +119,10 @@ def build_page_line_index(filename: str, data: bytes) -> list[dict[str, Any]]:
 
 
 def _iter_quote_objects(opinion: dict[str, Any]):
+    amendment = opinion.get("amendment_assessment") or {}
+    for block in amendment.get("blocks") or []:
+        if str(block.get("type", "")).lower() == "quote":
+            yield block
     for section in opinion.get("sections") or []:
         for block in section.get("blocks") or []:
             if str(block.get("type", "")).lower() == "quote":
@@ -245,6 +249,27 @@ def _edit_distance_le1(a: str, b: str) -> bool:
             if diff > 1:
                 return False
     return True
+
+def validate_revision_amendment_section(opinion: dict[str, Any], revision_required: bool) -> None:
+    """Hard gate for approved claim amendments: basis section exists before prior-art defence."""
+    amendment = opinion.get("amendment_assessment") or {}
+    heading = _norm(amendment.get("heading", ""))
+    blocks = amendment.get("blocks") or []
+    substantive = [b for b in blocks if _norm(b.get("text", ""))]
+    if revision_required:
+        if not heading or not substantive:
+            raise ValueError("Görüş revizyon-dayanak kapısı: onaylı istem revizyonu için değişiklik/dayanak bölümü zorunludur.")
+        paras = [b for b in substantive if str(b.get("type", "paragraph")).lower() == "paragraph"]
+        quotes = [b for b in substantive if str(b.get("type", "")).lower() == "quote"]
+        if not paras or not quotes:
+            raise ValueError("Görüş revizyon-dayanak kapısı: değişiklik açıklaması ve en az bir birebir tarifname dayanağı birlikte bulunmalıdır.")
+        generated = _norm(" ".join(str(b.get("text", "")) for b in paras)).casefold()
+        if "buluş basamağı" in generated or re.search(r"\bD[1-9]\b", generated, flags=re.I):
+            raise ValueError("Görüş revizyon-dayanak kapısı: istem değişiklikleri bölümü önceki teknik/buluş basamağı savunmasına dönüştürülemez.")
+    else:
+        if heading or substantive:
+            raise ValueError("Görüş revizyon-dayanak kapısı: revizyon uygulanmadığı halde değişiklik bölümü oluşturulmuş.")
+
 
 def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_text: str) -> None:
     for field, label in [("application_no", "Başvuru No"), ("applicant", "Başvuru Sahibi"), ("reference", "Referans")]:
@@ -415,6 +440,12 @@ def _iter_generated_narrative(opinion: dict[str, Any]):
     intro = str(opinion.get("intro", ""))
     if intro:
         yield ("intro", intro)
+    amendment = opinion.get("amendment_assessment") or {}
+    if amendment.get("heading"):
+        yield ("amendment_heading", str(amendment.get("heading")))
+    for block in amendment.get("blocks") or []:
+        if str(block.get("type", "paragraph")).lower() == "paragraph" and block.get("text"):
+            yield ("amendment_paragraph", str(block.get("text")))
     for d in opinion.get("cited_documents") or []:
         if d.get("summary"):
             yield ("document_summary", str(d.get("summary")))
@@ -471,6 +502,15 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
     missing_cites = sorted(c for c in _report_reason_citations(report_text) if f"[{c}]" not in full)
     if missing_cites:
         raise ValueError("Görüş inceleme-gerekçesi kapısı: uzmanın dayandığı D-paragraf atıflarının tümüne cevap yok: " + ", ".join(f"[{x}]" for x in missing_cites))
+
+    amendment = opinion.get("amendment_assessment") or {}
+    prev_type = None
+    for block in amendment.get("blocks") or []:
+        typ = str(block.get("type", "paragraph")).lower()
+        if typ == "quote":
+            if prev_type != "paragraph" or not bool(block.get("attach_to_previous", True)):
+                raise ValueError("Görüş revizyon-dayanak kapısı: revizyon tarifname dayanağı ilgili değişiklik açıklamasının aynı paragrafına eklenmelidir.")
+        prev_type = typ
 
     for section in opinion.get("sections") or []:
         prev_type = None
@@ -632,7 +672,8 @@ def build_gorus_quality_report() -> dict[str, Any]:
         "Objektif teknik problem + motivasyon + hindsight",
         "Tarifname birebir dayanak + SON MARKUP fiziksel sayfa/satır + ikinci doğrulama",
         "İstem kapsamı / new matter kontrolü",
-        "Minimum Track Changes (karakter/kelime bazlı redline)",
+        "Minimum Track Changes (karakter/kelime bazlı redline) + Destek Patent revizyon yazarı",
+        "Onaylı revizyon varsa değişiklikler + son Markup dayanakları D-savunmalarından önce",
         "EP markup: D1/D2 etiketsiz prior-art + However teknik fark dayanağı",
         "Giriş sadeliği",
         "Paragraf devamlılığı + inline dayanak",

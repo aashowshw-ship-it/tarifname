@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-21.v22**
+Kural sürümü: **2026-08-26.v23**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -422,10 +422,20 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Ayrı şekiller Word dosyasında üst PAGE / NUMPAGES sayacı Arial 11 ve normal kalınlıkta olmak zorundadır ve indirme öncesi doğrulanır.
 
 
+## v5.4.33 / 2026-08-26.v23 — Görüş revizyon sırası ve değişiklik-dayanak kapısı
+
+- Türkiye araştırma görüşünde revizyon kararı, X/Y dokümanları dahil gerekli bütün kaynakların birlikte analizinden sonra verilir. EP/ofis aksiyonu/yurtdışı akışında da gerekçede fiilen kullanılan savunma dokümanları görülmeden nihai revizyon kararı verilmez.
+- Onaylı revizyon varsa görüşte önce `İstemlerde Yapılan Değişiklikler ve Dayanakları`, sonra X/Y/D savunmaları gelir. Değişiklik bölümü önceki teknik savunması değildir.
+- Her esas değişiklik gerçek tarifname pasajıyla desteklenir. Revizyonlu dosyada fiziksel sayfa/satır otoritesi son Markup'tır.
+- Fonksiyonel taşıyıcı terimler otomatik silinmez. Minimum değişiklikle korunur ve yalnız itirazı gidermek için gereken teknik somutlaştırma yapılır.
+- Yöntem bağımlı istemlerinin sonuç odaklı kapanışları, kaynak desteklediğinde teknik işlemi koruyarak `işlem adımını/adımlarını içermesidir` diline çevrilir.
+- Track Changes yazarı `Destek Patent` olarak sabitlendi.
+- Görüş Word üreticisi revizyon-dayanak bloklarını D1/D2/X/Y bölümlerinden önce işler ve bu bloklardaki birebir alıntıları sayfa/satır kalite kapısına dahil eder.
+
 ## v5.4.32 / 2026-08-21.v22 — Tarifname Düzenleme / müşteri dönüşü modu
 
 - `Tarifname düzenleme` yeni tarifname oluşturmadan tamamen ayrıdır. Ana kaynak müşteriye gönderilmiş son Word tarifnamesidir; müşteri dönüşü ayrı dosya veya aynı Word içindeki comment/Track Changes olabilir.
-- Aynı Word müşteri değişikliklerini taşıyorsa müşteri revizyonları otomatik kabul edilmez. Review içeriği talep olarak çıkarılır; baz metinde customer insertion reddedilir, customer deletion geri getirilir, eski yorumlar temizlenir ve yalnız Patent Atölyesi'nin onayladığı değişiklikler yeni markup katmanında uygulanır.
+- Aynı Word müşteri değişikliklerini taşıyorsa müşteri revizyonları otomatik kabul edilmez. Review içeriği talep olarak çıkarılır; baz metinde customer insertion reddedilir, customer deletion geri getirilir, eski yorumlar temizlenir ve yalnız Destek Patent tarafından onaylanan değişiklikler yeni markup katmanında uygulanır.
 - Başvuru durumu revizyon öncesi zorunlu kapıdır. Başvuru sonrası yalnız müşteri kaynağına dayanan yeni teknik bilgi otomatik eklenmez. Rüçhan sonrası sonraki başvuruya yeni özellik eklenmesi de rüçhan etkisi nedeniyle kullanıcı kararı gerektirir.
 - Müşterinin her talebi/sorusu ayrı `request_id` ile `apply / partial / explain / clarification / figure_action / procedural_action` sonuçlarından birine bağlanır. İkinci ham müşteri-dönüşü okuması `coverage_complete=true` vermeden Markup oluşturulamaz.
 - Revizyon ana ilkesi **EN AZ DEĞİŞİKLİK**tir. Word çıktısı gerçek OOXML Track Changes'tir; değişmeyen kelime/ek/noktalama silinip yeniden yazılmaz. Mevcut font/run, paragraf, numaralandırma, section ve marjin yapısı korunur.
