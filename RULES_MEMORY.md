@@ -419,7 +419,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - `bir gerçekleştirimde / bir gerçekleştirmede / buluşun bir gerçekleştirilmesinde` yasaktır; `Buluşun bir yapılanmasında` kullanılır.
 - ÖNCEKİ TEKNİK müşteri problem kümeleri kısa özetlenemez; son genel paragraf `Yukarıda belirtilen eksiklikler, ...` ile bağlanır.
 - Şekil kısa açıklamalarında referans/adım numarası aralıkları yazılmaz.
-- Ayrı şekiller Word dosyasında üst PAGE / NUMPAGES sayacı Arial 11 ve normal kalınlıkta olmak zorundadır ve indirme öncesi doğrulanır.
+- Ayrı şekiller Word dosyasında üst PAGE / NUMPAGES sayacı Arial 11 ve kalın olmak zorundadır ve indirme öncesi doğrulanır.
 
 
 ## v5.4.33 / 2026-08-26.v23 — Görüş revizyon sırası ve değişiklik-dayanak kapısı
@@ -454,7 +454,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Bütün bu kontroller gerçekten PASS olmadan `EKSTRA KONTROLLER YAPILDI` ifadesi gösterilemez. Tamamı başarılıysa arayüzün sonunda görünür uyarı olarak tam olarak `EKSTRA KONTROLLER YAPILDI` gösterilir. Arayüz dışı çağrılar da aynı ortak boolean kapıyı kullanır; kontrol yapılmadıysa başarı mesajı uydurulmaz.
 - Nihai kalite sonuç sözlüğü artık `prior_art` ve `draft_quality` durumlarını da taşır; görünür ekstra kontrol bildirimi `source_completeness + prior_art + draft_quality + claims + references + template + element_step_language + formula_format + how_test + render` birleşik kapısına bağlıdır.
 
-## v5.4.35 / 2026-08-26.v25 — Tarifname Düzenleme açık istem görünürlüğü + güvenli şekil revizyonu
+## v5.4.36 / 2026-08-27.v26 — Tarifname Düzenleme açık istem görünürlüğü + güvenli şekil revizyonu
 
 - Müşteri bir teknik işlev/test/terim/kısaltmanın **istemlerde açıkça görünmesini veya vurgulanmasını** istediğinde, aynı teknik içerik mevcut tarifnamede semantik olarak zaten destekleniyorsa talep `zaten var` denilerek kapatılamaz. En az değişiklik ilkesiyle tam ad + kısaltma görünürlüğü sağlanır; örneğin `mini sıvı yükleme testi (MFC)` ve `pasif bacak kaldırma testi (PLR)` gibi. Kullanıcı iki mevcut alternatifi slash ile açıkça görmek istiyorsa ve teknik belirsizlik yaratmıyorsa `tam ad (A) / tam ad (B)` biçimi korunabilir.
 - Aynı müşteri maddesinde PLR/MFC/PPV/SVV gibi birden çok işlev/test sayılmışsa her biri **ayrı dayanak kontrolüne** tabi tutulur. Bazısının istemde zaten bulunması, yalnız detaylı açıklamada desteklenen diğer bir terimin sessizce atlanmasına gerekçe değildir. Desteklenen teknik içerik istem stratejisi bakımından uygunsa minimum müdahaleyle görünür hale getirilir; dayanağı olmayan özellik eklenmez.
@@ -464,3 +464,11 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 
 - Aynı tarifnamenin İSTEMLER veya başka bölümünde **kırmızı fontla yazılmış müşteri notları** varsa bunlar artık ayrı müşteri dosyası olmadan doğrudan revizyon kaynağı olarak çıkarılır. Kırmızı notlar baz patent metninden kaldırılır ve otomatik kabul edilmez; yalnız onaylanan teknik içerik `Destek Patent` Track Changes olarak geri işlenir.
 - Tarifname Düzenleme ana dosyası eski `.doc` ise LibreOffice ile biçim korunarak `.docx` tabanına dönüştürülür; böylece `.doc` dosyaları da gerçek OOXML Track Changes akışına alınabilir.
+
+
+## v5.4.37 / 2026-08-27.v27 — Sayaç fontunun gerçek OOXML doğrulaması ve istem kısa-son-satır engeli
+
+- Ayrı Şekiller Word sayacında Arial 11 kalın doğrulaması field dışındaki `/` run'ına bakılarak geçilemez. PAGE ve NUMPAGES alan sonuç run'larının `ascii/hAnsi/eastAsia/cs` fontlarının tamamı açıkça `Arial`, normal ve complex-script puntoları 11, bold/boldCs değerleri açıkça aktif olmalıdır. Header paragrafı varsayılan run özellikleri de aynı biçime sabitlenir.
+- Şekiller kalite kapısı yapısal OOXML denetimiyle bitmez; Şekiller DOCX ayrıca PDF'e render edilir ve her fiziksel sayfadaki `mevcut sayfa / toplam sayfa` göstergesinin üstte, 11 punto ve kalın görünmesi zorunludur.
+- İstem girişinde yalnız `sistemi olup, özelliği;` grubunun non-breaking yapılması yeterli değildir. `olup, özelliği;` öncesindeki son en az beş kelime aynı non-breaking kuyrukta tutulur.
+- Tarifname render kapısı İSTEMLER bölümündeki fiziksel satırları inceler; `olup, özelliği;` ile biten dört veya daha az kelimelik kısa son satır/orphan varsa çıktı kullanıcıya açılmaz.

@@ -45,8 +45,8 @@ def extracted():
 
 
 def test_versions():
-    assert APP_VERSION == 'v5.4.35'
-    assert RULESET_VERSION == '2026-08-26.v25'
+    assert APP_VERSION == 'v5.4.37'
+    assert RULESET_VERSION == '2026-08-27.v27'
 
 
 def test_title_case_normalization():
@@ -92,6 +92,8 @@ def test_figures_page_counter_arial_11():
     assert len(fld) == 2
     assert all(str(n.getparent().tag).endswith('}p') for n in fld)
     assert all(any(str(x.tag).endswith('}t') and (x.text or '').strip() for x in n.iter()) for n in fld)
+    assert all(any(str(x.tag).endswith('}b') and str(x.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val') or '1') not in {'0','false'} for x in n.iter()) for n in fld)
+    assert any(r.text.strip() == '/' and r.bold is True for r in header.paragraphs[0].runs)
 
 
 def test_objective_leading_acronym_is_preserved():

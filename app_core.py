@@ -53,6 +53,14 @@ from source_guards import (
     validate_final_raw_source_audit,
 )
 from word_math import EQ_MARKER_RE, append_text_with_equations as _append_text_with_equations, add_display_equation
+from tarifname_figure_generation import (
+    protect_turkish_claim_transition,
+    protected_claim_tail_word_count,
+    build_method_flow_png,
+    method_step_numbers,
+    needs_line_art_normalization,
+    is_monochrome_enough,
+)
 from gorus_audit import (
     annotate_quote_locations,
     validate_quote_locations_against_spec,
@@ -388,18 +396,45 @@ def _append_word_field(paragraph, field_name: str, cached_text: str = "1") -> No
     fonts = OxmlElement("w:rFonts")
     fonts.set(qn("w:ascii"), "Arial")
     fonts.set(qn("w:hAnsi"), "Arial")
+    fonts.set(qn("w:eastAsia"), "Arial")
+    fonts.set(qn("w:cs"), "Arial")
     rpr.append(fonts)
     sz = OxmlElement("w:sz"); sz.set(qn("w:val"), "22"); rpr.append(sz)
     szcs = OxmlElement("w:szCs"); szcs.set(qn("w:val"), "22"); rpr.append(szcs)
-    b = OxmlElement("w:b"); b.set(qn("w:val"), "0"); rpr.append(b)
+    b = OxmlElement("w:b"); b.set(qn("w:val"), "1"); rpr.append(b)
+    bcs = OxmlElement("w:bCs"); bcs.set(qn("w:val"), "1"); rpr.append(bcs)
     r.append(rpr)
     t = OxmlElement("w:t"); t.text = cached_text; r.append(t)
     fld.append(r)
     paragraph._p.append(fld)
 
 
+def _force_arial_11_bold_run(run) -> None:
+    """Write Arial 11 bold for every Word script class, not only ascii/hAnsi."""
+    run.font.name = "Arial"
+    run.font.size = Pt(11)
+    run.bold = True
+    rpr = run._r.get_or_add_rPr()
+    fonts = rpr.find(qn("w:rFonts"))
+    if fonts is None:
+        fonts = OxmlElement("w:rFonts")
+        rpr.insert(0, fonts)
+    for attr in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+        fonts.set(qn(attr), "Arial")
+    for tag in ("w:sz", "w:szCs"):
+        node = rpr.find(qn(tag))
+        if node is None:
+            node = OxmlElement(tag); rpr.append(node)
+        node.set(qn("w:val"), "22")
+    for tag in ("w:b", "w:bCs"):
+        node = rpr.find(qn(tag))
+        if node is None:
+            node = OxmlElement(tag); rpr.append(node)
+        node.set(qn("w:val"), "1")
+
+
 def _add_figures_page_counter(section) -> None:
-    """Şekiller şablonundaki `1 / 3` mantığını dinamik PAGE / NUMPAGES alanlarıyla, üstte ortalı Arial 11 olarak kurar."""
+    """Şekiller şablonundaki `1 / 3` mantığını dinamik PAGE / NUMPAGES alanlarıyla, üstte ortalı Arial 11 kalın olarak kurar."""
     header = section.header
     p = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -407,9 +442,29 @@ def _add_figures_page_counter(section) -> None:
     for child in list(p._element):
         if child.tag != qn("w:pPr"):
             p._element.remove(child)
+    ppr = p._p.get_or_add_pPr()
+    para_rpr = ppr.find(qn("w:rPr"))
+    if para_rpr is None:
+        para_rpr = OxmlElement("w:rPr"); ppr.append(para_rpr)
+    fonts = para_rpr.find(qn("w:rFonts"))
+    if fonts is None:
+        fonts = OxmlElement("w:rFonts"); para_rpr.append(fonts)
+    for attr in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+        fonts.set(qn(attr), "Arial")
+    sz = para_rpr.find(qn("w:sz"))
+    if sz is None: sz = OxmlElement("w:sz"); para_rpr.append(sz)
+    sz.set(qn("w:val"), "22")
+    szcs = para_rpr.find(qn("w:szCs"))
+    if szcs is None: szcs = OxmlElement("w:szCs"); para_rpr.append(szcs)
+    szcs.set(qn("w:val"), "22")
+    for tag in ("w:b", "w:bCs"):
+        node = para_rpr.find(qn(tag))
+        if node is None: node = OxmlElement(tag); para_rpr.append(node)
+        node.set(qn("w:val"), "1")
+
     _append_word_field(p, "PAGE", "1")
     sep = p.add_run(" / ")
-    sep.font.name = "Arial"; sep.font.size = Pt(11); sep.bold = False
+    _force_arial_11_bold_run(sep)
     _append_word_field(p, "NUMPAGES", "1")
 
 
@@ -464,6 +519,7 @@ KRİTİK DENETİM MANTIĞI:
 - Bir referans belirli alt parçaya aitse bütün tertibatı gösteremez. Örneğin referans listesinde `9 = Travers` ise 9 yalnız traversin kendisini göstermelidir.
 - REFERANS NUMARALARI bölümünde AYRI numaraya ve ayrı ada sahip unsurlar aynı taşıyıcı içinde bulunsa dahi tek ayırt edilemeyen kutu/hedef üzerinde `2-3`, `2/3` veya iki numara birlikte gösterilemez. Her ayrı unsur için ayrı kutucuk, ayrı çağrı alanı veya ayrı kılavuz çizgisi olmalıdır. Böyle bir birleşik gösterim görürsen `merged_reference_groups` alanına numaraları yaz ve status=`needs_edit` yap. Ortak taşıyıcı ve mevcut teknik bağlantılar korunarak yalnız çağrı/referans katmanının ayrıştırılmasını iste.
 - Bu şekil tek başına bütün referansları taşımak zorunda değildir; fakat nihai şekil SETİ tamamlandığında referans listesindeki tüm sistem unsurları en az bir şekil üzerinde, yöntem adımları da uygulanabilir yöntem/akış şekillerinde kapsanacaktır.
+- KRİTİK: Sistem/cihaz/unsur şekline sırf yöntem istemi 1001, 1002... içeriyor diye yöntem adımı numarası EKLEME. Kaynak görsel açıkça ayrı bir yöntem/işlem akış şekli değilse 1001+ yöntem referansları için action=`omit` ver ve `dedicated_method_flow=false` yap. Yöntem adımları için ayrı bir akış şekli sistem tarafından ayrıca oluşturulacaktır.
 - Her görünür parçayı zorla numaralandırma. Yalnız tarifnamede gerçek referansla tanımlanmış ve BU ŞEKİLDE fiziksel karşılığı güvenilir biçimde görülen unsuru değerlendir.
 - Referanslı ve bu şekilde görünür bir unsur numarasızsa, fiziksel yeri güvenilir biçimde belirlenebiliyorsa action=`add` yap. Belirsizse `unresolved` yaz; uydurma hedef seçme.
 - Mevcut numara doğru fakat ok yanlış fiziksel parçaya gidiyorsa action=`correct` yap.
@@ -476,6 +532,8 @@ JSON ŞEMASI:
 {{
   "figure_index": {figure_index},
   "figure_description": "",
+  "figure_kind": "system/method/mixed/other",
+  "dedicated_method_flow": false,
   "status": "ok/needs_edit/unresolved",
   "existing_reference_marks": [""],
   "annotations": [
@@ -519,6 +577,17 @@ def audit_figure_references(
         images=visual_context,
     )
     audit["figure_index"] = figure_index
+    # Deterministic safety: method-step references may not be invented on a source system figure.
+    method_refs = set(method_step_numbers(draft.get("method_steps") or []))
+    if method_refs and not bool(audit.get("dedicated_method_flow")):
+        audit["existing_reference_marks"] = [
+            x for x in (audit.get("existing_reference_marks") or []) if str(x or "").strip() not in method_refs
+        ]
+        for annotation in audit.get("annotations") or []:
+            if str(annotation.get("reference", "") or "").strip() in method_refs:
+                annotation["action"] = "omit"
+                annotation["visible"] = False
+                annotation["reason"] = "Yöntem referansı ayrı yöntem/akış şeklinde gösterilecektir."
     return audit
 
 
@@ -660,19 +729,93 @@ JSON ŞEMASI:
     return ask_json(prompt, images=[original, edited])
 
 
+def _normalize_source_figure_line_art(
+    asset: UploadedAsset,
+    draft: dict[str, Any],
+    figure_index: int,
+    language: str,
+) -> tuple[UploadedAsset, dict[str, Any] | None]:
+    """Convert materially colored source art to black/white line art without changing technical geometry."""
+    source = _model_ready_image(asset)
+    if not needs_line_art_normalization(source.data):
+        return asset, None
+
+    client = get_client()
+    prompt = f"""Bu görsel bir patent başvurusu için teknik kaynak şekildir. YALNIZ görsel stilini patent çizimine dönüştür.
+ŞEKİL {figure_index}; dil={language}.
+KESİN KURALLAR:
+- Teknik geometriyi, kutu/ikon konumlarını, bağlantıları, ok yönlerini, mevcut yazıları ve mevcut referans numaralarını değiştirme.
+- Yeni unsur, yeni ok, yeni numara, yeni teknik metin ekleme; hiçbir teknik unsur silme.
+- Renkleri ve renk dolgularını kaldır. Beyaz zemin üzerinde siyah, çizgisel, boş dolgulu patent çizimi üret.
+- Foto-gerçekçi, gölgeli, gradyanlı veya dekoratif görünüm kullanma.
+- Çıktıda yalnız şekil bulunsun; başlık, açıklama veya lejant ekleme.
+"""
+    content = [{"type": "input_text", "text": prompt}, image_content(source)]
+    common = {"model": MODEL, "input": [{"role": "user", "content": content}]}
+    try:
+        response = client.responses.create(
+            **common,
+            tools=[{"type": "image_generation", "quality": "high", "input_fidelity": "high"}],
+            tool_choice="required",
+        )
+    except Exception:
+        response = client.responses.create(
+            **common,
+            tools=[{"type": "image_generation", "quality": "high"}],
+            tool_choice="required",
+        )
+    data = _extract_image_generation_result(response)
+    converted = UploadedAsset(f"{Path(asset.name).stem}_siyah_beyaz.png", data, "image/png")
+    verification = ask_json(
+        f"""İki patent şekli veriliyor. Birinci özgün renkli/kaynak şekil, ikinci siyah-beyaz adaydır.
+Yalnız JSON döndür. Adayı şu kriterlerle doğrula: teknik geometri ve bağlantılar korunmuş; mevcut referans ve yazılar korunmuş; yeni teknik unsur/ok/numara eklenmemiş; renk ve dekoratif dolgu kaldırılmış; siyah-beyaz çizgisel patent görünümü okunabilir.
+JSON: {{"geometry_preserved":true,"references_preserved":true,"no_unexpected_change":true,"black_white_line_art":true,"readable":true,"confidence":0.95,"notes":""}}
+""",
+        images=[source, converted],
+    )
+    try:
+        confidence = float(verification.get("confidence", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    accepted = (
+        bool(verification.get("geometry_preserved"))
+        and bool(verification.get("references_preserved"))
+        and bool(verification.get("no_unexpected_change"))
+        and bool(verification.get("black_white_line_art"))
+        and bool(verification.get("readable"))
+        and confidence >= FIGURE_REFERENCE_CONFIDENCE
+        and is_monochrome_enough(data)
+    )
+    if not accepted:
+        raise ValueError("renkli/dolgulu kaynak şeklin siyah-beyaz çizgisel dönüşümü ikinci doğrulamayı geçemedi")
+    return converted, verification
+
+
 def prepare_figures_with_reference_audit(
     images: list[UploadedAsset],
     draft: dict[str, Any],
     language: str = "Türkçe",
     progress_callback: Any | None = None,
 ) -> tuple[list[UploadedAsset], list[dict[str, Any]], list[str]]:
-    """Şekilleri tarifnameyle denetler; güvenliyse yalnız referans katmanını düzeltir ve tekrar doğrular."""
+    """Audit source figures, normalize patent style, and create a separate method-flow figure when required."""
     prepared: list[UploadedAsset] = []
     reports: list[dict[str, Any]] = []
     unresolved: list[str] = []
     total = len(images)
+    expected_methods = {str(x).strip() for x in method_step_numbers(draft.get("method_steps") or []) if str(x).strip()}
 
-    for index, asset in enumerate(images, 1):
+    for index, original_asset in enumerate(images, 1):
+        asset = original_asset
+        style_report = None
+        try:
+            asset, style_report = _normalize_source_figure_line_art(asset, draft, index, language)
+        except Exception as exc:
+            message = f"ŞEKİL {index}: patent siyah-beyaz çizim dönüşümü uygulanamadı ({exc})."
+            unresolved.append(message)
+            reports.append({"figure_index": index, "final_status": "unresolved", "message": message})
+            prepared.append(original_asset)
+            continue
+
         if progress_callback:
             progress_callback(index, total, "audit")
         try:
@@ -684,7 +827,22 @@ def prepare_figures_with_reference_audit(
             prepared.append(asset)
             continue
 
+        # Deterministic guard: a system/component figure may never receive 1001... method refs
+        # merely to satisfy figure-set coverage.  Such refs belong to a dedicated method figure.
+        dedicated_method = bool(audit.get("dedicated_method_flow"))
+        if expected_methods and not dedicated_method:
+            audit["existing_reference_marks"] = [
+                x for x in (audit.get("existing_reference_marks") or []) if str(x or "").strip() not in expected_methods
+            ]
+            for annotation in audit.get("annotations") or []:
+                if str(annotation.get("reference", "") or "").strip() in expected_methods:
+                    annotation["action"] = "omit"
+                    annotation["visible"] = False
+                    annotation["reason"] = "Yöntem adımı ayrı yöntem/akış şeklinde gösterilecektir; sistem şekline bindirilemez."
+
         report: dict[str, Any] = {"figure_index": index, "audit": audit}
+        if style_report is not None:
+            report["style_normalization"] = style_report
         if _audit_has_unsafe_edit(audit):
             message = f"ŞEKİL {index}: en az bir referansın fiziksel karşılığı güvenilir biçimde belirlenemedi."
             unresolved.append(message)
@@ -699,7 +857,7 @@ def prepare_figures_with_reference_audit(
             for x in audit.get("annotations") or []
         ) or _has_nonempty_items(audit.get("merged_reference_groups"))
         if not needs_edit:
-            report["final_status"] = "ok"
+            report["final_status"] = "normalized" if style_report is not None else "ok"
             reports.append(report)
             prepared.append(asset)
             continue
@@ -739,6 +897,7 @@ def prepare_figures_with_reference_audit(
             and not _has_nonempty_items(verification.get("wrong_or_missing"))
             and not _has_nonempty_items(verification.get("extra_reference_marks"))
             and verify_confidence >= FIGURE_REFERENCE_CONFIDENCE
+            and is_monochrome_enough(_model_ready_image(edited).data)
         )
         report["verification"] = verification
         if accepted:
@@ -751,31 +910,70 @@ def prepare_figures_with_reference_audit(
             prepared.append(asset)
         reports.append(report)
 
-    # SET BAZINDA REFERANS TAMLIK KAPISI: referans listesindeki her unsur/adım en az bir nihai şekilde görünmelidir.
+    # A method claim requires a distinct method-flow figure unless the source set already
+    # contained a dedicated method figure. Never solve this by placing 1001... on a system figure.
+    dedicated_method_reports = [
+        r for r in reports
+        if bool((r.get("audit") or {}).get("dedicated_method_flow"))
+        and r.get("final_status") not in {"unresolved"}
+    ]
+    if expected_methods and not dedicated_method_reports:
+        try:
+            method_png = build_method_flow_png(draft.get("method_steps") or [], language)
+            refs = method_step_numbers(draft.get("method_steps") or [])
+            method_asset = UploadedAsset(
+                f"generated_method_flow_{'_'.join(refs)}.png",
+                method_png,
+                "image/png",
+            )
+            prepared.append(method_asset)
+            reports.append({
+                "figure_index": len(prepared),
+                "final_status": "generated_method_flow",
+                "audit": {
+                    "figure_kind": "method",
+                    "dedicated_method_flow": True,
+                    "existing_reference_marks": refs,
+                    "annotations": [
+                        {"reference": ref, "visible": True, "action": "keep", "confidence": 1.0}
+                        for ref in refs
+                    ],
+                },
+            })
+        except Exception as exc:
+            unresolved.append(f"Yöntem istemi bulunduğu halde ayrı yöntem akış şekli oluşturulamadı ({exc}).")
+
+    # SET BAZINDA REFERANS TAMLIK KAPISI.
     expected_elements = {str(x.get("number", "") or "").strip() for x in (draft.get("elements") or []) if str(x.get("number", "") or "").strip()}
-    expected_methods = {str(x.get("number", "") or "").strip() for x in (draft.get("method_steps") or []) if str(x.get("number", "") or "").strip()}
     represented: set[str] = set()
+    method_represented_on_dedicated: set[str] = set()
     for report in reports:
         audit = report.get("audit") or {}
+        dedicated = bool(audit.get("dedicated_method_flow"))
         for mark in audit.get("existing_reference_marks") or []:
-            represented.add(str(mark or "").strip())
+            ref = str(mark or "").strip()
+            represented.add(ref)
+            if dedicated and ref in expected_methods:
+                method_represented_on_dedicated.add(ref)
         for annotation in audit.get("annotations") or []:
             ref = str(annotation.get("reference", "") or "").strip()
             action = str(annotation.get("action", "") or "").strip().casefold()
             if ref and action in {"keep", "add", "correct", "split"} and annotation.get("visible", True) is not False:
                 represented.add(ref)
+                if dedicated and ref in expected_methods:
+                    method_represented_on_dedicated.add(ref)
+
     missing_elements = sorted(expected_elements - represented)
-    missing_methods = sorted(expected_methods - represented)
+    missing_methods = sorted(expected_methods - method_represented_on_dedicated)
     if missing_elements:
         unresolved.append("Şekil setinde gösterilmeyen REFERANS NUMARALARI sistem unsurları: " + ", ".join(missing_elements))
     if expected_methods and missing_methods:
-        unresolved.append("Şekil/akış setinde gösterilmeyen yöntem adımı referansları: " + ", ".join(missing_methods))
+        unresolved.append("Ayrı yöntem/akış şeklinde gösterilmeyen yöntem adımı referansları: " + ", ".join(missing_methods))
 
     return prepared, reports, unresolved
 
-
-def validate_figures_docx_structure(data: bytes) -> None:
-    """Ayrı şekiller Word'ünde üst PAGE / NUMPAGES sayacı ve Arial 11 biçimini doğrular."""
+def validate_figures_docx_structure(data: bytes, draft: dict[str, Any] | None = None) -> None:
+    """Validate bold page counter, monochrome patent style and separate method-flow coverage."""
     doc = Document(io.BytesIO(data))
     if not doc.sections:
         raise ValueError("ŞEKİLLER kalite kapısı: section bulunamadı.")
@@ -794,8 +992,6 @@ def validate_figures_docx_structure(data: bytes) -> None:
             raise ValueError(f"ŞEKİLLER kalite kapısı: {sec_idx}. section üst bilgisinde PAGE / NUMPAGES alanları yok.")
         if not header.paragraphs or header.paragraphs[0].alignment != WD_ALIGN_PARAGRAPH.CENTER:
             raise ValueError("ŞEKİLLER kalite kapısı: sayfa sayacı sayfanın üstünde ortalı olmalıdır.")
-        # fldSimple Word alanları doğrudan paragraf altında bulunmalı; run içine gömülen geçersiz alanlar
-        # LibreOffice/Word render'ında yalnız '/' görünmesine yol açabildiği için reddedilir.
         fld_nodes = [node for node in header._element.iter() if str(node.tag).endswith("}fldSimple") or str(node.tag).endswith("fldSimple")]
         for fld in fld_nodes:
             parent = fld.getparent()
@@ -804,18 +1000,59 @@ def validate_figures_docx_structure(data: bytes) -> None:
             cached = [str(x.text or "").strip() for x in fld.iter() if str(x.tag).endswith("}t") and str(x.text or "").strip()]
             if not cached:
                 raise ValueError("ŞEKİLLER kalite kapısı: PAGE / NUMPAGES alanının render edilebilir önbellek sonucu bulunmalıdır.")
+            bold_nodes = [x for x in fld.iter() if str(x.tag).endswith("}b")]
+            bcs_nodes = [x for x in fld.iter() if str(x.tag).endswith("}bCs")]
+            if not bold_nodes or not bcs_nodes or any(str(x.get(qn("w:val")) or "1").casefold() in {"0", "false", "off"} for x in [*bold_nodes, *bcs_nodes]):
+                raise ValueError("ŞEKİLLER kalite kapısı: PAGE / NUMPAGES alan sonuçları kalın olmalıdır.")
+            font_nodes = [x for x in fld.iter() if str(x.tag).endswith("}rFonts")]
+            if not font_nodes:
+                raise ValueError("ŞEKİLLER kalite kapısı: PAGE / NUMPAGES alan sonuçlarında açık Arial font tanımı bulunmalıdır.")
+            for fn in font_nodes:
+                for attr in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+                    if fn.get(qn(attr)) != "Arial":
+                        raise ValueError("ŞEKİLLER kalite kapısı: PAGE / NUMPAGES alanlarının tüm font scriptleri Arial olmalıdır.")
+            size_nodes = [x for x in fld.iter() if str(x.tag).endswith("}sz") or str(x.tag).endswith("}szCs")]
+            if len(size_nodes) < 2 or any(x.get(qn("w:val")) != "22" for x in size_nodes):
+                raise ValueError("ŞEKİLLER kalite kapısı: PAGE / NUMPAGES alan sonuçları Arial 11 punto olmalıdır.")
         runs = [r for p in header.paragraphs for r in p.runs if (r.text or "").strip() or 'fldChar' in r._r.xml or 'instrText' in r._r.xml]
         for run in runs:
-            if run.font.name not in {None, "Arial"}:
-                raise ValueError("ŞEKİLLER kalite kapısı: sayfa sayacı Arial olmalıdır.")
-            if run.font.size is not None and abs(run.font.size.pt - 11.0) > 0.05:
+            if run.font.name != "Arial":
+                raise ValueError("ŞEKİLLER kalite kapısı: sayfa sayacı run'ları açıkça Arial olmalıdır; stil kalıtımı yeterli değildir.")
+            if run.font.size is None or abs(run.font.size.pt - 11.0) > 0.05:
                 raise ValueError("ŞEKİLLER kalite kapısı: sayfa sayacı Arial 11 punto olmalıdır.")
-            if run.bold is True:
-                raise ValueError("ŞEKİLLER kalite kapısı: sayfa sayacı normal kalınlıkta olmalıdır.")
+            if run.bold is not True:
+                raise ValueError("ŞEKİLLER kalite kapısı: sayfa sayacı Arial 11 kalın olmalıdır.")
+            rfonts = run._r.rPr.find(qn("w:rFonts")) if run._r.rPr is not None else None
+            if rfonts is None or any(rfonts.get(qn(attr)) != "Arial" for attr in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs")):
+                raise ValueError("ŞEKİLLER kalite kapısı: sayfa sayacı run'larının ascii/hAnsi/eastAsia/cs fontları Arial olmalıdır.")
+
+    # Final embedded images may contain antialias greys, but not material chromatic color.
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        for name in zf.namelist():
+            if not name.startswith("word/media/") or Path(name).suffix.lower() not in RASTER_IMAGE_SUFFIXES:
+                continue
+            image_data = zf.read(name)
+            if not is_monochrome_enough(image_data):
+                raise ValueError(f"ŞEKİLLER kalite kapısı: {Path(name).name} siyah-beyaz patent çizimi değil; renk/dolgu normalizasyonu gereklidir.")
+
+    if draft is not None and (draft.get("method_steps") or []):
+        expected = set(method_step_numbers(draft.get("method_steps") or []))
+        method_refs: set[str] = set()
+        for node in doc._element.iter():
+            if not str(node.tag).endswith("}docPr"):
+                continue
+            descr = str(node.get("descr") or "")
+            if descr.startswith("method_flow:"):
+                method_refs.update(x.strip() for x in descr.split(":", 1)[1].split(",") if x.strip())
+        if not method_refs:
+            raise ValueError("ŞEKİLLER kalite kapısı: yöntem istemi bulunduğu halde ayrı yöntem/akış şekli yok.")
+        missing = sorted(expected - method_refs)
+        if missing:
+            raise ValueError("ŞEKİLLER kalite kapısı: ayrı yöntem/akış şeklinde eksik yöntem referansları: " + ", ".join(missing))
 
 
 def build_figures_docx(images: list[UploadedAsset], language: str = "Türkçe") -> bytes:
-    """Referans denetiminden geçmiş müşteri şekillerini dinamik sayfa düzeni ve ŞEKİL N başlıklarıyla Word'e yerleştirir."""
+    """Place validated source/method figures in Word with dynamic bold PAGE / NUMPAGES and ŞEKİL N captions."""
     if not images:
         raise ValueError("Şekiller Word dosyası için BBF içinde veya ayrıca yüklenen dosyalarda kullanılabilir görsel bulunamadı.")
 
@@ -828,13 +1065,12 @@ def build_figures_docx(images: list[UploadedAsset], language: str = "Türkçe") 
         section.header_distance = Cm(0.65)
         _add_figures_page_counter(section)
 
-    # Yaklaşık kullanılabilir dikey alan. Görsel büyüklüğüne göre 1 veya daha fazla şekil aynı sayfaya yerleşebilir.
     usable_height_cm = 24.2
     used_height_cm = 0.0
 
     for index, asset in enumerate(images, 1):
         width_cm, height_cm = _figure_dimensions_cm(asset.data)
-        block_height = height_cm + 1.25  # şekil başlığı ve minimum aralık
+        block_height = height_cm + 1.25
 
         if used_height_cm > 0 and used_height_cm + block_height > usable_height_cm:
             doc.add_page_break()
@@ -845,7 +1081,12 @@ def build_figures_docx(images: list[UploadedAsset], language: str = "Türkçe") 
         p_img.paragraph_format.space_before = Pt(0)
         p_img.paragraph_format.space_after = Pt(2)
         try:
-            p_img.add_run().add_picture(io.BytesIO(asset.data), width=Cm(width_cm), height=Cm(height_cm))
+            inline = p_img.add_run().add_picture(io.BytesIO(asset.data), width=Cm(width_cm), height=Cm(height_cm))
+            if Path(asset.name).name.startswith("generated_method_flow_"):
+                refs = Path(asset.name).stem.removeprefix("generated_method_flow_").split("_")
+                inline._inline.docPr.set("descr", "method_flow:" + ",".join(refs))
+            else:
+                inline._inline.docPr.set("descr", "source_figure:" + Path(asset.name).name)
         except Exception as exc:
             raise ValueError(f"{asset.name} şekiller dosyasına eklenemedi.") from exc
 
@@ -863,6 +1104,8 @@ def build_figures_docx(images: list[UploadedAsset], language: str = "Türkçe") 
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
+
+
 
 
 # -----------------------------------------------------------------------------
@@ -1537,7 +1780,21 @@ def add_numbered_claim(doc: Document, template: Document, text: str):
     """İstem numarasını şablondaki gerçek Word otomatik numaralandırmasıyla oluştur."""
     p = doc.add_paragraph()
     _copy_list_properties(p, template.paragraphs[85])
-    _append_text_with_equations(p, _strip_claim_number(text))
+    _append_text_with_equations(p, protect_turkish_claim_transition(_strip_claim_number(text)))
+    for run in p.runs:
+        if (run.text or "").strip():
+            run.font.name = "Arial"
+            run.font.size = Pt(11)
+            rpr = run._r.get_or_add_rPr()
+            fonts = rpr.find(qn("w:rFonts"))
+            if fonts is None:
+                fonts = OxmlElement("w:rFonts"); rpr.insert(0, fonts)
+            for attr in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+                fonts.set(qn(attr), "Arial")
+            for tag in ("w:sz", "w:szCs"):
+                node = rpr.find(qn(tag))
+                if node is None: node = OxmlElement(tag); rpr.append(node)
+                node.set(qn("w:val"), "22")
     return format_paragraph(p)
 
 
@@ -2914,6 +3171,24 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
     if numbered_count < expected_claims:
         raise ValueError("Word şablon kontrolü: İstemlerin tamamında gerçek Word otomatik numaralandırması uygulanmamış.")
 
+    # Türkçe claim transition kısa-son-satır kapısı.
+    if not en:
+        for p in paras[ci + 1:ai]:
+            ppr = p._p.pPr
+            if ppr is None:
+                continue
+            numpr = ppr.find(qn("w:numPr"))
+            if numpr is None or "özelliği;" not in p.text:
+                continue
+            if " olup, özelliği;" not in p.text:
+                raise ValueError("Word istem kalite kapısı: `olup, özelliği;` geçişi satır sonunda parçalanabilir; non-breaking boşluklarla birlikte tutulmalıdır.")
+            prefix = p.text.split(" olup, özelliği;", 1)[0]
+            total_prefix_words = len(re.findall(r"\S+", prefix.replace(" ", " ")))
+            required_tail = min(5, total_prefix_words)
+            protected_tail = protected_claim_tail_word_count(p.text)
+            if protected_tail < required_tail:
+                raise ValueError("Word istem kalite kapısı: `olup, özelliği;` öncesinde kısa/orphan son satır riski var; son kelimeler non-breaking kuyruk olarak korunmalıdır.")
+
     # Bağlayıcı şablonla istem kapanış konumu ve boşluk ritmi karşılaştırması.
     template = Document(str(TARIFNAME_TEMPLATE))
     template_close = template.paragraphs[93]
@@ -3055,12 +3330,53 @@ def render_tarifname_docx_smoke_test(data: bytes) -> None:
             try:
                 if pdf.page_count < 1:
                     raise ValueError("Word render kalite kontrolü: PDF sayfası oluşmadı.")
+                in_claims = False
                 for page in pdf:
                     rect = page.rect
                     if rect.width <= 0 or rect.height <= 0:
                         raise ValueError("Word render kalite kontrolü: geçersiz sayfa geometrisi bulundu.")
+                    for block in page.get_text("dict").get("blocks", []):
+                        if block.get("type") != 0: continue
+                        for line in block.get("lines", []):
+                            line_text = "".join(str(span.get("text", "")) for span in line.get("spans", [])).strip()
+                            if line_text == "İSTEMLER": in_claims = True; continue
+                            if line_text == "ÖZET": in_claims = False; continue
+                            if in_claims and re.search(r"olup,\s*özelliği;\s*$", line_text, flags=re.IGNORECASE):
+                                if len(re.findall(r"\S+", line_text)) <= 4:
+                                    raise ValueError("Word render istem kalite kontrolü: `olup, özelliği;` kısa/orphan son satıra düştü.")
             finally:
                 pdf.close()
+
+
+def render_figures_docx_smoke_test(data: bytes) -> None:
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td); docx_path = td_path / "figures_qa.docx"; docx_path.write_bytes(data)
+        proc = subprocess.run(["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", str(td_path), str(docx_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=90, check=False)
+        pdf_path = td_path / "figures_qa.pdf"
+        if proc.returncode != 0 or not pdf_path.exists() or pdf_path.stat().st_size == 0:
+            raise ValueError("ŞEKİLLER render kalite kontrolü başarısız oldu.")
+        if fitz is None: return
+        pdf = fitz.open(pdf_path)
+        try:
+            total = pdf.page_count
+            for idx, page in enumerate(pdf, start=1):
+                expected = f"{idx} / {total}"; found = False
+                for block in page.get_text("dict").get("blocks", []):
+                    if block.get("type") != 0: continue
+                    for line in block.get("lines", []):
+                        spans = line.get("spans", []); line_text = "".join(str(sp.get("text", "")) for sp in spans).strip()
+                        if line_text != expected: continue
+                        if float(line.get("bbox", [0,999,0,999])[1]) > 70: raise ValueError("ŞEKİLLER render kalite kontrolü: sayfa sayacı sayfanın üstünde değil.")
+                        for sp in [x for x in spans if str(x.get("text", "")).strip()]:
+                            font_name = str(sp.get("font", "")); flags = int(sp.get("flags", 0) or 0)
+                            if not ("Arial" in font_name or "Arimo" in font_name or "LiberationSans" in font_name): raise ValueError("ŞEKİLLER render kalite kontrolü: sayfa sayacı Arial ailesinde render edilmedi.")
+                            if abs(float(sp.get("size", 0.0)) - 11.0) > 0.35: raise ValueError("ŞEKİLLER render kalite kontrolü: sayfa sayacı 11 punto render edilmedi.")
+                            if "Bold" not in font_name and not (flags & 16): raise ValueError("ŞEKİLLER render kalite kontrolü: sayfa sayacı kalın render edilmedi.")
+                        found = True; break
+                    if found: break
+                if not found: raise ValueError(f"ŞEKİLLER render kalite kontrolü: görünür `{expected}` sayfa sayacı bulunamadı.")
+        finally:
+            pdf.close()
 
 
 def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> bytes:

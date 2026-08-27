@@ -43,3 +43,6 @@ test_v5434_extra_controls_prior_art.py
 test_v5435_tarifname_visibility_figures.py
 validators.py
 word_math.py
+tarifname_figure_generation.py
+test_v5436_figure_method_claim_gate.py
+test_v5437_render_font_claim_tail.py

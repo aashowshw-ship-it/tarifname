@@ -11,6 +11,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.shared import Cm, Pt
 
+from tarifname_figure_generation import protect_turkish_claim_transition
+
 
 def _clear_body(doc: Document) -> None:
     body = doc._element.body
@@ -77,7 +79,7 @@ def _numbered_claim(doc: Document, number: int, text: str):
     p = doc.add_paragraph()
     p.paragraph_format.line_spacing = 1.5
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    r = p.add_run(f"{number}. {text}")
+    r = p.add_run(f"{number}. {protect_turkish_claim_transition(text)}")
     r.font.name = "Arial"
     r.font.size = Pt(11)
 

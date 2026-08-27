@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.35
+# Patent Atölyesi v5.4.37
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 26.08.2026 tarihli güncel tam sürümüdür.
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-26.v25`
+Kural sürümü: `2026-08-27.v27`
 
 ## Yerel çalıştırma
 
@@ -384,10 +384,10 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - `bir gerçekleştirimde / bir gerçekleştirmede / buluşun bir gerçekleştirilmesinde` yasaktır; `Buluşun bir yapılanmasında` kullanılır.
 - ÖNCEKİ TEKNİK müşteri problem kümeleri kısa özetlenemez; son genel paragraf `Yukarıda belirtilen eksiklikler, ...` ile bağlanır.
 - Şekil kısa açıklamalarında referans/adım numarası aralıkları yazılmaz.
-- Ayrı şekiller Word dosyasında üst PAGE / NUMPAGES sayacı Arial 11 ve normal kalınlıkta olmak zorundadır ve indirme öncesi doğrulanır.
+- Ayrı şekiller Word dosyasında üst PAGE / NUMPAGES sayacı Arial 11 ve kalın olmak zorundadır ve indirme öncesi doğrulanır.
 
 
-## v5.4.35 — Tarifname Düzenleme istem görünürlüğü ve güvenli şekil revizyonu (26.08.2026)
+## v5.4.36 — Tarifname Düzenleme istem görünürlüğü ve güvenli şekil revizyonu (26.08.2026)
 
 - Müşterinin `istemlerde açıkça vurgulansın/görülsün` talebi, teknik içerik tarifnamede zaten destekleniyorsa `zaten var` diye kapatılmaz. Tam teknik ad + kısaltma görünürlüğü minimum Track Changes ile sağlanır; aynı müşteri maddesinde sayılan her test/işlev ayrı dayanak kontrolünden geçer.
 - `figure_actions` kayıtları `safe_auto_edit`, `basis_source`, `basis_quote` ve `edit_instructions` alanlarını destekler.
@@ -395,3 +395,22 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Tarifname Düzenleme arayüzü, güvenli revizyon başarıyla tamamlandığında ayrıca `Revize Şekiller Word dosyasını indir` çıktısı verir; güvenli olmayan değişiklikler yalnız şekil aksiyonu olarak kalır.
 
 - Aynı Word içindeki açık kırmızı müşteri revizyon notları yorum/Track Changes gibi revizyon kaynağı sayılır; baz metinden çıkarılır ve otomatik kabul edilmez. Eski `.doc` ana tarifnameler LibreOffice üzerinden `.docx` tabanına dönüştürülerek gerçek OOXML Markup akışına alınır.
+
+## v5.4.36 / 2026-08-27.v26 — Ayrı yöntem şekli + şekil kalite kapısı + istem satır bütünlüğü
+
+- Sistem/cihaz şekli ile yöntem akış şekli kesin olarak ayrıldı. Yöntem istemi ve yöntem işlem adımları mevcutsa, kaynakta zaten ayrı bir yöntem akış şekli bulunmadığı sürece sistem şekline `1001, 1002...` bindirmek yasaktır; ayrıca yöntem akış şekli oluşturulur.
+- Otomatik yöntem şekli siyah-beyaz, boş dolgulu kutu-ok yapısındadır. Her işlem adımının referansı kendi kutusunun içinde yer alır; oklar işlem sırasını gösterir.
+- BBF/ek teknik kaynak şekli zaten kullanılabilir siyah-beyaz çizgisel ise özgün şekil korunur. Kaynak teknik şekil renkli veya renk dolgulu ise teknik geometri ve referanslar korunarak siyah-beyaz çizgisel patent stiline dönüştürülür ve özgün/dönüştürülmüş görsel ikinci doğrulamadan geçer.
+- Ayrı Şekiller Word dosyasındaki `PAGE / NUMPAGES` sayacı artık ortalı **Arial 11 kalın** biçimindedir; alanların kendisi ve `/` ayıracı bu biçimde deterministik olarak doğrulanır.
+- Şekiller kalite kapısı final görsellerde maddi renk bulunmamasını, sistem referanslarının set bazında kapsanmasını, yöntem istemi varsa yöntem referanslarının ayrı yöntem/akış şeklinde bulunmasını ve sayfa sayacı biçimini kontrol eder. Ayrı şekiller seçilmişse bu kapı geçmeden `EKSTRA KONTROLLER YAPILDI` uyarısı verilemez.
+- Türkçe numaralı istemlerde `... olup, özelliği;` geçişi Word satır sonunda parçalanmaması için non-breaking boşluklarla birlikte tutulur ve nihai Word kapısında kontrol edilir.
+- İstem açıklık kuralı güçlendirildi: aynı veri üzerinde ardışık fiiller kullanılırken ikinci fiilin nesnesi belirsiz bırakılamaz; gerektiğinde `bahsedilen verileri` / `söz konusu verileri` biçiminde açık nesne bağı kurulur.
+
+
+
+## v5.4.37 / 2026-08-27.v27 — Gerçek Arial sayaç kapısı + kısa istem son-satır kapısı
+
+- Şekiller üst bilgisindeki `PAGE / NUMPAGES` alanlarında artık yalnız `/` ayırıcı run veya python-docx font özelliği kontrol edilmez. PAGE ve NUMPAGES alan sonuçlarının OOXML `w:rFonts` içindeki `ascii`, `hAnsi`, `eastAsia`, `cs` değerlerinin tamamı literal `Arial`; `w:sz/w:szCs=22`; `w:b/w:bCs=true` olmak zorundadır. Header paragrafı varsayılan run biçimi de Arial 11 kalın olarak açıkça yazılır.
+- Şekiller Word dosyası ayrıca LibreOffice/PDF render kapısından geçirilir. Her sayfada görünür `1 / N`, `2 / N`... sayacı üst bölgede, 11 punto ve kalın olarak render edilmeden çıktı verilmez. Linux render ortamında Arial'ın Arimo veya Liberation Sans ile ikame edilmesi yalnız PDF QA için kabul edilir; DOCX içinde font adı yine Arial olmak zorundadır.
+- Türkçe istemlerde `olup, özelliği;` yalnız önceki tek kelimeyle bağlanmaz. Geçişten önceki son en az beş kelime de non-breaking kuyruk olarak korunur; böylece `sistemi olup, özelliği;` gibi kısa ikinci satır oluşması engellenir.
+- Tarifname PDF render kalite kapısı İSTEMLER bölgesindeki fiziksel satırları inceler; `olup, özelliği;` ile biten 1–4 kelimelik kısa/orphan son satır tespit edilirse Word çıktısı reddedilir.
