@@ -46,3 +46,4 @@ word_math.py
 tarifname_figure_generation.py
 test_v5436_figure_method_claim_gate.py
 test_v5437_render_font_claim_tail.py
+test_v5438_independent_claim_two_line_gate.py

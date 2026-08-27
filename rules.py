@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.37"
-RULESET_VERSION = "2026-08-27.v27"
+APP_VERSION = "v5.4.38"
+RULESET_VERSION = "2026-08-27.v28"
 
 EXTRA_CONTROLS_NOTICE = "EKSTRA KONTROLLER YAPILDI"
 EXTRA_CONTROL_GATE_KEYS = (
@@ -207,6 +207,7 @@ G. TARİFNAME OLUŞTURMA - ŞEKİLLERİN OLUŞTURULMASI
 65K-İSTEM. İstem cümlesinde aynı veri/çıktı üzerinde ardışık fiiller kullanılıyorsa ikinci fiilin nesnesi belirsiz bırakılamaz. Örneğin `... aldığı hücre bazlı verileri işleyen ve farklı zaman dilimlerine göre düzenleyerek ...` yerine teknik anlamı değiştirmeden `... aldığı hücre bazlı verileri işleyen ve bahsedilen/söz konusu verileri farklı zaman dilimlerine göre düzenleyerek ...` gibi açık nesne bağı kurulmalıdır.
 65L-ŞEKİL. `PAGE / NUMPAGES` sayacında Arial kontrolü yalnız python-docx `run.font.name` veya `/` ayırıcı run'ına bakılarak geçilmiş sayılamaz. PAGE ve NUMPAGES `fldSimple` alanlarının sonuç run'larında `w:rFonts` için `ascii`, `hAnsi`, `eastAsia` ve `cs` değerlerinin DÖRDÜ de açıkça `Arial`; `w:sz` ve `w:szCs` 11 punto; `w:b` ve `w:bCs` açıkça kalın olmalıdır. Header paragrafının varsayılan run biçimi de aynı Arial 11 kalın değerleri taşır. Stil kalıtımı veya `font=None` başarı kabul edilmez.
 65M-ŞEKİL. Ayrı Şekiller DOCX'i yapısal kalite kapısından sonra ayrıca LibreOffice/PDF render kapısından geçer. Her fiziksel sayfada görünür `mevcut sayfa / toplam sayfa` metni üst bölgede bulunmalı, 11 punto ve kalın render edilmelidir. Linux/LibreOffice ortamında Arial'ın Arimo veya Liberation Sans ile render edilmesi yalnız PDF görsel doğrulamasında kabul edilebilir; DOCX OOXML yapısında literal font adı yine Arial olmak zorundadır. Yapısal + render iki kapı birlikte geçmeden Şekiller çıktısı ve `EKSTRA KONTROLLER YAPILDI` bildirimi sunulamaz.
+65O-İSTEM. Türkçe BAĞIMSIZ sistem/cihaz/ürün/yöntem isteminde `olup, özelliği;` öncesindeki giriş bölümü yalnız buluş adından veya kısa bir adlandırmadan ibaret bırakılamaz. Giriş, ham BBF/teknik kaynakta açık dayanağı bulunan teknik kullanım alanını ve/veya temel işlevsel ilişkiyi kapsayan anlamlı bir teknik tanım olmalıdır. Bağlayıcı `Tarifname_181176_template.docx` üzerinde `olup, özelliği;` ifadesinden önceki metin en az iki fiziksel satır kaplamalıdır. Bu şart manuel satır sonu, gereksiz tekrar, anlamsız dolgu veya yapay uzatma ile sağlanamaz. Taslak kapısı açıkça kısa preamble'ı yeniden yazdırır; nihai Word→PDF render kapısı bağımsız istemin fiziksel satırlarını sayar ve `olup, özelliği;` öncesinde iki satırdan az gerçek preamble metni varsa çıktıyı BLOKE eder. Non-breaking kuyruk kontrolü bu iki-satır kuralının yerine geçmez; iki kapı birlikte zorunludur.
 66. Şekiller ayrı Word dosyasında sırasıyla “ŞEKİL 1”, “ŞEKİL 2”, “ŞEKİL 3” şeklinde devam eder. Şekil numarası başlığı ilgili görselin altında, ortalı ve kalın yer alır.
 67. Şekiller Word dosyasının her sayfasının üst kısmında “mevcut sayfa / toplam sayfa” biçiminde sayfa göstergesi bulunur; örneğin “1 / 3”. Toplam sayfa sayısı sabit değildir. Şekil sayısı, şekillerin boyutu ve okunabilirliği dikkate alınarak dinamik belirlenir. Bir sayfada bir veya birden fazla şekil bulunabilir.
 68. Şekiller dosyasında gereksiz açıklama paragrafı kullanılmaz. Temel çıktı, müşteri şekli ile altında “ŞEKİL N” başlığından oluşur. Görsel okunabilirliği korunmalı, görsel gereksiz sıkıştırılmamalı veya düşük çözünürlüğe dönüştürülmemelidir.

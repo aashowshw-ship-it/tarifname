@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.37
+# Patent Atölyesi v5.4.38
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 26.08.2026 tarihli güncel tam sürümüdür.
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-27.v27`
+Kural sürümü: `2026-08-27.v28`
 
 ## Yerel çalıştırma
 
@@ -414,3 +414,11 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Şekiller Word dosyası ayrıca LibreOffice/PDF render kapısından geçirilir. Her sayfada görünür `1 / N`, `2 / N`... sayacı üst bölgede, 11 punto ve kalın olarak render edilmeden çıktı verilmez. Linux render ortamında Arial'ın Arimo veya Liberation Sans ile ikame edilmesi yalnız PDF QA için kabul edilir; DOCX içinde font adı yine Arial olmak zorundadır.
 - Türkçe istemlerde `olup, özelliği;` yalnız önceki tek kelimeyle bağlanmaz. Geçişten önceki son en az beş kelime de non-breaking kuyruk olarak korunur; böylece `sistemi olup, özelliği;` gibi kısa ikinci satır oluşması engellenir.
 - Tarifname PDF render kalite kapısı İSTEMLER bölgesindeki fiziksel satırları inceler; `olup, özelliği;` ile biten 1–4 kelimelik kısa/orphan son satır tespit edilirse Word çıktısı reddedilir.
+
+
+## v5.4.38 / 2026-08-27.v28 — Bağımsız istem iki-fiziksel-satır preamble kapısı
+
+- Türkçe bağımsız sistem/cihaz/ürün/yöntem istemi yalnız buluş adı + `olup, özelliği;` biçiminde kısa bırakılamaz. Preamble, kaynakta dayanaklı teknik bağlamı ve/veya temel işlevsel ilişkiyi içerir.
+- Taslak kalite kapısı açıkça çok kısa bağımsız istem girişini reddeder ve mevcut otomatik düzeltme turuna geri gönderir.
+- Nihai Word, LibreOffice ile PDF'e render edildikten sonra İSTEMLER bölümündeki bağımsız istem girişleri fiziksel satır bazında sayılır. `olup, özelliği;` öncesindeki gerçek preamble metni en az iki fiziksel satır oluşturmuyorsa çıktı bloke edilir.
+- Manuel satır sonu, ekstra boşluk, gereksiz tekrar veya anlamsız dolgu iki-satır koşulunu sağlamış kabul edilmez. Non-breaking `olup, özelliği;` orphan kapısı ayrıca korunur; iki kontrol birbirinin alternatifi değildir.

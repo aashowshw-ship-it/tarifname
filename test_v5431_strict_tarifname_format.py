@@ -14,7 +14,7 @@ def base_draft():
         {'number':'2','name':'Veri toplama ve ön işleme modülü','description':'y'},
     ]
     system_claim={
-        'preamble':'LTE ağında çalışan adaptif hücre optimizasyon sistemi',
+        'preamble':'LTE ağında kullanıcı ekipmanı ölçüm verilerini işleyerek adaptif hücre seçimini sağlayan ve ağ performansını optimize eden adaptif hücre optimizasyon sistemi',
         'elements':['ölçüm verisini toplayan ve sonraki işleme aktaran kullanıcı ekipmanı izleme arayüzü (1),','toplanan ölçüm verisini işleyen ve öznitelik çıktısı üreten veri toplama ve ön işleme modülü (2)'],
         'closing':'içermesidir.'
     }
@@ -25,7 +25,7 @@ def base_draft():
         'literature_paragraphs':['Literatürde yapılan araştırmalar sonucu US1 numaralı “Adaptive cell selection (Adaptif hücre seçimi)” başlıklı patent dokümanına rastlanmıştır. Söz konusu doküman hücre seçimi ile ilgilidir. Ancak bahsedilen dokümanda kullanıcı bağlamıyla kapalı döngü eniyileme ile ilgili bir emareye rastlanmamıştır.'],
         'short_description_intro':'Buluş, teknik çözüm sağlar.',
         'objectives':['bir teknik amaç sağlamaktır.'],
-        'unumbered_invention_definition':'LTE ağında çalışan adaptif hücre optimizasyon sistemi olup, özelliği;',
+        'unumbered_invention_definition':'LTE ağında kullanıcı ekipmanı ölçüm verilerini işleyerek adaptif hücre seçimini sağlayan ve ağ performansını optimize eden adaptif hücre optimizasyon sistemi olup, özelliği;',
         'unumbered_invention_features':['ölçüm verisini toplayan ve sonraki işleme aktaran kullanıcı ekipmanı izleme arayüzü,','toplanan ölçüm verisini işleyen ve öznitelik çıktısı üreten veri toplama ve ön işleme modülü'],
         'figure_descriptions':['Şekil 1, sistemdeki veri ve kontrol ilişkisini gösteren temsili şematik gösterimdir.'],
         'elements':elements,
@@ -45,8 +45,8 @@ def extracted():
 
 
 def test_versions():
-    assert APP_VERSION == 'v5.4.37'
-    assert RULESET_VERSION == '2026-08-27.v27'
+    assert APP_VERSION == 'v5.4.38'
+    assert RULESET_VERSION == '2026-08-27.v28'
 
 
 def test_title_case_normalization():

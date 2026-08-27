@@ -472,3 +472,11 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Şekiller kalite kapısı yapısal OOXML denetimiyle bitmez; Şekiller DOCX ayrıca PDF'e render edilir ve her fiziksel sayfadaki `mevcut sayfa / toplam sayfa` göstergesinin üstte, 11 punto ve kalın görünmesi zorunludur.
 - İstem girişinde yalnız `sistemi olup, özelliği;` grubunun non-breaking yapılması yeterli değildir. `olup, özelliği;` öncesindeki son en az beş kelime aynı non-breaking kuyrukta tutulur.
 - Tarifname render kapısı İSTEMLER bölümündeki fiziksel satırları inceler; `olup, özelliği;` ile biten dört veya daha az kelimelik kısa son satır/orphan varsa çıktı kullanıcıya açılmaz.
+
+
+## v5.4.38 / 2026-08-27.v28 — Bağımsız istem girişinde en az iki fiziksel satır
+
+- Türkçe bağımsız sistem/cihaz/ürün/yöntem isteminde `olup, özelliği;` öncesindeki metin yalnız buluş adı kadar kısa olamaz. Kaynak-destekli teknik kullanım bağlamı ve/veya temel işlevsel ilişki preamble içinde açıkça kurulmalıdır.
+- Bağlayıcı `Tarifname_181176_template.docx` üzerinde `olup, özelliği;` öncesindeki preamble en az iki fiziksel satır kaplamalıdır.
+- Taslak kapısı açıkça kısa preamble'ı reddederek otomatik kalite düzeltme turuna gönderir. Nihai otorite Word→PDF render kapısıdır: İSTEMLER bölgesindeki bağımsız istem için `olup, özelliği;` öncesinde iki fiziksel satırdan az gerçek preamble metni görülürse Word kullanıcıya sunulmaz.
+- Bu koşul manuel satır sonu, gereksiz tekrar veya dolgu metniyle sağlanamaz. Mevcut non-breaking son-kuyruk/orphan kontrolü de ayrıca çalışmaya devam eder.

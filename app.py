@@ -1557,6 +1557,7 @@ KRİTİK TALİMATLAR:
 - Türkçe tarifnamede her patent literatürü paragrafında doğrulanmış İngilizce başlık ile Türkçe başlık karşılığı birlikte yazılsın. Türkçe literatür paragrafı bağlayıcı taslak dilini izlesin: “Literatürde yapılan araştırmalar sonucu ... numaralı, İngilizce başlığı ‘...’ ve Türkçe karşılığı ‘...’ olan patent dokümanına rastlanmıştır. Söz konusu başvuru/doküman ... ile ilgilidir. Ancak bahsedilen başvuruda/dokümanda ... ile ilgili bir emareye rastlanmamıştır.” “Buluşta ise ...” biçiminde karşılaştırmalı görüş/savunma dili kullanılmasın. İngilizce tarifnamede özgün İngilizce patent başlığı kullanılsın; Türkçe başlık karşılığı nihai İngilizce metne eklenmesin.
 - BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı sistem/cihaz unsurlarını tek tek ayrı paragraf yapma; bütün unsur açıklamalarını teknik akış içinde tek sürekli paragrafta topla. Sistem unsuru-yöntem adımı ilişkisini açıklamak için “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü tablo oluşturma. Bu ilişkiyi modül (1), sonraki modül (2) ve ilgili yöntem adımı (1001, 1002...) arasındaki veri/işlev bağlantısını gösteren doğal teknik paragraf olarak yaz. Yalnız ham kaynakta gerçekten sayısal/deneysel veri tablosu olan tabloları tables alanında koru. Gerçekten ayrı bir yapılanma/alternatif/yöntem/çalışma prensibi ayrıca paragraf olabilir.
 - Ana istemde zorunlu teknik çekirdeği kapsayıcı biçimde ver. Aynı işlemin birinci/ikinci/k'ıncı tekrarlarını ana istemde gereksiz yere ayrı satırlara bölme. Bu ayrıntıları, aynı alt akışa aitse tek bağımlı istemde topla.
+- Türkçe BAĞIMSIZ sistem/cihaz/ürün/yöntem isteminin `preamble` alanını yalnız buluş adı kadar kısa yazma. Preamble kaynakta açıkça desteklenen teknik kullanım bağlamını ve/veya temel işlevsel ilişkiyi içermeli ve bağlayıcı Word şablonunda `olup, özelliği;` öncesinde en az İKİ FİZİKSEL SATIR oluşturacak kadar anlamlı teknik içerik taşımalıdır. Bu koşulu manuel satır sonu, tekrar veya dolgu ifadeyle sağlama. Örneğin yalnız `Hücrelerin haftalık davranışına göre anormal durum tespit sistemi` gibi kısa adlandırma yerine kaynak destekliyorsa hangi şebeke/veri üzerinde hangi karşılaştırmaya dayalı tespiti yaptığı preamble içinde kurulmalıdır.
 - Buluş ağırlıklı olarak yazılım/algoritma/modül/birimlerden oluşuyorsa bağımsız istemleri soyut yazılım olarak bırakma. Kaynakta özel donanım zorunlu değilse geniş bir donanımsal taşıyıcı kullan. Türkçede “bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...”, İngilizcede “software executed on an electronic device ...” veya eşdeğer teknik taşıyıcı dili kullanılabilir. Gereksiz sunucu, cep telefonu/phone veya kişisel bilgisayar daraltması yapma; özel donanım uydurma.
 - AYNI referanssız elektronik işlem birimi/cihaz taşıyıcısı üzerinde AYNI çalışma ilişkisine sahip birden fazla ARDIŞIK yürütülebilir yazılım/modül/kontrolör/arayüz/yığın varsa taşıyıcı ifadesini her birinde tekrar etmek zorunda değilsin. Türkçe sistem isteminde `elements` listesine bir grup nesnesi koyabilirsin: `{{"lead":"bir elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ve;","subelements":["... modülü (2),","... kontrolörü (3),"]}}`. Lead referans taşımaz; her subelement ayrı bir yeni referanslı unsuru ilk-tanım sırasıyla tanımlar. VERİTABANI, bellek, veri deposu, profil tablosu veya salt veri yapısı kaynak açıkça yürütülebilir yazılım/modül olduğunu söylemiyorsa bu ortak grubun altına ALINMAZ; ayrı unsur yazılır. Bu grup yalnız aynı taşıyıcı gerçekten bütün alt unsurlar için ortaksa kullanılır ve Word'de gerçek iç içe bullet olarak yazılır.
 - İstemleri yalnız hedeflenen sonuç veya fonksiyonla bırakma. Özellikle bağımsız istemde teknikte uzman kişinin “nasıl gerçekleştiriliyor?” sorusuna cevap verecek şekilde, kaynakta açık dayanağı bulunduğu ölçüde işlemi yapan teknik unsur/taşıyıcıyı, kullanılan girdiyi veya önceki unsurdan gelen veriyi, teknik işlem/mekanizmayı ve ortaya çıkan teknik çıktının sonraki unsurla bağlantısını yaz. “tespit eden / dönüştüren / optimize eden / classifying / transforming / determining” gibi sonuç bildiren fiiller kaynak mekanizmayı açıklıyorsa tek başına yeterli sayılmaz. Buna karşılık tercihli uygulama ayrıntılarıyla ana istemi gereksiz daraltma. Yazılım/modül unsurlarını İngilizce claim sırasını taklit ederek `X modülü (N), ... yapan bir modül` biçiminde kurma; Türkçe istemde önce kaynak destekli teknik işlev/mekanizma yazılır, unsur adı ve `(N)` referansı bu işlevi tanımlayan sıfat-fiil yapısının sonunda gelir: `... verilerini birlikte değerlendirerek ... değerini hesaplayan X modülü (N),`.
@@ -1714,6 +1715,7 @@ ZORUNLU KONTROL LİSTESİ:
 58. Ortak `elektronik işlem birimi üzerinde koşturulan yazılım` üst maddesinin altında yalnız gerçekten yürütülebilir yazılım/modül/kontrolör/arayüz/yığın mı var? Veritabanı/bellek/veri deposu gibi pasif veri taşıyan unsur kaynakça açıkça yürütülebilir değilse ortak gruptan çıkarılmış mı?
 59. BULUŞUN DETAYLI AÇIKLAMASI ve İSTEMLER içinde REFERANS NUMARALARI listesindeki bir unsur adı her geçtiğinde aynı/çekimli unsur adıyla doğru `(N)` referansını taşıyor mu? Özellikle bağımsız ve bağımlı yöntem istemlerindeki gNodeB, arayüz, kontrolör, veritabanı, yığın ve cihaz kullanımları numaralı mı?
 60. Nihai Word üretildikten sonra ham kaynak zinciri ve beş son kapının tamamı tekrar geçmelidir: ham pasaj -> technical_fact -> nihai Word kanıtı; 1/5 BBF/KAYNAK TAMLIK, 2/5 ANA+ALT İSTEM kalite/tekrar/gereklilik, 3/5 DETAYLI AÇIKLAMA+İSTEMLER REFERANS NUMARASI tamlığı, 4/5 TAM ŞABLON, 5/5 UNSUR/YÖNTEM DİLİ. Sistem alt istemlerinde `bulunmasıdır` kullanılmışsa mutlaka unsur merkezli `olmasıdır/içermesidir` diline dönüştür.
+61. Türkçe BAĞIMSIZ istemlerin preamble'ı yalnız buluş adı kadar kısa mı? `olup, özelliği;` öncesi kaynak-destekli teknik giriş Word şablonunda en az iki fiziksel satır oluşturacak kadar anlamlı teknik bağlam/temel işlev içermeli; manuel satır sonu veya anlamsız dolgu kullanılmamalıdır. Açıkça kısa preamble varsa yeniden yaz.
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
 {TARIFNAME_DRAFT_SCHEMA}
@@ -2898,6 +2900,19 @@ def validate_tarifname_draft(
     if claim_mode in {"Yalnızca sistem", "Sistem ve yöntem"} and not draft.get("system_claim"):
         raise ValueError("Seçilen istem yapısına rağmen bağımsız sistem istemi üretilemedi.")
 
+    # v5.4.38: Word render öncesi erken uyarı. Nihai otorite PDF fiziksel-satır kapısıdır.
+    if not _english_spec(language):
+        for claim_label, claim_obj in (("sistem", draft.get("system_claim")), ("yöntem", draft.get("method_claim"))):
+            if not claim_obj:
+                continue
+            preamble = re.sub(r"\s+", " ", str((claim_obj or {}).get("preamble", "") or "").strip().rstrip(" ,;:"))
+            words = re.findall(r"\S+", preamble)
+            if len(words) < 18:
+                raise ValueError(
+                    f"Bağımsız {claim_label} istemi giriş bölümü çok kısa. `olup, özelliği;` öncesindeki preamble yalnız buluş adı olmamalı; "
+                    "ham kaynakta desteklenen teknik kullanım bağlamını ve/veya temel işlevsel ilişkiyi içerecek şekilde genişletilmeli ve bağlayıcı Word şablonunda en az iki fiziksel satır oluşturmalıdır."
+                )
+
     hardware_anchor_re = re.compile(r"elektronik cihaz|elektronik işlem birimi|işlemci|donanım|bilgisayar|mikrodenetleyici|kontrol birimi|electronic device|processing unit|processor|hardware|computer|microcontroller|control unit", re.IGNORECASE)
     software_terms_re = re.compile(r"modül|birim|algoritma|yazılım|veri işleme|hesaplama|module|unit|algorithm|software|data processing|calculation", re.IGNORECASE)
     if draft.get("system_claim"):
@@ -3356,6 +3371,51 @@ def validate_tarifname_post_generation_quality(
     }
 
 
+def _validate_rendered_independent_claim_preamble_lines(lines: list[str]) -> None:
+    """Reject Turkish independent claims whose preamble occupies fewer than two rendered lines."""
+    in_claims = False
+    current: list[str] | None = None
+    transition_re = re.compile(r"olup,\s*özelliği;", re.IGNORECASE)
+    numbered_re = re.compile(r"^\s*(\d+)\.\s*(.*)$")
+    for raw in lines:
+        line = re.sub(r"\s+", " ", str(raw or "").strip())
+        if not line:
+            continue
+        if line == "İSTEMLER":
+            in_claims = True; current = None; continue
+        if line == "ÖZET":
+            in_claims = False; current = None; continue
+        if not in_claims:
+            continue
+        m = numbered_re.match(line)
+        if m:
+            body = m.group(2).strip()
+            if re.match(r"^İstem\b", body, flags=re.IGNORECASE):
+                current = None; continue
+            current = [body] if body else []
+        elif current is not None:
+            current.append(line)
+        if current is None:
+            continue
+        transition_index = next((i for i, text in enumerate(current) if transition_re.search(text)), None)
+        if transition_index is None:
+            continue
+        prefix_line_count = 0
+        for i, text in enumerate(current[:transition_index + 1]):
+            if i == transition_index:
+                prefix_part = transition_re.split(text, maxsplit=1)[0].strip(" ,;:-")
+                if prefix_part:
+                    prefix_line_count += 1
+            elif text.strip():
+                prefix_line_count += 1
+        if prefix_line_count < 2:
+            raise ValueError(
+                "Word render istem kalite kontrolü: bağımsız istemde `olup, özelliği;` öncesindeki preamble "
+                "bağlayıcı şablonda en az iki fiziksel satır oluşturmalıdır; salt buluş adı kadar kısa giriş kabul edilmez."
+            )
+        current = None
+
+
 def render_tarifname_docx_smoke_test(data: bytes) -> None:
     """Render ortamında DOCX'in LibreOffice ile PDF'e sorunsuz çevrilebildiğini doğrular."""
     with tempfile.TemporaryDirectory() as td:
@@ -3379,6 +3439,7 @@ def render_tarifname_docx_smoke_test(data: bytes) -> None:
                 if pdf.page_count < 1:
                     raise ValueError("Word render kalite kontrolü: PDF sayfası oluşmadı.")
                 in_claims = False
+                rendered_lines: list[str] = []
                 for page in pdf:
                     rect = page.rect
                     if rect.width <= 0 or rect.height <= 0:
@@ -3389,6 +3450,8 @@ def render_tarifname_docx_smoke_test(data: bytes) -> None:
                             continue
                         for line in block.get("lines", []):
                             line_text = "".join(str(span.get("text", "")) for span in line.get("spans", [])).strip()
+                            if line_text:
+                                rendered_lines.append(line_text)
                             if line_text == "İSTEMLER":
                                 in_claims = True
                                 continue
@@ -3406,6 +3469,7 @@ def render_tarifname_docx_smoke_test(data: bytes) -> None:
                                         "Word render istem kalite kontrolü: `olup, özelliği;` kısa/orphan son satıra düştü. "
                                         "İstem girişinin son kelimeleri birlikte korunmalı veya satır dengesi yeniden kurulmalıdır."
                                     )
+                _validate_rendered_independent_claim_preamble_lines(rendered_lines)
             finally:
                 pdf.close()
 
