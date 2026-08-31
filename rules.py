@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.38"
-RULESET_VERSION = "2026-08-27.v28"
+APP_VERSION = "v5.4.39"
+RULESET_VERSION = "2026-08-31.v29"
 
 EXTRA_CONTROLS_NOTICE = "EKSTRA KONTROLLER YAPILDI"
 EXTRA_CONTROL_GATE_KEYS = (
@@ -388,6 +388,8 @@ TİP 3 ÖN ARAŞTIRMA RAPORU KURALLARI
 36. `On_Arastirma_Raporu_181612_template.docx` için şablona sadakat yalnız genel görünüm anlamına gelmez. Sabit hücre metinleri, satır/sütun ve iç tablo geometrisi, paragraf sayısı ve boşlukları, kalın/normal run ayrımı, başlıkların konumu, uyarı paragraflarının ayrı yapısı ve sabit alanların dili de korunmalıdır. Şablondaki metin alanı özel olarak dinamik tanımlanmamışsa model kendi isteğiyle yeniden formüle etmez.
 37. Word çıktısı oluşturulduktan sonra şablon-vs-çıktı biçim kalite kontrolü yapılır. En azından section/marj yapısı, ana tablo sayısı, anahtar kelime tablosunun 5x2 yapısı, `Kapsam` sabit metni, IPC kodlarının kalın-açıklamaların normal olması, D1/D2 abstractlarının İngilizce olması, uyarı hücresinin ayrı paragrafları ve şablonda olmayan başlık/tablo eklenmemesi doğrulanır. Hata varsa dosya kullanıcıya sunulmadan düzeltilir.
 38. Bu 29-37 numaralı rapor içeriği ve biçim kuralları normal Tip 3 raporunun yanı sıra `Araştırma güncelleme - Tip 3` Word çıktısında da aynen geçerlidir.
+39. `2. DEĞERLENDİRME` giriş paragrafında nihai D1/D2 yayın numaraları ve `(D1)` / `(D2)` etiketleri şablondaki gibi TEK KALIN run grubu olarak görünmelidir. Örnek: `Araştırma sonucunda, araştırma konusu ile teknik yakınlığı en yüksek dokümanlar **CN... (D1) ve GB... (D2)** olarak değerlendirilmiştir.` D1/D2 kimlikleri normal yazıya dönüşürse Tip 3 Word biçim kapısı başarısız sayılır. Tek D1 varsa yalnız `CN... (D1)` kısmı kalın yazılır.
+40. Tip 3 bir ön araştırma raporudur; yenilik ve buluş basamağına ilişkin nihai değerlendirme cümleleri kesin hüküm kipiyle `yenilik kriterini sağlamaktadır/sağlamamaktadır`, `buluş basamağı kriterini sağlamaktadır/sağlamamaktadır`, `sağlar/sağlamaz` veya `sağlanır/sağlanmaz` biçiminde yazılmaz. D1/D2 yenilik değerlendirmeleri, buluş basamağı değerlendirmesi ve SONUÇ bölümünde `... kriterini sağladığı düşünülmektedir` veya `... kriterini sağlamadığı düşünülmektedir` ihtiyatlı ön değerlendirme dili kullanılır. Word üretim kapısı bu dili deterministik olarak kontrol eder.
 """
 
 ARASTIRMA_GUNCELLEME_RULES = ARASTIRMA_RULES + r"""

@@ -4752,7 +4752,8 @@ JSON dışında yazma.
 - `→`, `=>` veya `özellik + özellik + özellik` gibi sembolik/yapay zekâ görünümlü anlatım kullanma.
 - Yardımcı dokümanları yeni bir D3 başlığı açmadan yalnız buluş basamağı değerlendirmesinin doğal paragraf akışında kullan.
 - Şablonda olmayan bölüm/başlık ekleme.
-- Sonuçta yenilik ve buluş basamağı sonucunu açıkça yaz.
+- Sonuçta yenilik ve buluş basamağı sonucunu açıkça yaz; ancak bu bir ön araştırma raporu olduğundan sonuç cümlelerini kesin hüküm kipiyle `sağlamaktadır/sağlamamaktadır`, `sağlar/sağlamaz` veya `sağlanır/sağlanmaz` biçiminde kurma. D1/D2 yenilik değerlendirmelerinde, buluş basamağı değerlendirmesinde ve SONUÇ bölümünde `... kriterini sağladığı düşünülmektedir` / `... kriterini sağlamadığı düşünülmektedir` ihtiyatlı dilini kullan.
+- `evaluation_intro` içinde nihai D1/D2 kimliklerini `Araştırma sonucunda, araştırma konusu ile teknik yakınlığı en yüksek dokümanlar <D1 no> (D1) ve <D2 no> (D2) olarak değerlendirilmiştir.` mantığında ver. Word üreticisi D1/D2 kimliklerini şablondaki gibi kalın yazacaktır.
 - Metni ikinci kez kontrol edip düzelt.
 ARAŞTIRMA KONUSU:\n{bbf_text}\n
 TOP10:\n{json.dumps(top10, ensure_ascii=False, indent=2)}\n
@@ -4852,6 +4853,8 @@ Karşılaştırma hücrelerinde + veya - işaretinin ardından dokümandaki somu
 D1/D2 `abstract` alanına YENİ ARAŞTIRMA içindeki ilgili dokümanın `abstract_en` değerini doğrudan aktar; Türkçeye çevirme, özetleme veya yeniden yazma. Özgün İngilizce abstract yoksa raporu tamamlanmış gibi üretme.
 `warnings` alanını şablondaki dört ayrı uyarı paragrafını koruyacak şekilde tam 4 paragraf olarak üret.
 `→`, `=>`, oklar veya `özellik + özellik` gibi kısa sembolik anlatım kullanma.
+Bu bir ön araştırma raporu olduğundan D1/D2 yenilik değerlendirmeleri, buluş basamağı değerlendirmesi ve SONUÇ bölümünde kesin `sağlamaktadır/sağlamamaktadır`, `sağlar/sağlamaz`, `sağlanır/sağlanmaz` dili kullanma; `... kriterini sağladığı düşünülmektedir` / `... kriterini sağlamadığı düşünülmektedir` yaz.
+`evaluation_intro` nihai D1/D2 yayın numaraları ile `(D1)` / `(D2)` etiketlerini açıkça içersin; Word üreticisi bu kimlikleri şablondaki gibi kalın yazacaktır.
 JSON dışında yazma.
 ŞEMA:
 {{
@@ -4899,6 +4902,51 @@ def _norm_ws(value: str) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
+def _soften_preliminary_assessment_text(value: str) -> str:
+    """Tip 3 ön değerlendirme sonucunu kesin hüküm kipinden ihtiyatlı rapor diline çevirir."""
+    text = str(value or "")
+    replacements = (
+        (r"\b(yenilik kriterini|buluş basamağı kriterini)\s+sağlamamaktadır\b", r"\1 sağlamadığı düşünülmektedir"),
+        (r"\b(yenilik kriterini|buluş basamağı kriterini)\s+sağlamaktadır\b", r"\1 sağladığı düşünülmektedir"),
+        (r"\b(yenilik kriterini|buluş basamağı kriterini)\s+sağlamaz\b", r"\1 sağlamadığı düşünülmektedir"),
+        (r"\b(yenilik kriterini|buluş basamağı kriterini)\s+sağlar\b", r"\1 sağladığı düşünülmektedir"),
+        (r"\b(yenilik|buluş basamağı)\s+kriteri\s+sağlanmaz\b", r"\1 kriterinin sağlanmadığı düşünülmektedir"),
+        (r"\b(yenilik|buluş basamağı)\s+kriteri\s+sağlanır\b", r"\1 kriterinin sağlandığı düşünülmektedir"),
+    )
+    for pattern, repl in replacements:
+        text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
+    return text
+
+
+def _normalize_research_preliminary_language(report: dict[str, Any]) -> None:
+    """Yalnız değerlendirme/sonuç alanlarında ön araştırma dilini deterministik olarak uygular."""
+    for block in report.get("documents") or []:
+        if isinstance(block.get("novelty_assessment"), list):
+            block["novelty_assessment"] = [_soften_preliminary_assessment_text(x) for x in block.get("novelty_assessment") or []]
+    for key in ("inventive_step_paragraphs", "conclusion_paragraphs"):
+        if isinstance(report.get(key), list):
+            report[key] = [_soften_preliminary_assessment_text(x) for x in report.get(key) or []]
+
+
+def _validate_research_preliminary_language(report: dict[str, Any]) -> None:
+    """Tip 3 değerlendirme alanlarında kategorik patentlenebilirlik hükmünü bloke eder."""
+    texts: list[str] = []
+    for block in report.get("documents") or []:
+        texts.extend(str(x or "") for x in (block.get("novelty_assessment") or []))
+    texts.extend(str(x or "") for x in (report.get("inventive_step_paragraphs") or []))
+    texts.extend(str(x or "") for x in (report.get("conclusion_paragraphs") or []))
+    categorical = re.compile(
+        r"\b(?:yenilik|buluş basamağı)\s+kriter(?:i|ini)\s+(?:sağlamaktadır|sağlamamaktadır|sağlar|sağlamaz|sağlanır|sağlanmaz)\b",
+        flags=re.IGNORECASE,
+    )
+    for text in texts:
+        if categorical.search(text):
+            raise ValueError(
+                "Tip 3 bir ön araştırma raporudur; yenilik/buluş basamağı sonucu kesin hüküm kipiyle yazılamaz. "
+                "`... kriterini sağladığı düşünülmektedir` / `... kriterini sağlamadığı düşünülmektedir` kullanılmalıdır."
+            )
+
+
 def validate_research_report_language(report: dict[str, Any]) -> None:
     banned = [r"\bBBF\b", r"buluş bildirim formu", r"→", r"=>"]
     # Tablo durum/evidence hücrelerindeki + / - izinlidir; diğer alanlarda ok ve BBF dili yasaktır.
@@ -4935,6 +4983,8 @@ def validate_research_report_language(report: dict[str, Any]) -> None:
         if _contains_turkish_specific_chars(abstract):
             raise ValueError(f"{block.get('label','D1/D2')} Abstract alanı özgün İngilizce metin olmalıdır; Türkçe/çeviri metin kabul edilmez.")
 
+    _validate_research_preliminary_language(report)
+
 
 def validate_report_against_selection(report: dict[str, Any], selection: dict[str, Any]) -> None:
     """Nihai D1/D2 kimliği ve özgün İngilizce abstract metni rapora model tarafından değiştirilmeden taşınır."""
@@ -4965,6 +5015,42 @@ def _replace_paragraph_text_preserve_format(paragraph, text: str) -> None:
         if current is not None:
             run._r.remove(current)
         run._r.insert(0, proto_rpr)
+
+
+def _replace_research_evaluation_intro(paragraph, docs: list[dict[str, Any]]) -> None:
+    """Şablondaki mixed-run yapıyı korur; D1/D2 kimliklerini deterministik olarak kalın yazar."""
+    if not docs:
+        raise ValueError("Tip 3 değerlendirme girişinde D1 bulunamadı.")
+    normal_proto = next((r for r in paragraph.runs if r.bold is not True and (r.text or r._r.rPr is not None)), None)
+    bold_proto = next((r for r in paragraph.runs if r.bold is True and (r.text or r._r.rPr is not None)), None)
+    normal_rpr = deepcopy(normal_proto._r.rPr) if normal_proto is not None and normal_proto._r.rPr is not None else None
+    bold_rpr = deepcopy(bold_proto._r.rPr) if bold_proto is not None and bold_proto._r.rPr is not None else None
+
+    labels = []
+    for idx, block in enumerate(docs[:2], 1):
+        number = str(block.get("number") or "").strip()
+        if not number:
+            raise ValueError(f"Tip 3 değerlendirme girişinde D{idx} yayın numarası boş bırakılamaz.")
+        labels.append(f"{number} (D{idx})")
+    joined = " ve ".join(labels)
+    plural = len(labels) > 1
+    prefix = (
+        "Araştırma kapsamında yurtiçi ve yurtdışı patent veritabanlarında taramalar yapılmış, "
+        "tespit edilen dokümanlar ekte incelemenize sunulmuştur. Araştırma sonucunda, araştırma konusu ile "
+        + ("teknik yakınlığı en yüksek dokümanlar " if plural else "teknik yakınlığı en yüksek doküman ")
+    )
+    suffix = " olarak değerlendirilmiştir."
+
+    paragraph.clear()
+    for text, is_bold in ((prefix, False), (joined, True), (suffix, False)):
+        run = paragraph.add_run(text)
+        rpr = bold_rpr if is_bold else normal_rpr
+        if rpr is not None:
+            current = run._r.rPr
+            if current is not None:
+                run._r.remove(current)
+            run._r.insert(0, deepcopy(rpr))
+        run.bold = is_bold
 
 
 def _replace_cell_text_preserve_format(cell, text: str) -> None:
@@ -5255,6 +5341,18 @@ def _validate_research_template_fidelity(doc: Document) -> None:
         if len(para.runs) < 2 or para.runs[0].bold is not True or para.runs[1].bold is True:
             raise ValueError("Tip 3 IPC alanında kod kalın, İngilizce açıklama normal yazı biçimi korunmalıdır.")
 
+    # 2. DEĞERLENDİRME girişinde D1/D2 kimliklerinin şablondaki gibi kalın run olarak korunması zorunludur.
+    intro_para = doc.paragraphs[36]
+    bold_intro = "".join(r.text for r in intro_para.runs if r.bold is True)
+    normal_intro = "".join(r.text for r in intro_para.runs if r.bold is not True)
+    if "(D1)" not in bold_intro:
+        raise ValueError("Tip 3 değerlendirme girişinde D1 yayın numarası ve (D1) etiketi kalın yazılmalıdır.")
+    has_d2 = bool(doc.paragraphs[57].text.strip())
+    if has_d2 and "(D2)" not in bold_intro:
+        raise ValueError("Tip 3 değerlendirme girişinde D2 yayın numarası ve (D2) etiketi kalın yazılmalıdır.")
+    if not normal_intro.strip():
+        raise ValueError("Tip 3 değerlendirme girişinin yalnız D1/D2 kimlikleri kalın, çevre metni normal olmalıdır.")
+
     warning_cell = doc.tables[4].rows[0].cells[2]
     if len(warning_cell.paragraphs) != 4:
         raise ValueError("Tip 3 uyarı alanı şablondaki dört ayrı paragraf yapısını korumuyor.")
@@ -5262,6 +5360,7 @@ def _validate_research_template_fidelity(doc: Document) -> None:
 
 def build_research_docx(report: dict[str, Any], figure_fallbacks: list[bytes] | None = None) -> bytes:
     """Bağlayıcı Tip 3 şablonunu yerinde doldurur; gövdeyi yeniden kurmaz."""
+    _normalize_research_preliminary_language(report)
     validate_research_report_language(report)
     docs = report.get("documents") or []
     if not docs:
@@ -5288,7 +5387,7 @@ def build_research_docx(report: dict[str, Any], figure_fallbacks: list[bytes] | 
     _fill_keyword_table(criteria.rows[3].cells[2], report.get("keywords") or [])
     _fill_ipc_cell(criteria.rows[4].cells[2], report.get("ipc_cpc") or [])
 
-    _replace_paragraph_text_preserve_format(ps[36], report.get("evaluation_intro", ""))
+    _replace_research_evaluation_intro(ps[36], docs)
 
     def apply_doc(block: dict[str, Any], label: str, indices: dict[str, int], table_idx: int, fallback_idx: int):
         header = f"{label}- {block.get('number','')}"

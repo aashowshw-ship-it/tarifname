@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.38
+# Patent Atölyesi v5.4.39
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 26.08.2026 tarihli güncel tam sürümüdür.
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-27.v28`
+Kural sürümü: `2026-08-31.v29`
 
 ## Yerel çalıştırma
 
@@ -422,3 +422,11 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Taslak kalite kapısı açıkça çok kısa bağımsız istem girişini reddeder ve mevcut otomatik düzeltme turuna geri gönderir.
 - Nihai Word, LibreOffice ile PDF'e render edildikten sonra İSTEMLER bölümündeki bağımsız istem girişleri fiziksel satır bazında sayılır. `olup, özelliği;` öncesindeki gerçek preamble metni en az iki fiziksel satır oluşturmuyorsa çıktı bloke edilir.
 - Manuel satır sonu, ekstra boşluk, gereksiz tekrar veya anlamsız dolgu iki-satır koşulunu sağlamış kabul edilmez. Non-breaking `olup, özelliği;` orphan kapısı ayrıca korunur; iki kontrol birbirinin alternatifi değildir.
+
+
+## v5.4.39 / 2026-08-31.v29 — Tip 3 D1/D2 kalın kimlik + ön değerlendirme dili kapısı
+
+- Tip 3 `2. DEĞERLENDİRME` girişinde nihai patent kimlikleri şablondaki gibi **`<yayın no> (D1) ve <yayın no> (D2)`** olarak kalın yazılır. Dinamik paragraf doldurma sırasında şablondaki mixed-run bold biçimi artık kaybedilemez.
+- Word kalite kapısı giriş paragrafında D1 ve varsa D2 etiketlerinin gerçekten kalın run içinde olduğunu deterministik olarak doğrular.
+- Yenilik ve buluş basamağı değerlendirmeleri ön araştırma niteliğine uygun ihtiyatlı dille yazılır: `... kriterini sağladığı düşünülmektedir` / `... kriterini sağlamadığı düşünülmektedir`. Kategorik `sağlamaktadır`, `sağlamamaktadır`, `sağlar/sağlamaz`, `sağlanır/sağlanmaz` sonuç dili değerlendirme alanlarında reddedilir.
+- Aynı kurallar normal Tip 3 ve `Araştırma güncelleme - Tip 3` çıktılarına birlikte uygulanır.

@@ -480,3 +480,10 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Bağlayıcı `Tarifname_181176_template.docx` üzerinde `olup, özelliği;` öncesindeki preamble en az iki fiziksel satır kaplamalıdır.
 - Taslak kapısı açıkça kısa preamble'ı reddederek otomatik kalite düzeltme turuna gönderir. Nihai otorite Word→PDF render kapısıdır: İSTEMLER bölgesindeki bağımsız istem için `olup, özelliği;` öncesinde iki fiziksel satırdan az gerçek preamble metni görülürse Word kullanıcıya sunulmaz.
 - Bu koşul manuel satır sonu, gereksiz tekrar veya dolgu metniyle sağlanamaz. Mevcut non-breaking son-kuyruk/orphan kontrolü de ayrıca çalışmaya devam eder.
+
+
+## v5.4.39 / 2026-08-31.v29 — Tip 3 değerlendirme girişinde D1/D2 bold + ihtiyatlı sonuç dili
+
+- `2. DEĞERLENDİRME` giriş paragrafında teknik yakınlığı en yüksek dokümanların yayın numaraları ile `(D1)` / `(D2)` etiketleri tek kalın grup olarak yazılır. Şablondaki mixed-run bold biçimi dinamik metin doldurulurken korunmak zorundadır.
+- Tip 3 raporu kesin patentlenebilirlik kararı değil ön araştırma olduğundan, D1/D2 yenilik değerlendirmesi, buluş basamağı değerlendirmesi ve SONUÇ içinde `sağlamaktadır/sağlamamaktadır` gibi kesin hüküm dili kullanılmaz. `... kriterini sağladığı düşünülmektedir` / `... kriterini sağlamadığı düşünülmektedir` kalıbı kullanılır.
+- Word kalite kapısı hem D1/D2 kalın run yapısını hem de ihtiyatlı değerlendirme dilini deterministik olarak kontrol eder.
