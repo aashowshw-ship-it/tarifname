@@ -1,6 +1,6 @@
-# Patent Atölyesi v5.4.41
+# Patent Atölyesi v5.4.42
 
-Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 26.08.2026 tarihli güncel tam sürümüdür.
+Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 01.09.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme — ESKİ DOSYALARIN KALMAMASI ÖNEMLİ
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-09-01.v31`
+Kural sürümü: `2026-09-01.v32`
 
 ## Yerel çalıştırma
 
@@ -243,7 +243,7 @@ Ayrıca ortak `elektronik işlem birimi üzerinde koşturulan yazılım` üst bu
 
 ## 2026-08-14.v10 — Beşli Son Kalite Kapısı
 
-Tarifname Word üretildikten sonra indirme sunulmadan önce beş zorunlu kontrol çalışır: (1) BBF/kaynak teknik bilgi tamlığı, (2) ana istem ve alt istem kalite/tekrar/gereklilik kontrolü, (3) detaylı açıklama ve istemlerde referans numarası tamlığı, (4) `Tarifname_181176_template.docx` ile boşluk-hiza-sayfa kırılımı-numaralandırma-kapanış girintisi uygunluğu, (5) istemlerde belirsiz `unsur` placeholder'ı ve yöntem adımlarında salt isimle bitiş kontrolü. Yöntem adımları `... yapılması/edilmesi/aktarılması/belirlenmesi` gibi gerçek işlem fiilimsileriyle biter.
+Tarifname Word üretildikten sonra indirme sunulmadan önce altı zorunlu kontrol çalışır: (1) BBF/kaynak teknik bilgi tamlığı, (2) buluşa ait teknik kaynak bilgisinin BULUŞUN DETAYLI AÇIKLAMASI bölümüne tam ve kaynak-sadık aktarımı, (3) ana istem ve alt istem kalite/tekrar/gereklilik kontrolü, (4) detaylı açıklama ve istemlerde referans numarası tamlığı, (5) `Tarifname_181176_template.docx` ile boşluk-hiza-sayfa kırılımı-numaralandırma-kapanış girintisi uygunluğu, (6) istemlerde belirsiz `unsur` placeholder'ı ve yöntem adımlarında salt isimle bitiş kontrolü. Yöntem adımları `... yapılması/edilmesi/aktarılması/belirlenmesi` gibi gerçek işlem fiilimsileriyle biter.
 
 ## 2026-08-14.v11 — Tam Tarifname Şablon Sadakati
 
@@ -325,7 +325,7 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Tarifname oluşturma ekranında **DP referans numarası çıktı adının tek kaynağıdır**. Ayrı `Çıktı dosyasının adı` ve `Şekiller dosyasının adı` soruları kaldırıldı. Örneğin DP `181267` ise çıktılar otomatik `Tarifname_181267.docx` ve şekiller seçilmişse `Şekiller_181267.docx` olur. DP referansı boşsa üretim başlamaz.
 - `technical_facts` listesine alınmış teknik bir bilgi artık `mandatory=false` ile kapsam dışına çıkarılamaz. Kaynaktaki bütün teknik facts, örnek senaryo/koşul/avantaj/teknik etki/alternatif dahil, nihai tarifnamede uygun bir bölümde korunmak zorundadır.
 - Tarifname taslağı üretildikten sonra **bağımsız son ham kaynak ikinci okuması** çalışır. Bu tur önceki `source_coverage_map` beyanını kanıt saymaz; her technical ham pasajı ve her technical_fact'i kullanıcıya gidecek gerçek taslak metninden birebir alıntıyla yeniden kontrol eder. Eksik tek pasaj/fact varsa aynı tıklama içinde düzeltme turuna dönülür.
-- Word üretildikten sonra `ham pasaj → technical_fact → source_coverage_map → nihai Word kanıtı` zinciri deterministik olarak tekrar doğrulanır. Sonrasında 5 kapı yeniden çalışır: **1/5 Ham kaynak/BBF tamlığı, 2/5 Ana+alt istemler, 3/5 Referanslar, 4/5 Tam şablon, 5/5 Unsur/yöntem dili**. Bunlardan herhangi biri geçmezse indirme düğmesi açılmaz.
+- Word üretildikten sonra `ham pasaj → technical_fact → source_coverage_map → nihai Word kanıtı` zinciri deterministik olarak tekrar doğrulanır. Sonrasında 6 kapı yeniden çalışır: **1/6 Ham kaynak/BBF tamlığı, 2/6 Detaylı Açıklama tam kaynak aktarımı, 3/6 Ana+alt istemler, 4/6 Referanslar, 5/6 Tam şablon, 6/6 Unsur/yöntem dili**. Bunlardan herhangi biri geçmezse indirme düğmesi açılmaz.
 - Başarılı üretimde arayüz açıkça `Ham veri kontrolü yapıldı` mesajını verir ve kontrol edilen ham pasaj, teknik pasaj ve atomik teknik bilgi sayılarını gösterir. Bu mesaj yalnız gerçek kontroller başarıyla tamamlandığında gösterilir.
 - Sistem+yöntem tarifnamesinde TEKNİK ALAN ilk cümlesi `Buluş, ... sistemi ve yöntemi ile ilgilidir.` kalıbıyla bitmek zorundadır.
 - Türkçe patent literatürü paragrafı bağlayıcı taslaktaki `Ancak ... ile ilgili bir emareye rastlanmamıştır.` diliyle biter; `Buluşta ise ...` kullanımı kalite kapısında reddedilir.
@@ -447,3 +447,14 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Türkçe yöntem bağımlı istemleri yalnız `İstem X’e uygun yöntem olup, özelliği;` kısa giriş kalıbıyla başlar.
 - X, ek teknik özelliğin gerçekten dayandığı istem numarasıdır; zincir bağımlılık kuralları değişmez.
 - Taslak kalite kapısı ve nihai Word kalite kapısı bu başlangıçları ayrı ayrı doğrular. `İstem 1’e uygun ayarlanabilir ... sistemi olup, özelliği;` gibi uzatılmış giriş varsa çıktı kullanıcıya açılmaz.
+
+
+## v5.4.42 / 2026-09-01.v32 — Detaylı Açıklama tam kaynak aktarımı + gerçek BBF ikinci-okuma kapısı
+
+- BBF ve açık teknik müşteri kaynaklarında **buluşun kendisini açıklayan bütün teknik bilgi**, yalnız tarifnamenin herhangi bir bölümünde bulunmakla yetinemez; `BULUŞUN DETAYLI AÇIKLAMASI` içinde de eksiksiz bulunur. Teknik alan/kullanım, teknik problem, çözüm, bütün unsurlar ve işlevleri, unsur ilişkileri, çalışma prensibi, teknik etkiler/avantajlar, alternatifler, örnekler, ölçü/değer/aralıklar, performans bilgileri ve teknik görselden çıkarılabilen buluş bilgisi bu kapsamdadır. Salt üçüncü kişi önceki-teknik/patent-literatürü bu zorunlu tekrara dahil değildir.
+- Kaynak cümle teknik ve dilbilgisel olarak düzgünse **özetlenmez ve gereksiz yere yeniden yazılmaz**; mümkün olan en yüksek ölçüde kaynak cümle yapısı korunur. Yalnız dilbilgisi/noktalama, patent metni geçişi ve kanonik unsur adı/referans normalizasyonu yapılabilir. Kaynakta `eleman (1)` gibi geçici ifade varsa, nihai referans tablosundaki gerçek ad (ör. `solar spektrum kafası (1)`) kullanılır; bu normalizasyon yeni teknik bilgi ekleyemez.
+- `AM1.5G`, `365–1000 nm`, `850 nm`, `PWM` gibi teknik literal/değer/kısaltmalar kaynakta varsa Detaylı Açıklama içinde deterministik olarak aranır; birinin düşmesi çıktı kapısını başarısız yapar.
+- `source_coverage_map` içindeki her buluş-teknik fact için bölüm listesinde `BULUŞUN DETAYLI AÇIKLAMASI` ve bu bölümde gerçekten bulunan en az 20 karakterlik kanıt zorunludur. Modelin yalnız `covered=true` demesi yeterli değildir.
+- Taslak sonrası bağımsız ham-BBF ikinci okuması önceki passage/fact/coverage kararlarını görmez. Buna rağmen ilk ve ikinci okuma teknik/teknik-dışı sınıflandırması çelişirse veya bir buluş-teknik pasaj ikinci okumada `detail_transfer_required=false` işaretlenirse çıktı **FAIL** olur ve kaynak çıkarımı yeniden yapılır. Nonce + kaynak SHA-256 + taslak SHA-256 bağlaması olmadan eski/uydurma audit kabul edilmez.
+- Referans tablosunda açıkça tanımlanmış her sistem unsuru, BBF'deki `Yeni/Önceki` işaretinden bağımsız olarak istem setinde en az bir kez bulunur. Ana istem için zorunlu/farklılaştırıcı değilse uygun bir bağımlı istemde geri çekilme pozisyonu olarak kullanılabilir; `Yeni` kutusunun işaretli olmaması unsurun istemlerden sessizce atılmasına gerekçe değildir.
+- Nihai çıktı kapıları artık altıdır: `source_completeness + detail_source_transfer + claims + references + template + element_step_language`. Bu altı kapı ve diğer ekstra kontroller gerçekten PASS olmadan `EKSTRA KONTROLLER YAPILDI` gösterilemez.

@@ -20,7 +20,7 @@ def _df(text):
 
 
 def test_versions_and_rules():
-    assert APP_VERSION == 'v5.4.41' and RULESET_VERSION == '2026-09-01.v31'
+    assert APP_VERSION == 'v5.4.42' and RULESET_VERSION == '2026-09-01.v32'
     assert 'independent_raw_second_read' in EXTRA_CONTROL_GATE_KEYS
     assert 'önceki `source_passage_audit`' in TARIFNAME_RULES
 
@@ -91,6 +91,8 @@ def test_raw_second_read_requires_provenance_and_every_raw_passage():
                 'source_quote': 'LED grupları bağımsız sürülerek ayarlanabilir spektral ışık üretmektedir.',
                 'covered': True,
                 'evidence': ['LED grupları bağımsız sürülerek ayarlanabilir spektral ışık üretmektedir.'],
+                'detail_transfer_required': True,
+                'detail_evidence': 'LED grupları bağımsız sürülerek ayarlanabilir spektral ışık üretmektedir.',
                 'missing_detail': '',
             },
             {
@@ -100,13 +102,15 @@ def test_raw_second_read_requires_provenance_and_every_raw_passage():
                 'source_quote': 'Başvuru sahibi bilgileri ve imza alanı bulunmaktadır.',
                 'covered': True,
                 'evidence': [],
+                'detail_transfer_required': False,
+                'detail_evidence': '',
                 'missing_detail': '',
             },
         ],
         'all_pass': True,
     }
     stats = validate_final_raw_source_audit(
-        audit, extracted, reg, draft_text, expected_audit_nonce=nonce
+        audit, extracted, reg, draft_text, detail_text=draft_text, expected_audit_nonce=nonce
     )
     assert stats['audited_raw_passages'] == 2
     assert stats['audited_technical_passages'] == 1
@@ -115,12 +119,12 @@ def test_raw_second_read_requires_provenance_and_every_raw_passage():
     bad['audit_meta']['prior_classification_used'] = True
     with pytest.raises(ValueError, match='bağımsızlık'):
         validate_final_raw_source_audit(
-            bad, extracted, reg, draft_text, expected_audit_nonce=nonce
+            bad, extracted, reg, draft_text, detail_text=draft_text, expected_audit_nonce=nonce
         )
 
     missing = json.loads(json.dumps(audit))
     missing['passage_checks'] = missing['passage_checks'][:1]
     with pytest.raises(ValueError, match='eksik pasaj'):
         validate_final_raw_source_audit(
-            missing, extracted, reg, draft_text, expected_audit_nonce=nonce
+            missing, extracted, reg, draft_text, detail_text=draft_text, expected_audit_nonce=nonce
         )

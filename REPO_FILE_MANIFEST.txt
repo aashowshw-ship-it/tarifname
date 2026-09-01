@@ -48,5 +48,6 @@ test_v5438_independent_claim_two_line_gate.py
 test_v5439_tip3_bold_preliminary_language.py
 test_v5440_real_raw_second_read_sentence_case.py
 test_v5441_dependent_claim_short_preamble.py
+test_v5442_detail_source_transfer.py
 validators.py
 word_math.py

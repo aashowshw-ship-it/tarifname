@@ -395,7 +395,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - `technical_facts` içindeki bütün teknik maddeler zorunlu kapsamdadır. Teknik fact için `mandatory=false` artık geçerli bir kaçış yolu değildir.
 - İlk ham-pasaj auditinden ve taslak kalite turundan bağımsız olarak, **taslak tamamlandıktan sonra yeniden ham BBF ikinci okuması** yapılır. Her `technical` passage_id ve her technical_fact tam bir kez kontrol edilir, gerçek taslak içinden en az 20 karakterlik birebir evidence istenir; `source_coverage_map` bu ikinci okumada kanıt olarak kullanılamaz.
 - Son Word kapısı ham kaynak zincirini tekrar kurar: `source_passage_registry → source_passage_audit → technical_facts → source_coverage_map → final .docx`. Zincirde tek kopukluk varsa Word indirmesi gösterilmez.
-- Arayüz yalnız bütün kontroller geçince `Ham veri kontrolü yapıldı` mesajını ve ham pasaj/teknik pasaj/technical_fact sayılarını gösterir. Ardından beş son kapının tamamı görünür olarak onaylanır.
+- Arayüz yalnız bütün kontroller geçince `Ham veri kontrolü yapıldı` mesajını ve ham pasaj/teknik pasaj/technical_fact sayılarını gösterir. Ardından altı son kapının tamamı görünür olarak onaylanır.
 - Sistem+yöntem istem yapısında TEKNİK ALAN ilk cümlesi `Buluş, ... sistemi ve yöntemi ile ilgilidir.` şeklinde biter.
 - Türkçe literatür paragrafı `Literatürde yapılan araştırmalar sonucu ...` ile başlayıp `Ancak ... ile ilgili bir emareye rastlanmamıştır.` ile biten bağlayıcı taslak dilini kullanır. `Buluşta ise ...` savunma dili reddedilir.
 - Son literatür/önceki teknik paragrafı ile `Sonuçta yukarıda bahsedilen...` cümlesi arasında şablondaki fiziksel boş paragraf korunur ve deterministik Word kapısında kontrol edilir.
@@ -450,7 +450,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 ## v5.4.34 / 2026-08-26.v24 — ÖNCEKİ TEKNİK derinlik + görünür ekstra kontrol bildirimi
 
 - Kaynakta `önceki_teknik` ve `problem` kategorisinde dört veya daha fazla teknik fact varsa patent literatürü hariç ÖNCEKİ TEKNİK genel gövdesi en az üç gelişmiş paragraf ve en az 2400 karakter olmak zorundadır. İlgili facts yalnız başka bölümlerde bulunarak kapatılamaz; özellikle ÖNCEKİ TEKNİK içinde gerçek evidence gerekir. Son genel paragraf `Yukarıda belirtilen eksiklikler, ...` ile başlar.
-- Taslak tamamlandıktan sonra ham BBF/ek teknik kaynak ikinci okuması, ÖNCEKİ TEKNİK kaynak yerleşim ve derinlik kontrolü, tam taslak kalite kontrolü, nihai Word beş kalite kapısı + formül/HOW alt kapıları ve Word render kontrolü ayrı ayrı fiilen çalıştırılır.
+- Taslak tamamlandıktan sonra ham BBF/ek teknik kaynak ikinci okuması, ÖNCEKİ TEKNİK kaynak yerleşim ve derinlik kontrolü, tam taslak kalite kontrolü, nihai Word altı kalite kapısı + formül/HOW alt kapıları ve Word render kontrolü ayrı ayrı fiilen çalıştırılır.
 - Bütün bu kontroller gerçekten PASS olmadan `EKSTRA KONTROLLER YAPILDI` ifadesi gösterilemez. Tamamı başarılıysa arayüzün sonunda görünür uyarı olarak tam olarak `EKSTRA KONTROLLER YAPILDI` gösterilir. Arayüz dışı çağrılar da aynı ortak boolean kapıyı kullanır; kontrol yapılmadıysa başarı mesajı uydurulmaz.
 - Nihai kalite sonuç sözlüğü artık `prior_art` ve `draft_quality` durumlarını da taşır; görünür ekstra kontrol bildirimi `source_completeness + prior_art + draft_quality + claims + references + template + element_step_language + formula_format + how_test + render` birleşik kapısına bağlıdır.
 
@@ -504,3 +504,14 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Türkçe yöntem bağımlı istemlerinin girişi tam olarak `İstem X’e uygun yöntem olup, özelliği;` biçimindedir.
 - `İstem X’e uygun <buluş adı> sistemi/cihazı/yapılanması olup, özelliği;` gibi uzatılmış girişler yasaktır.
 - X gerçek teknik bağımlılık numarasıdır. Taslak istem kapısı ile nihai Word çıktı kapısı bu kuralı ayrı ayrı kontrol eder ve ihlalde indirmeyi bloke eder.
+
+
+## v5.4.42 / 2026-09-01.v32 — BBF teknik içeriğinin Detaylı Açıklamaya eksiksiz ve kaynak-sadık aktarımı
+
+- BBF/ek teknik kaynakta buluşun kendisini açıklayan her teknik passage/fact `BULUŞUN DETAYLI AÇIKLAMASI` içinde de kanıtlanır. Başka bölümde bulunması bu kapıyı geçirmez. Teknik alan/kullanım, problem, çözüm, unsur, unsur işlevi/ilişkisi, çalışma prensibi, teknik etki, alternatif, örnek, ölçü/değer/aralık, performans ve teknik görsel bilgisi kapsam içindedir; salt üçüncü kişi önceki-teknik/patent-literatürü hariçtir.
+- Kaynak cümle düzgünse kaynak yapısı korunur; özetleme/sadeleştirme yoluyla teknik ayrıntı düşürülemez. Yalnız dilbilgisi/noktalama, doğal paragraf geçişi ve kanonik unsur adı/referans normalizasyonu yapılır. `eleman (N)` / `birinci eleman (N)` gibi geçici adlar, aynı N için belirlenmiş gerçek unsur adıyla değiştirilir.
+- Kaynaktaki ayırt edici teknik literal/değer/kısaltmalar (`AM1.5G`, `365–1000 nm`, `850 nm`, `PWM` vb.) Detaylı Açıklama içinde deterministik aranır; eksik literal doğrudan FAIL'dir.
+- Bağımsız ham-BBF ikinci okuması önceki passage/fact/coverage sınıflandırmasını görmez; her passage_id'yi sıfırdan sınıflandırır, gerçek `source_quote` ve gerçek nihai evidence verir. İlk/ikinci okuma sınıflandırması çelişirse audit geçmez. İlk okumada buluş-teknik fact'e bağlı bir passage ikinci okumada `detail_transfer_required=false` olamaz. Nonce + kaynak SHA-256 + taslak SHA-256 eşleşmeden audit geçmez.
+- Modelin `covered=true/all_pass=true` beyanı tek başına hiçbir kapıyı geçirmez. Detay evidence, literal ve kaynak zinciri kod tarafından yeniden aranır.
+- Referans tablosunda açıkça tanımlanmış her sistem unsuru, `Yeni/Önceki` işaretinden bağımsız olarak istemlerin en az birinde bulunur; ana istemde zorunlu değilse anlamlı bağımlı istem olarak kullanılabilir. `Yeni` işaretli olmamak, unsurun istem setinden çıkarılması için gerekçe değildir.
+- Nihai altı ana Word kapısı: `source_completeness`, `detail_source_transfer`, `claims`, `references`, `template`, `element_step_language`.

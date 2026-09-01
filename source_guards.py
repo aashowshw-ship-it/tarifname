@@ -201,6 +201,183 @@ def validate_final_source_coverage_chain(
     }
 
 
+
+_DETAIL_PRIOR_ART_CATEGORIES = {
+    "önceki_teknik", "onceki_teknik", "prior_art", "prior art",
+    "literatür", "literatur", "literature", "patent_literature",
+}
+_DETAIL_SECTION_MARKERS = ("buluşun detaylı açıklaması", "buluşun detayli açiklamasi", "detailed description")
+_GENERIC_REF_PLACEHOLDER_RE = re.compile(
+    r"\b(?:(?:birinci|ikinci|üçüncü|dördüncü|beşinci|altıncı|yedinci|sekizinci|dokuzuncu|onuncu)\s+)?(?:eleman|unsur|parça)\s*\(\s*([A-Za-z0-9_.-]+)\s*\)",
+    re.IGNORECASE,
+)
+_TECH_ACRONYM_RE = re.compile(
+    r"(?:\b[A-ZÇĞİÖŞÜ]{3,7}\b|\b[A-Z]{1,6}\d(?:[A-Z0-9]*)(?:\.\d+[A-Z0-9]*)?\b)"
+)
+_TECH_VALUE_RE = re.compile(
+    r"\b\d+(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[.,]\d+)?)?\s*(?:nm|µm|um|mm|cm|km|Hz|kHz|MHz|GHz|W|mW|kW|V|mV|A|mA|°C|%|dB|rpm)\b",
+    re.IGNORECASE,
+)
+
+
+def _detail_fact_required(fact: dict[str, Any]) -> bool:
+    category = re.sub(r"\s+", "_", str(fact.get("category", "") or "").strip().casefold())
+    return category not in _DETAIL_PRIOR_ART_CATEGORIES
+
+
+def _norm_compare_text(value: str) -> str:
+    value = str(value or "").replace("–", "-").replace("—", "-").replace("−", "-")
+    value = re.sub(r"\s+", " ", value).strip().casefold()
+    value = re.sub(r"\s*-\s*", "-", value)
+    return value
+
+
+def _extract_protected_technical_literals(text: str) -> set[str]:
+    literals: set[str] = set()
+    raw = str(text or "")
+    for rx in (_TECH_ACRONYM_RE, _TECH_VALUE_RE):
+        for m in rx.finditer(raw):
+            lit = re.sub(r"\s+", " ", m.group(0)).strip()
+            if lit:
+                literals.add(lit)
+    return literals
+
+
+
+def validate_detailed_description_fact_coverage(
+    extracted: dict[str, Any],
+    coverage_rows: list[dict[str, Any]] | None,
+    detail_text: str,
+    elements: list[dict[str, Any]] | None = None,
+) -> dict[str, int]:
+    """Taslak aşamasında fact -> Detaylı Açıklama evidence ve fact-literal kapısını çalıştırır."""
+    detail_norm = _norm_compare_text(detail_text)
+    if len(detail_norm) < 40:
+        raise ValueError("DETAYLI AÇIKLAMA fact kapısı başarısız: detaylı açıklama metni boş veya yetersiz.")
+    facts = {
+        str(f.get("id", "") or "").strip(): f
+        for f in (extracted.get("technical_facts") or [])
+        if str(f.get("id", "") or "").strip()
+    }
+    rows = _coverage_row_map(coverage_rows)
+    required_ids = {fid for fid, fact in facts.items() if _detail_fact_required(fact)}
+    missing: list[str] = []
+    checked_literals: set[str] = set()
+    literal_missing: list[str] = []
+    for fid in sorted(required_ids):
+        fact = facts[fid]
+        row = rows.get(fid) or {}
+        sections = [str(x or "").strip().casefold() for x in (row.get("sections") or [])]
+        evidence = str(row.get("evidence", "") or "").strip()
+        detail_section_named = any(any(marker in sec for marker in _DETAIL_SECTION_MARKERS) for sec in sections)
+        if row.get("covered") is not True or not detail_section_named or len(evidence) < 20 or _norm_compare_text(evidence) not in detail_norm:
+            missing.append(fid)
+        for literal in _extract_protected_technical_literals(str(fact.get("statement", "") or "")):
+            norm_lit = _norm_compare_text(literal)
+            if not norm_lit or norm_lit in checked_literals:
+                continue
+            checked_literals.add(norm_lit)
+            if norm_lit not in detail_norm:
+                literal_missing.append(literal)
+    if missing:
+        raise ValueError(
+            "DETAYLI AÇIKLAMA fact kapısı başarısız: buluş-teknik technical_fact için Detaylı Açıklama evidence eksik/geçersiz: "
+            + ", ".join(missing[:60])
+        )
+    if literal_missing:
+        raise ValueError(
+            "DETAYLI AÇIKLAMA fact-literal kapısı başarısız; technical_fact içinde olup detaylı açıklamada bulunmayan değer/kısaltma: "
+            + ", ".join(sorted(set(literal_missing), key=str.casefold)[:60])
+        )
+    valid_numbers = {str(e.get("number", "") or "").strip() for e in (elements or []) if str(e.get("number", "") or "").strip()}
+    placeholders = sorted({m.group(0) for m in _GENERIC_REF_PLACEHOLDER_RE.finditer(str(detail_text or "")) if m.group(1) in valid_numbers})
+    if placeholders:
+        raise ValueError(
+            "DETAYLI AÇIKLAMA referans adı normalizasyon kapısı başarısız; gerçek unsur adı yerine geçici/genel ifade kullanılmış: "
+            + ", ".join(placeholders[:30])
+        )
+    return {
+        "detail_required_facts": len(required_ids),
+        "detail_covered_facts": len(required_ids),
+        "detail_fact_literals": len(checked_literals),
+    }
+
+
+def validate_detailed_description_source_transfer(
+    extracted: dict[str, Any],
+    registry: list[dict[str, str]],
+    coverage_rows: list[dict[str, Any]] | None,
+    detail_text: str,
+    elements: list[dict[str, Any]] | None = None,
+) -> dict[str, int]:
+    """Buluş-teknik kaynak bilgisinin özellikle DETAYLI AÇIKLAMA içinde tam aktarıldığını doğrular."""
+    validate_source_passage_audit(extracted, registry)
+    fact_stats = validate_detailed_description_fact_coverage(extracted, coverage_rows, detail_text, elements)
+    detail_norm = _norm_compare_text(detail_text)
+    if len(detail_norm) < 40:
+        raise ValueError("DETAYLI AÇIKLAMA kaynak-transfer kapısı başarısız: detaylı açıklama metni boş veya yetersiz.")
+
+    facts = {
+        str(f.get("id", "") or "").strip(): f
+        for f in (extracted.get("technical_facts") or [])
+        if str(f.get("id", "") or "").strip()
+    }
+    rows = _coverage_row_map(coverage_rows)
+    required_ids = {fid for fid, fact in facts.items() if _detail_fact_required(fact)}
+    missing: list[str] = []
+    for fid in sorted(required_ids):
+        row = rows.get(fid) or {}
+        sections = [str(x or "").strip().casefold() for x in (row.get("sections") or [])]
+        evidence = str(row.get("evidence", "") or "").strip()
+        detail_section_named = any(any(marker in sec for marker in _DETAIL_SECTION_MARKERS) for sec in sections)
+        if row.get("covered") is not True or not detail_section_named or len(evidence) < 20 or _norm_compare_text(evidence) not in detail_norm:
+            missing.append(fid)
+    if missing:
+        raise ValueError(
+            "DETAYLI AÇIKLAMA kaynak-transfer kapısı başarısız: buluş-teknik technical_fact için Detaylı Açıklama evidence eksik/geçersiz: "
+            + ", ".join(missing[:60])
+        )
+
+    # Ham pasajlardaki ayırt edici teknik literal/değerler, ilgili fact Detaylı Açıklamaya zorunluysa kaybolamaz.
+    registry_by_id = {str(r.get("passage_id", "") or "").strip(): r for r in registry}
+    literal_missing: list[str] = []
+    checked_literals: set[str] = set()
+    for row in (extracted.get("source_passage_audit") or []):
+        if str(row.get("classification", "") or "").strip().casefold() != "technical":
+            continue
+        mapped = [str(x or "").strip() for x in (row.get("fact_ids") or []) if str(x or "").strip()]
+        if not any(fid in required_ids for fid in mapped):
+            continue
+        pid = str(row.get("passage_id", "") or "").strip()
+        raw_text = str((registry_by_id.get(pid) or {}).get("text", "") or "")
+        for literal in _extract_protected_technical_literals(raw_text):
+            norm_lit = _norm_compare_text(literal)
+            if not norm_lit or norm_lit in checked_literals:
+                continue
+            checked_literals.add(norm_lit)
+            if norm_lit not in detail_norm:
+                literal_missing.append(literal)
+    if literal_missing:
+        raise ValueError(
+            "DETAYLI AÇIKLAMA teknik literal/değer kapısı başarısız; kaynakta olup detaylı açıklamada bulunmayan değer/kısaltma: "
+            + ", ".join(sorted(set(literal_missing), key=str.casefold)[:60])
+        )
+
+    # Kaynaktaki geçici/genel referans adları nihai gerçek unsur adı belirlenmişse gövdede kalamaz.
+    valid_numbers = {str(e.get("number", "") or "").strip() for e in (elements or []) if str(e.get("number", "") or "").strip()}
+    placeholders = sorted({m.group(0) for m in _GENERIC_REF_PLACEHOLDER_RE.finditer(str(detail_text or "")) if m.group(1) in valid_numbers})
+    if placeholders:
+        raise ValueError(
+            "DETAYLI AÇIKLAMA referans adı normalizasyon kapısı başarısız; gerçek unsur adı yerine geçici/genel ifade kullanılmış: "
+            + ", ".join(placeholders[:30])
+        )
+
+    return {
+        **fact_stats,
+        "detail_protected_literals": len(checked_literals),
+    }
+
+
 def _registry_fingerprint(registry: list[dict[str, str]]) -> str:
     payload = "\n".join(
         f"{str(r.get('passage_id','')).strip()}|{str(r.get('source','')).strip()}|{re.sub(r'\s+', ' ', str(r.get('text','') or '')).strip()}"
@@ -220,6 +397,7 @@ def validate_final_raw_source_audit(
     registry: list[dict[str, str]],
     final_draft_text: str,
     *,
+    detail_text: str = "",
     expected_audit_nonce: str = "",
 ) -> dict[str, int]:
     """Gerçek bağımsız ikinci okumayı doğrular; önceki teknik sınıflandırmaya güvenmez."""
@@ -254,7 +432,10 @@ def validate_final_raw_source_audit(
         if dups: parts.append("tekrar pasaj="+", ".join(sorted(set(dups))[:20]))
         raise ValueError("SON HAM KAYNAK İKİNCİ OKUMA kapısı eksik: " + "; ".join(parts))
 
-    failed=[]; technical_count=0; nontechnical_count=0
+    failed=[]; technical_count=0; nontechnical_count=0; detail_transfer_count=0
+    detail_norm = _norm_compare_text(detail_text)
+    first_rows = {str(r.get("passage_id", "") or "").strip(): r for r in (extracted.get("source_passage_audit") or []) if str(r.get("passage_id", "") or "").strip()}
+    facts = {str(f.get("id", "") or "").strip(): f for f in (extracted.get("technical_facts") or []) if str(f.get("id", "") or "").strip()}
     for rid,row in checks.items():
         classification=str(row.get("classification", "") or "").strip().casefold()
         reason=str(row.get("classification_reason", "") or "").strip()
@@ -265,6 +446,12 @@ def validate_final_raw_source_audit(
         evidence=[str(x or "").strip() for x in evidence if str(x or "").strip()]
         if classification not in {"technical","nontechnical"} or len(reason) < 10:
             failed.append(f"{rid}:classification") ; continue
+        first_row = first_rows.get(rid) or {}
+        first_classification = str(first_row.get("classification", "") or "").strip().casefold()
+        if first_classification not in {"technical", "nontechnical"} or first_classification != classification:
+            failed.append(f"{rid}:classification_mismatch")
+        mapped_first = [str(x or "").strip() for x in (first_row.get("fact_ids") or []) if str(x or "").strip()]
+        expected_detail_required = classification == "technical" and any(_detail_fact_required(facts.get(fid) or {}) for fid in mapped_first)
         min_quote = min(20, len(source_text))
         if len(source_quote) < min_quote or source_quote not in source_text:
             failed.append(f"{rid}:source_quote") ; continue
@@ -274,13 +461,25 @@ def validate_final_raw_source_audit(
                 failed.append(f"{rid}:covered") ; continue
             if not evidence or any(len(ev) < 20 or ev not in final_draft_text for ev in evidence):
                 failed.append(f"{rid}:evidence")
+            detail_required = row.get("detail_transfer_required")
+            if detail_required not in {True, False}:
+                failed.append(f"{rid}:detail_transfer_required")
+            elif detail_required is not expected_detail_required:
+                failed.append(f"{rid}:detail_transfer_mismatch")
+            elif detail_required is True:
+                detail_transfer_count += 1
+                detail_evidence = str(row.get("detail_evidence", "") or "").strip()
+                if len(detail_evidence) < 20 or _norm_compare_text(detail_evidence) not in detail_norm:
+                    failed.append(f"{rid}:detail_evidence")
         else:
             nontechnical_count += 1
             if row.get("covered") is not True:
                 failed.append(f"{rid}:nontechnical_covered")
+            if row.get("detail_transfer_required") not in {False, None}:
+                failed.append(f"{rid}:nontechnical_detail_flag")
     if audit.get("all_pass") is not True: failed.append("all_pass")
     if failed:
         raise ValueError("SON HAM KAYNAK İKİNCİ OKUMA başarısız: " + ", ".join(failed[:50]))
     if technical_count == 0:
         raise ValueError("SON HAM KAYNAK İKİNCİ OKUMA başarısız: hiçbir ham pasaj teknik olarak sınıflandırılmadı; kaynak yeniden okunmalıdır.")
-    return {"audited_raw_passages":len(expected),"audited_technical_passages":technical_count,"audited_nontechnical_passages":nontechnical_count,"independent_raw_second_read":1}
+    return {"audited_raw_passages":len(expected),"audited_technical_passages":technical_count,"audited_nontechnical_passages":nontechnical_count,"audited_detail_transfer_passages":detail_transfer_count,"independent_raw_second_read":1}

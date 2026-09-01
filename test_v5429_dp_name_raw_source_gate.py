@@ -61,8 +61,8 @@ def _sample_source_state():
             "source_coverage_map_used": False,
         },
         "passage_checks": [
-            {"passage_id": "B0001", "classification":"technical", "classification_reason":"teknik modülün bellek okuma işlevini açıkladığı için", "source_quote":"Teknik modül belleği dışarıdan okur.", "covered": True, "evidence": [evidence], "missing_detail": ""},
-            {"passage_id": "B0002", "classification":"nontechnical", "classification_reason":"yalnız imza ve iletişim idari alanı olduğu için", "source_quote":"İmza ve iletişim bilgileri.", "covered": True, "evidence": [], "missing_detail": ""},
+            {"passage_id": "B0001", "classification":"technical", "classification_reason":"teknik modülün bellek okuma işlevini açıkladığı için", "source_quote":"Teknik modül belleği dışarıdan okur.", "covered": True, "evidence": [evidence], "detail_transfer_required": True, "detail_evidence": evidence, "missing_detail": ""},
+            {"passage_id": "B0002", "classification":"nontechnical", "classification_reason":"yalnız imza ve iletişim idari alanı olduğu için", "source_quote":"İmza ve iletişim bilgileri.", "covered": True, "evidence": [], "detail_transfer_required": False, "detail_evidence": "", "missing_detail": ""},
         ],
         "all_pass": True,
     }
@@ -79,7 +79,7 @@ def test_final_raw_source_chain_passes_only_with_real_final_evidence():
         "technical_facts": 1,
         "covered_facts": 1,
     }
-    audit_stats = validate_final_raw_source_audit(raw_audit, extracted, registry, final_text)
+    audit_stats = validate_final_raw_source_audit(raw_audit, extracted, registry, final_text, detail_text=final_text)
     assert audit_stats["audited_technical_passages"] == 1
     assert audit_stats["audited_raw_passages"] == 2
 
@@ -95,7 +95,7 @@ def test_final_raw_second_read_rejects_missing_technical_passage():
     registry, extracted, coverage, final_text, raw_audit, evidence = _sample_source_state()
     raw_audit["passage_checks"] = []
     with pytest.raises(ValueError, match="SON HAM KAYNAK İKİNCİ OKUMA"):
-        validate_final_raw_source_audit(raw_audit, extracted, registry, final_text)
+        validate_final_raw_source_audit(raw_audit, extracted, registry, final_text, detail_text=final_text)
 
 
 def test_tarifname_ui_no_longer_asks_for_output_filenames():

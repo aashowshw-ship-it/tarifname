@@ -51,6 +51,8 @@ from source_guards import (
     derive_tarifname_output_names,
     validate_final_source_coverage_chain,
     validate_final_raw_source_audit,
+    validate_detailed_description_source_transfer,
+    validate_detailed_description_fact_coverage,
 )
 from word_math import EQ_MARKER_RE, append_text_with_equations as _append_text_with_equations, add_display_equation
 from tarifname_figure_generation import (
@@ -1536,7 +1538,8 @@ KRİTİK TALİMATLAR:
 - Her bağımlı istem ana isteme göre gerçek bir daraltma sağlamalıdır.
 - Patent literatürü yalnızca ÖNCEKİ TEKNİK bölümünde kullanılsın.
 - Kullanıcıya sunulan tarifname metninde “BBF”, “buluş bildirim formu” veya kaynak dokümana atıf yapan benzer ifadeler kesinlikle bulunmasın; teknik bilgi doğrudan buluş anlatımı olarak yazılsın.
-- YAPILANDIRILMIŞ ENVANTER içindeki `technical_facts` listesinin HER maddesi nihai tarifnamede uygun yerde korunmalıdır. Teknik olarak sınıflandırılmış bir fact için `mandatory=false` kullanılamaz. Taslak JSON'daki `source_coverage_map` alanında her fact_id için `covered=true`, karşılık bulunduğu bölüm(ler) ve tarifname taslağında birebir geçen en az 20 karakterlik kısa kanıt alıntısı verilmelidir. Bir teknik fact isteme uygun değilse isteme zorla koyma; teknik alan/önceki teknik/kısa açıklama/detaylı açıklama/çalışma prensibi/alternatif/özet içinde uygun yere koy. Hiçbir teknik fact karşılıksız bırakılamaz.
+- YAPILANDIRILMIŞ ENVANTER içindeki `technical_facts` listesinin HER maddesi nihai tarifnamede uygun yerde korunmalıdır. Teknik olarak sınıflandırılmış bir fact için `mandatory=false` kullanılamaz. Ayrıca üçüncü kişilere ait salt önceki-teknik/patent-literatürü fact'leri haricinde, buluşun kendisini açıklayan HER technical_fact (alan/kullanım, problem, çözüm, unsur, işlev, ilişki, akış/çalışma prensibi, avantaj/teknik etki, alternatif, örnek, ölçü-değer-aralık, performans ve görsel teknik bilgi) BULUŞUN DETAYLI AÇIKLAMASI içinde de açıkça bulunmalıdır. `source_coverage_map` evidence alanını bu fact'ler için özellikle DETAYLI AÇIKLAMA metninden seç ve sections içine `BULUŞUN DETAYLI AÇIKLAMASI` yaz. Başka bir bölümde geçmesi tek başına yeterli değildir.
+- BBF kaynak cümlesi teknik ve dilbilgisel olarak düzgünse detaylı açıklamada mümkün olan en yüksek ölçüde aynı cümle yapısını koru; sırf üslup için özetleme veya yeniden icat etme. Yalnız dilbilgisi/noktalama, doğal paragraf geçişi ve referans tablosuna uygun unsur adı/referans normalizasyonu yap. Kaynakta `eleman (1)`, `birinci eleman (1)` veya `unsur (1)` gibi geçici ad varsa ve 1 numaralı gerçek unsur adı belirlenmişse detaylı açıklamada gerçek unsur adını `(1)` ile kullan. Kaynaktaki `AM1.5G`, `365–1000 nm`, `850 nm`, `PWM` gibi teknik literal/değer/kısaltmaları atlama veya genel ifadeyle ikame etme.
 - Sistem ve yöntem istemleri birlikte oluşturuluyorsa başlık seçilen dile uygun olarak “... Sistemi ve Yöntemi” veya “... System and Method” yapısını taşısın.
 - REFERANS NUMARALARI bölümünde unsur adlarında yalnızca ilk normal kelimenin ilk harfi büyük olsun; standart teknik kısaltmaları koru. `Ev içi dijital ikiz simülatörü` doğru, `Ev İçi Dijital İkiz Simülatörü` yanlıştır. Unsur adları cümle içinde geçtiğinde Title Case kullanma; cümle başında yalnız ilk kelime doğal olarak büyük olabilir.
 - Türkçe buluş başlığında parantez içi İngilizce karşılık/kısaltma kullanma. Kaynak destekliyorsa uygulama kısaltması yerine daha genel teknik kavramı seç.
@@ -1559,6 +1562,7 @@ KRİTİK TALİMATLAR:
 - “vidalanan/kaynaklanan/yapıştırılan” ve belirli çap/diş/ölçü gibi daraltıcı ifadeleri yalnız zorunlu teknik çekirdek veya farklılaştırıcı mekanizma ise ana istemde tut. Değilse kaynakla uyumlu daha geniş bağlantı dili kullan.
 - Ana istemde tanımlanan bir özelliği başka bullet'ta tekrar etme. Sonraki unsur yalnız kendi ilişkisi ve işleviyle tanımlansın.
 - Sistem ve yöntem bağımlı istemlerinin HER BİRİNİ semantik olarak ana/üst istemle ve önceki bağımlı istemlerle karşılaştır; aynı teknik özelliği farklı kelimelerle tekrar eden bağımlı istem üretme. Her alt istem gerçek ek teknik sınırlama getirmelidir. Bir istem silinir/değişirse sonraki bağımlılık numaralarını yeniden kur. Türkçe bağımlı YÖNTEM istemleri eylem sonucu ile bitmez; tek ek adım varsa `işlem adımını içermesidir.`, birden fazla ek adım varsa `işlem adımlarını içermesidir.` şeklinde kapanır.
+- Türkçe bağımlı istem girişini kısa tut: yöntem dışındaki her alt istem yalnız `İstem X’e uygun sistem olup, özelliği;`, yöntem alt istemi yalnız `İstem X’e uygun yöntem olup, özelliği;` ile başlasın. Buluş adını, cihaz/sistem tür adını veya başka tanımlayıcı ifadeyi `uygun` ile `sistem/yöntem` arasına ekleme.
 - Örnek ölçü/çap/diş değerlerini zorunlu değilse istemlere taşıma; detaylı açıklamada örnek yapılanma olarak koru ve kaynak destekliyorsa farklı ölçülere uygulanabilirliği açıkla.
 - Referans adı koruma kapsamını gereksiz daraltmasın: özel bir örnek (örn. O-ring) daha genel kaynak destekli teknik işlevin gerçekleştirmesiyse unsur adını genel teknik kavramla (örn. sızdırmazlık elemanı) kur; özel örneği detaylı açıklamada parantez içinde ver.
 - Her teknik ayrıntıya zorla referans verme; yapıştırıcı/malzeme/kaplama gibi özellikler ayrı referans gerektirmiyorsa numarasız olarak detaylı açıklama ve uygun bağımlı istemde kullanılabilir.
@@ -1614,7 +1618,7 @@ def tarifname_quality_prompt(
     return f"""{TARIFNAME_RULES}
 {language_instruction}
 Aşağıdaki tarifname taslağını kaynaklarla SATIR SATIR ve `technical_facts` bazında karşılaştır ve eksik/yanlış hususları düzelterek tam JSON'u yeniden üret.
-Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi geri eklenmelidir. `technical_facts` içindeki HER madde zorunludur ve her biri için `source_coverage_map` kaydı oluştur; bölüm ve kanıt metni boş bırakılamaz; evidence alanı tarifname taslağında birebir geçen en az 20 karakterlik bir alıntı olmalıdır. Genel “tam” beyanı yeterli değildir.
+Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi geri eklenmelidir. `technical_facts` içindeki HER madde zorunludur. Salt üçüncü-kişi önceki-teknik/patent-literatürü fact'leri dışındaki buluş-teknik fact'lerin tamamı BULUŞUN DETAYLI AÇIKLAMASI içinde de bulunmalıdır; source_coverage_map evidence'ını bu bölümden gerçek alıntıyla ver. Kaynak cümle düzgünse onu gereksiz yere yeniden yazma/özetleme; yalnız dilbilgisi, noktalama ve unsur/referans normalizasyonu yap. `AM1.5G`, sayısal aralık/değer, standart/kısaltma ve örnekler kaynakta varsa detaylı açıklamadan düşemez. Her fact için `source_coverage_map` kaydı oluştur; bölüm ve kanıt metni boş bırakılamaz; evidence alanı tarifname taslağında birebir geçen en az 20 karakterlik bir alıntı olmalıdır. Genel “tam” beyanı yeterli değildir.
 
 ÖNCEKİ OTOMATİK DOĞRULAMA GERİ BİLDİRİMİ (varsa):
 {validation_feedback or "Yok"}
@@ -1672,6 +1676,7 @@ ZORUNLU KONTROL LİSTESİ:
 49. İstemlerde standart “olup, özelliği;” dışında noktalı virgül var mı? Varsa virgül veya noktayla düzelt.
 50. Son kalite kapısında şu soruların tamamı EVET mi: kaynak tamlığı, açık referans adları, unsur tanımlama sırası, uzman-nasıl testi, farklılaştırıcı çekirdek, gereksiz kapsam daraltma yokluğu, bağımlı istem tekrarının olmaması, geçerli bağımlılık, örnek ölçülerin istemden uzak tutulması, ürün istem dili, referans senkronizasyonu ve tek paragraf/tek cümle özet?
 51. YAPILANDIRILMIŞ ENVANTER içindeki HER `technical_facts` maddesinin `source_coverage_map` içinde tek tek karşılığı var mı? Teknik fact için mandatory=false kabul edilmez; Her kaydın `covered=true`, en az bir bölüm adı ve tarifname taslağında birebir geçen en az 20 karakterlik gerçek bir kanıt alıntısı var mı? Özellikle teknik avantajlar, ayırt edici yönler ve bağımsızlık/performans sonuçları “benzer anlam var” denilerek atlanmış mı?
+51A. Salt üçüncü-kişi önceki-teknik/patent-literatürü fact'leri dışındaki bütün buluş-teknik fact'ler ayrıca BULUŞUN DETAYLI AÇIKLAMASI içinde gerçek evidence ile bulunuyor mu? Kaynaktaki AM1.5G, dalga boyu/aralık/değer, PWM gibi teknik literal/kısaltmalar korunmuş mu? Kaynak cümle düzgünse gereksiz özetleme/rewrite yapılmış mı? `eleman (N)` gibi geçici adlandırma gerçek unsur adıyla normalize edilmiş mi?
 52. Yazılım/modül ağırlıklı buluşta yalnız “işlemci/donanım” kelimesi geçmesiyle yetinilmiş mi, yoksa modül/yazılımın kaynakta dayanaklı teknik taşıyıcı üzerinde çalıştığı/koşturulduğu açık ilişkiyle yazılmış mı? Kaynak özel taşıyıcı veriyorsa genel elektronik cihaz ifadesi özel taşıyıcıyı silmiş mi?
 53. BULUŞUN DETAYLI AÇIKLAMASI giriş cümlesinde buluş adı cümle içi normal yazımla mı kullanılmış? Başlıktaki Title Case düzeni cümle içine kopyalanmamış mı; SIM/eSIM gibi kısaltmalar korunmuş mu?
 54. REFERANS NUMARALARI bölümündeki yöntem adımları `1001. ...` biçiminde önden yöntem numarasıyla mı yazılmış ve bu satırlarda sistem/cihaz `(1)`, `(2)` türü parantezli referans işaretleri kaldırılmış mı? Parantezli unsur referansları yalnız BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren mi başlıyor? Sistem ve yöntem alt istemlerinin tamamı semantik tekrar kontrolünden geçti mi?
@@ -1680,7 +1685,7 @@ ZORUNLU KONTROL LİSTESİ:
 57. Şekiller çıktı setinde REFERANS NUMARALARI bölümündeki bütün gerçek sistem unsur referansları en az bir kez gösteriliyor mu? Sistem+yöntem şekilleri varsa yöntem adımı referansları da akış şekillerinde tam mı?
 58. Ortak `elektronik işlem birimi üzerinde koşturulan yazılım` üst maddesinin altında yalnız gerçekten yürütülebilir yazılım/modül/kontrolör/arayüz/yığın mı var? Veritabanı/bellek/veri deposu gibi pasif veri taşıyan unsur kaynakça açıkça yürütülebilir değilse ortak gruptan çıkarılmış mı?
 59. BULUŞUN DETAYLI AÇIKLAMASI ve İSTEMLER içinde REFERANS NUMARALARI listesindeki bir unsur adı her geçtiğinde aynı/çekimli unsur adıyla doğru `(N)` referansını taşıyor mu? Özellikle bağımsız ve bağımlı yöntem istemlerindeki gNodeB, arayüz, kontrolör, veritabanı, yığın ve cihaz kullanımları numaralı mı?
-60. Nihai Word üretildikten sonra ham kaynak zinciri ve beş son kapının tamamı tekrar geçmelidir: ham pasaj -> technical_fact -> nihai Word kanıtı; 1/5 BBF/KAYNAK TAMLIK, 2/5 ANA+ALT İSTEM kalite/tekrar/gereklilik, 3/5 DETAYLI AÇIKLAMA+İSTEMLER REFERANS NUMARASI tamlığı, 4/5 TAM ŞABLON, 5/5 UNSUR/YÖNTEM DİLİ. Sistem alt istemlerinde `bulunmasıdır` kullanılmışsa mutlaka unsur merkezli `olmasıdır/içermesidir` diline dönüştür.
+60. Nihai Word üretildikten sonra ham kaynak zinciri ve altı son kapının tamamı tekrar geçmelidir: ham pasaj -> technical_fact -> nihai Word kanıtı; 1/6 BBF/KAYNAK TAMLIK, 2/6 DETAYLI AÇIKLAMA TAM KAYNAK AKTARIMI, 3/6 ANA+ALT İSTEM kalite/tekrar/gereklilik, 4/6 DETAYLI AÇIKLAMA+İSTEMLER REFERANS NUMARASI tamlığı, 5/6 TAM ŞABLON, 6/6 UNSUR/YÖNTEM DİLİ. Sistem alt istemlerinde `bulunmasıdır` kullanılmışsa mutlaka unsur merkezli `olmasıdır/içermesidir` diline dönüştür.
 61. Türkçe BAĞIMSIZ istemlerin preamble'ı yalnız buluş adı kadar kısa mı? `olup, özelliği;` öncesi kaynak-destekli teknik giriş Word şablonunda en az iki fiziksel satır oluşturacak kadar anlamlı teknik bağlam/temel işlev içermeli; manuel satır sonu veya anlamsız dolgu kullanılmamalıdır. Açıkça kısa preamble varsa yeniden yaz.
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
@@ -1754,9 +1759,11 @@ AMAÇ:
 2. Her satırda classification yalnız `technical` veya `nontechnical` olabilir ve en az 10 karakterlik classification_reason zorunludur.
 3. source_quote, ilgili ham pasajın kendi metninden birebir alınmış; pasaj 20 karakter veya daha uzunsa en az 20 karakterlik, daha kısaysa pasajın tamamını kapsayan bir bölüm olmalıdır.
 4. `technical` sınıflandırılan her pasaj için covered=true/false kararı ver; covered=true ise nihai taslaktan BİREBİR geçen en az 20 karakterlik evidence zorunludur. Teknik anlamın bir parçası eksikse covered=false ve missing_detail zorunludur.
-5. `nontechnical` pasaj için evidence boş liste olabilir; covered=true yazılır.
-6. Bütün teknik pasajlar covered=true değilse all_pass=false olmalıdır.
-7. audit_meta değerlerini aşağıda verilen değerlerle KARAKTER-KARAKTER aynen döndür. `independent_second_read=true`, `prior_classification_used=false`, `source_coverage_map_used=false` olmak zorundadır.
+5. Teknik pasaj buluşun kendisini açıklıyorsa (alan/kullanım, teknik problem, çözüm, unsur, işlev/ilişki, çalışma prensibi/akışı, etki/avantaj, alternatif, örnek, ölçü/değer/aralık, performans veya görsel teknik bilgi) `detail_transfer_required=true` yaz ve `detail_evidence` alanına yalnız BULUŞUN DETAYLI AÇIKLAMASI içinden birebir en az 20 karakterlik kanıt koy. Salt üçüncü kişilere ait önceki-teknik/patent-literatürü pasajında `detail_transfer_required=false` olabilir.
+6. Kaynak cümle düzgünse ayrıntının özetlenmeden korunduğunu denetle; teknik literal/değer/kısaltma (örn. AM1.5G, 365–1000 nm, 850 nm, PWM) düşmüşse covered=false yap. Genel/geçici `eleman (N)` adı nihai referans tablosundaki gerçek unsur adına çevrilmiş olabilir ve bu tek başına eksiklik değildir.
+7. `nontechnical` pasaj için evidence boş liste olabilir; covered=true, detail_transfer_required=false ve detail_evidence="" yazılır.
+8. Bütün teknik pasajlar covered=true değilse all_pass=false olmalıdır. Detail-transfer zorunlu bir teknik pasajın detail_evidence'ı yoksa all_pass=false olmalıdır.
+9. audit_meta değerlerini aşağıda verilen değerlerle KARAKTER-KARAKTER aynen döndür. `independent_second_read=true`, `prior_classification_used=false`, `source_coverage_map_used=false` olmak zorundadır.
 
 JSON dışında hiçbir şey yazma.
 ŞEMA:
@@ -1770,7 +1777,7 @@ JSON dışında hiçbir şey yazma.
     "prior_classification_used":false,
     "source_coverage_map_used":false
   }},
-  "passage_checks":[{{"passage_id":"B0001","classification":"technical","classification_reason":"teknik yapı/işlev açıklandığı için","source_quote":"ham pasajdan birebir alıntı","covered":true,"evidence":["nihai taslaktan birebir alıntı"],"missing_detail":""}}],
+  "passage_checks":[{{"passage_id":"B0001","classification":"technical","classification_reason":"teknik yapı/işlev açıklandığı için","source_quote":"ham pasajdan birebir alıntı","covered":true,"evidence":["nihai taslaktan birebir alıntı"],"detail_transfer_required":true,"detail_evidence":"BULUŞUN DETAYLI AÇIKLAMASI içinden birebir alıntı","missing_detail":""}}],
   "all_pass":true
 }}
 
@@ -1780,6 +1787,25 @@ HAM_PASAJLAR (önceki teknik/teknik-dışı sınıflandırma YOK):
 KULLANICIYA GİDECEK NİHAİ TASLAK (coverage meta alanları hariç):
 {json.dumps(visible_draft, ensure_ascii=False, indent=2)}
 """
+
+
+def _detailed_description_text_for_gate(draft: dict[str, Any]) -> str:
+    """Return only content rendered under the Detailed Description heading."""
+    parts: list[str] = []
+    parts.extend(str(x or "") for x in (draft.get("detailed_paragraphs") or []))
+    for formula in draft.get("formulas") or []:
+        parts.extend([str(formula.get("label", "") or ""), str(formula.get("expression", "") or ""), str(formula.get("explanation", "") or "")])
+    for table in draft.get("tables") or []:
+        parts.append(str(table.get("caption", "") or ""))
+        parts.extend(str(x or "") for x in (table.get("headers") or []))
+        for row in table.get("rows") or []:
+            parts.extend(str(x or "") for x in row)
+    parts.extend(str(x or "") for x in (draft.get("experimental_results") or []))
+    parts.extend(str(x or "") for x in (draft.get("alternatives") or []))
+    if draft.get("method_steps"):
+        parts.extend(str(x.get("text", "") or "") for x in (draft.get("method_steps") or []))
+    parts.append(str(draft.get("working_principle", "") or ""))
+    return "\n".join(x for x in parts if str(x).strip())
 
 
 def _visible_draft_text_for_audit(draft: dict[str, Any]) -> str:
@@ -2313,6 +2339,30 @@ def _reference_mention_pattern(name: str) -> re.Pattern:
     stem = last if len(last) <= 4 else last[:max(4, len(last) - 2)]
     parts.append(re.escape(stem) + r"\w*")
     return re.compile(r"\b" + r"\s+".join(parts) + r"\b", re.I)
+
+
+def _validate_all_elements_covered_in_claims(draft: dict[str, Any]) -> None:
+    """Every explicitly referenced source element must occur in at least one system claim, regardless of new/old checkbox."""
+    elements = [x for x in (draft.get("elements") or []) if str(x.get("number", "") or "").strip() and str(x.get("name", "") or "").strip()]
+    if not elements:
+        return
+    sc = draft.get("system_claim") or {}
+    claim_texts = [str(sc.get("preamble", "") or ""), *_system_claim_all_texts(sc), *(str(x or "") for x in (draft.get("dependent_system_claims") or []))]
+    joined = "\n".join(claim_texts)
+    missing=[]
+    for element in elements:
+        number=str(element.get("number", "") or "").strip()
+        name=str(element.get("name", "") or "").strip()
+        mention=_reference_mention_pattern(name)
+        found=False
+        for m in mention.finditer(joined):
+            tail=joined[m.end():m.end()+70]
+            if re.match(r"^\s*(?:\([^)]{1,40}\)\s*)?\(\s*"+re.escape(number)+r"\s*\)", tail):
+                found=True; break
+        if not found:
+            missing.append(f"{name} ({number})")
+    if missing:
+        raise ValueError("İstem unsur-kapsam kapısı: referans tablosundaki açık unsur(lar) istem setinde hiç kullanılmamış: " + "; ".join(missing))
 
 
 def _validate_reference_presence(draft: dict[str, Any]) -> None:
@@ -3020,6 +3070,15 @@ def validate_tarifname_draft(
         if invalid_evidence:
             raise ValueError("BBF tamlık kapısı başarısız: source_coverage_map kanıtı nihai tarifname metninde birebir doğrulanamayan fact_id: " + ", ".join(invalid_evidence))
 
+    # v5.4.42: buluş-teknik fact'lerin özellikle Detaylı Açıklama içinde tam transfer kapısı.
+    if extracted is not None:
+        validate_detailed_description_fact_coverage(
+            extracted,
+            draft.get("source_coverage_map") or [],
+            _detailed_description_text_for_gate(draft),
+            draft.get("elements") or [],
+        )
+
     # Tek-tuş istem kalite kapısı: ürün/sistem/yapılanma dili, unsur sırası, belirsiz referans ve özet.
     if not _english_spec(language):
         generic_names = {"diğer parçalar", "diğer parça", "diğer elemanlar", "çeşitli parçalar", "çeşitli elemanlar"}
@@ -3064,6 +3123,13 @@ def validate_tarifname_draft(
             _validate_claim_formula_markers(draft, language)
 
         dependents = [str(x or "").strip() for x in (draft.get("dependent_system_claims") or []) if str(x or "").strip()]
+        dependent_system_start_re = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*e\s+uygun\s+sistem\s+olup,\s*özelliği;", re.IGNORECASE)
+        for idx, claim in enumerate(dependents, start=2):
+            if not dependent_system_start_re.match(claim):
+                raise ValueError(
+                    f"İstem {idx} bağımlı sistem istemi kısa giriş kuralına aykırı. "
+                    "Bağımlı istem `İstem X’e uygun sistem olup, özelliği;` ile başlamalı; buluş adı veya sistem/cihaz türü tekrar edilmemelidir."
+                )
         bad_ending_re = re.compile(r"(?:yapmasıdır|etmesidir|belirlemesidir|bulunmasıdır|oluşturulmasıdır|bağlanmasıdır|sağlanmasıdır|gerçekleştirilmesidir|yapılmasıdır|edilmesidir)\.?$", re.IGNORECASE)
         for idx, claim in enumerate(dependents, start=2):
             if bad_ending_re.search(claim):
@@ -3074,7 +3140,13 @@ def validate_tarifname_draft(
             if semicolons > 1 or (semicolons == 1 and not re.search(r"olup,\s*özelliği;", claim, re.IGNORECASE)):
                 raise ValueError(f"İstem {idx} içinde standart ‘olup, özelliği;’ kalıbı dışında noktalı virgül kullanılmış.")
         method_dependents = [str(x or "").strip() for x in (draft.get("dependent_method_claims") or []) if str(x or "").strip()]
+        dependent_method_start_re = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*e\s+uygun\s+yöntem\s+olup,\s*özelliği;", re.IGNORECASE)
         for dep_index, claim in enumerate(method_dependents, start=1):
+            if not dependent_method_start_re.match(claim):
+                raise ValueError(
+                    f"Bağımlı yöntem istemi {dep_index} kısa giriş kuralına aykırı. "
+                    "Bağımlı istem `İstem X’e uygun yöntem olup, özelliği;` ile başlamalı; yöntem adı tekrar edilmemelidir."
+                )
             if not re.search(r"işlem adım(?:ını|larını)\s+içermesidir\.?$", claim, re.IGNORECASE):
                 raise ValueError(f"Bağımlı yöntem istemi {dep_index}, `işlem adımını içermesidir.` veya `işlem adımlarını içermesidir.` ile bitmelidir.")
         _validate_dependent_claim_semantic_repetition(system_claim, dependents)
@@ -3191,6 +3263,23 @@ def _reference_sentence_case(name: str) -> str:
 
 
 
+def _validate_dependent_claim_short_starts_texts(numbered_claim_texts: list[str], draft: dict[str, Any], language: str = "Türkçe") -> None:
+    """Deterministic output gate for concise Turkish dependent-claim preambles."""
+    if _english_spec(language):
+        return
+    dependent_texts = [str(t or "").replace("\u00a0", " ").strip() for t in numbered_claim_texts if re.match(r"^\s*İstem\s+\d+", str(t or "").replace("\u00a0", " "), re.IGNORECASE)]
+    expected_dep_kinds = (["sistem"] * len(draft.get("dependent_system_claims") or [])) + (["yöntem"] * len(draft.get("dependent_method_claims") or []))
+    if len(dependent_texts) != len(expected_dep_kinds):
+        raise ValueError("Word istem kalite kapısı: bağımlı istem başlangıçları beklenen sayıda/biçimde bulunamadı.")
+    for text, kind in zip(dependent_texts, expected_dep_kinds):
+        start_re = re.compile(rf"^İstem\s+\d+\s*[’']\s*e\s+uygun\s+{kind}\s+olup,\s*özelliği;", re.IGNORECASE)
+        if not start_re.match(text):
+            raise ValueError(
+                "Word istem kalite kapısı: bağımlı istem girişinde buluş adı/tür adı tekrar edilmiş veya kısa giriş kalıbı bozulmuş. "
+                f"Beklenen başlangıç: `İstem X’e uygun {kind} olup, özelliği;`."
+            )
+
+
 def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], language: str = "Türkçe") -> None:
     """Şablonun kullanıcı tarafından bağlayıcı kabul edilen Word yapılarını deterministik olarak denetler."""
     doc = Document(io.BytesIO(data))
@@ -3290,6 +3379,17 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
     if numbered_count < expected_claims:
         raise ValueError("Word şablon kontrolü: İstemlerin tamamında gerçek Word otomatik numaralandırması uygulanmamış.")
 
+    # Türkçe bağımlı istem kısa-giriş çıktı kapısı.
+    numbered_claim_texts = []
+    for p in paras[ci + 1:ai]:
+        ppr = p._p.pPr
+        if ppr is None:
+            continue
+        numpr = ppr.find(qn("w:numPr"))
+        if numpr is not None:
+            numbered_claim_texts.append(p.text)
+    _validate_dependent_claim_short_starts_texts(numbered_claim_texts, draft, language)
+
     # Türkçe claim transition kısa-son-satır kapısı.
     if not en:
         for p in paras[ci + 1:ai]:
@@ -3379,14 +3479,14 @@ def validate_tarifname_post_generation_quality(
     final_raw_audit: dict[str, Any] | None = None,
     expected_raw_audit_nonce: str = "",
 ) -> dict[str, Any]:
-    """Word üretildikten sonra ham-kaynak zincirini ve 5 zorunlu kalite kapısını nihai çıktı üzerinde yeniden çalıştırır."""
+    """Word üretildikten sonra ham-kaynak zincirini ve 6 zorunlu kalite kapısını nihai çıktı üzerinde yeniden çalıştırır."""
     doc = Document(io.BytesIO(data))
     final_text = "\n".join(p.text for p in doc.paragraphs)
 
     if not source_passage_registry:
-        raise ValueError("ÇIKTI SONRASI KAPI 1/5 — ham kaynak pasaj envanteri olmadan tarifname indirilemez.")
+        raise ValueError("ÇIKTI SONRASI KAPI 1/6 — ham kaynak pasaj envanteri olmadan tarifname indirilemez.")
     if not final_raw_audit:
-        raise ValueError("ÇIKTI SONRASI KAPI 1/5 — taslak sonrası bağımsız ham kaynak ikinci okuması yapılmadan tarifname indirilemez.")
+        raise ValueError("ÇIKTI SONRASI KAPI 1/6 — taslak sonrası bağımsız ham kaynak ikinci okuması yapılmadan tarifname indirilemez.")
 
     # 1A) Taslak üretildikten sonra yapılan bağımsız ham kaynak ikinci okumasını tekrar doğrula.
     independent_stats = validate_final_raw_source_audit(
@@ -3394,6 +3494,7 @@ def validate_tarifname_post_generation_quality(
         extracted,
         source_passage_registry,
         _visible_draft_text_for_audit(draft),
+        detail_text=_detailed_description_text_for_gate(draft),
         expected_audit_nonce=expected_raw_audit_nonce,
     )
 
@@ -3413,6 +3514,7 @@ def validate_tarifname_post_generation_quality(
     # 3) Referans kapısı: detaylı açıklama ve istemlerde canonical unsur kullanımları numaralı olmalı.
     _validate_reference_identity(draft)
     _validate_reference_presence(draft)
+    _validate_all_elements_covered_in_claims(draft)
 
     # Nihai Word'de de DETAYLI AÇIKLAMA -> ÖZET arasında canonical isimlerin numarasız görünümünü ara.
     texts = [p.text.strip() for p in doc.paragraphs]
@@ -3421,8 +3523,15 @@ def validate_tarifname_post_generation_quality(
     try:
         di, ai = texts.index(detail_label), texts.index(abstract_label)
     except ValueError as exc:
-        raise ValueError("ÇIKTI SONRASI KAPI 3/5 — referans denetimi için bölüm sınırları bulunamadı.") from exc
+        raise ValueError("ÇIKTI SONRASI KAPI 4/6 — referans denetimi için bölüm sınırları bulunamadı.") from exc
     segment = "\n".join(texts[di + 1:ai])
+    detail_stats = validate_detailed_description_source_transfer(
+        extracted,
+        source_passage_registry,
+        draft.get("source_coverage_map") or [],
+        segment,
+        draft.get("elements") or [],
+    )
     for element in (draft.get("elements") or []):
         number = str(element.get("number", "") or "").strip()
         name = str(element.get("name", "") or "").strip()
@@ -3432,7 +3541,7 @@ def validate_tarifname_post_generation_quality(
         ref_re = re.compile(r"^\s*(?:\([^)]{1,40}\)\s*)?\(\s*" + re.escape(number) + r"\s*\)")
         for m in mention_re.finditer(segment):
             if not ref_re.match(segment[m.end():m.end() + 70]):
-                raise ValueError(f"ÇIKTI SONRASI KAPI 3/5 — '{name}' kullanımı ({number}) referansı olmadan nihai Word'e girmiş.")
+                raise ValueError(f"ÇIKTI SONRASI KAPI 4/6 — '{name}' kullanımı ({number}) referansı olmadan nihai Word'e girmiş.")
 
     # 4) Şablon kapısı: nihai Word'ü bağlayıcı Tarifname_181176 şablon yapısıyla karşılaştır.
     validate_tarifname_docx_structure(data, draft, language)
@@ -3447,6 +3556,7 @@ def validate_tarifname_post_generation_quality(
     return {
         "source_completeness": True,
         "independent_raw_second_read": True,
+        "detail_source_transfer": True,
         "prior_art": True,
         "draft_quality": True,
         "claims": True,
@@ -3457,6 +3567,7 @@ def validate_tarifname_post_generation_quality(
         "how_test": True,
         **source_stats,
         **independent_stats,
+        **detail_stats,
     }
 
 
