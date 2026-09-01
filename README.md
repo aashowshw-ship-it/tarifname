@@ -1,4 +1,14 @@
-# Patent Atölyesi v5.4.45
+# Patent Atölyesi v5.4.46
+
+
+## v5.4.46 / 2026-09-01 — Süreçler / Otomatik Başvuru Ön Kontrolü
+
+- `Süreçler > Patent / Faydalı Model Başvurusu` ekranı elle veri girişi yerine belge/e-posta/yazı kaynaklarından otomatik bilgi çıkaracak şekilde yenilendi.
+- Beyan formu, DOC/DOCX/PDF/TXT/MD ile EML ve Outlook MSG e-posta dosyaları desteklenir; ayrıca e-posta/yazı metni doğrudan yapıştırılabilir.
+- Hak sahibi, buluş sahibi, buluş başlığı, adres, rüçhan ve bulunan diğer bilgiler kaynak adıyla birlikte zorunlu ön kontrolde gösterilir; eksik veya çelişkili bilgi varsa EPATS geçişi kilitli kalır.
+- Tarifname Word dosyasındaki kırmızı/mavi şablon açıklamaları otomatik kaldırılır. Temiz belge Tarifname/İstemler/Özet PDF'lerine ayrılır.
+- Ön kontrolde Tarifname gerçek PDF sayfa sayısıyla `T-n`, istemler gerçek istem adediyle `İ-n`, özet `Ö`, şekiller ise `Ş-n` olarak gösterilir.
+- Hazırlanan her PDF ayrı ayrı kontrol için indirilebilir; eksikler tamamlanmadan nihai EPATS paketi verilmez.
 
 ## v5.4.45 / 2026-09-01 — Süreçler / Patent-Faydalı Model Başvurusu MVP
 

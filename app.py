@@ -73,7 +73,14 @@ from tarifname_figure_generation import (
     is_monochrome_enough,
 )
 
-from processes import build_epats_application_package
+from processes import (
+    application_precheck_missing,
+    build_application_information_prompt,
+    build_epats_application_package,
+    epats_document_metrics,
+    extract_application_source_text,
+    normalize_application_information,
+)
 
 from gorus_audit import (
     annotate_quote_locations,
@@ -7294,7 +7301,7 @@ elif work_type == "Araştırma güncelleme - Tip 3":
 # SÜREÇLER
 elif work_type == "Süreçler":
     st.subheader("Süreçler")
-    st.caption("TÜRKPATENT işlemlerini mevcut üretim akışlarından bağımsız olarak hazırlayın ve yönetin. Mevcut üretim bölümlerinde herhangi bir değişiklik yapılmaz.")
+    st.caption("TÜRKPATENT süreçlerini mevcut üretim modüllerinden bağımsız yürütün. Mevcut tarifname, görüş ve araştırma bölümlerine dokunulmaz.")
 
     process_type = st.radio(
         "Süreç türü",
@@ -7305,161 +7312,268 @@ elif work_type == "Süreçler":
 
     if process_type == "Patent / Faydalı Model Başvurusu":
         st.markdown("### Patent / Faydalı Model Başvurusu")
-        st.caption("İlk aşama: başvuru verilerini yapılandır, oluşturulan tarifname Word dosyasını EPATS belge setine ayır ve PDF başvuru paketini hazırla.")
+        st.caption(
+            "Beyan formu, yazı veya e-posta gibi kaynakları yükleyin; başvuru bilgileri otomatik çıkarılsın. "
+            "Tarifname Word dosyası kırmızı/mavi şablon açıklamalarından temizlenerek EPATS belgelerine ayrılsın ve zorunlu ön kontrol yapılsın."
+        )
 
-        c1, c2, c3 = st.columns([1, 1, 1])
-        with c1:
-            application_kind = st.selectbox("Başvuru türü", ["Patent", "Faydalı Model"], key="proc_app_kind")
-        with c2:
-            process_reference = st.text_input("DP referans numarası", key="proc_reference")
-        with c3:
-            priority_choice = st.selectbox("Rüçhan", ["Yok", "Var"], key="proc_priority_choice")
+        st.markdown("#### 1. Buluş / başvuru bilgisi kaynakları")
+        info_sources = st.file_uploader(
+            "Beyan formu, müşteri yazısı, e-posta veya diğer bilgi belgeleri",
+            type=["docx", "doc", "pdf", "txt", "md", "eml", "msg"],
+            accept_multiple_files=True,
+            key="proc_info_sources",
+            help="Birden fazla dosya yükleyebilirsiniz. Sistem hak sahibi, buluş sahibi, adres, buluş başlığı, rüçhan ve bulabildiği diğer başvuru bilgilerini kaynaklardan çıkarır.",
+        )
+        pasted_source = st.text_area(
+            "E-posta / yazı metni (isteğe bağlı)",
+            key="proc_pasted_source",
+            height=140,
+            placeholder="Dosya yerine veya dosyalara ek olarak müşteri e-postasını / talimat yazısını buraya yapıştırabilirsiniz.",
+        )
 
-        invention_title = st.text_input("Buluş başlığı", key="proc_invention_title")
-
-        st.markdown("#### Hak sahibi / başvuru sahibi")
-        applicant_count = int(st.number_input("Hak sahibi sayısı", min_value=1, max_value=10, value=1, step=1, key="proc_applicant_count"))
-        applicants: list[dict[str, str]] = []
-        for i in range(applicant_count):
-            with st.expander(f"Hak sahibi {i + 1}", expanded=(i == 0)):
-                a1, a2 = st.columns(2)
-                with a1:
-                    entity_type = st.selectbox("Kişi türü", ["Tüzel kişi", "Gerçek kişi"], key=f"proc_applicant_type_{i}")
-                    identity = st.text_input("VKN / T.C. Kimlik No", key=f"proc_applicant_id_{i}")
-                    name = st.text_input("Unvan / Ad Soyad", key=f"proc_applicant_name_{i}")
-                with a2:
-                    country = st.text_input("Ülke", value="Türkiye", key=f"proc_applicant_country_{i}")
-                    city = st.text_input("İl", key=f"proc_applicant_city_{i}")
-                    address = st.text_area("Adres", key=f"proc_applicant_address_{i}", height=90)
-                applicants.append({
-                    "entity_type": entity_type,
-                    "identity": identity.strip(),
-                    "name": name.strip(),
-                    "country": country.strip(),
-                    "city": city.strip(),
-                    "address": address.strip(),
-                })
-
-        st.markdown("#### Buluş sahibi")
-        inventor_count = int(st.number_input("Buluş sahibi sayısı", min_value=1, max_value=20, value=1, step=1, key="proc_inventor_count"))
-        inventors: list[dict[str, str]] = []
-        for i in range(inventor_count):
-            with st.expander(f"Buluş sahibi {i + 1}", expanded=(i == 0)):
-                b1, b2 = st.columns(2)
-                with b1:
-                    identity = st.text_input("T.C. Kimlik No / Kimlik bilgisi", key=f"proc_inventor_id_{i}")
-                    name = st.text_input("Ad Soyad", key=f"proc_inventor_name_{i}")
-                with b2:
-                    country = st.text_input("Ülke", value="Türkiye", key=f"proc_inventor_country_{i}")
-                    address = st.text_area("Adres", key=f"proc_inventor_address_{i}", height=90)
-                inventors.append({
-                    "identity": identity.strip(),
-                    "name": name.strip(),
-                    "country": country.strip(),
-                    "address": address.strip(),
-                })
-
-        priority_data: dict[str, str] = {"status": priority_choice}
-        if priority_choice == "Var":
-            p1, p2, p3 = st.columns(3)
-            with p1:
-                priority_data["country"] = st.text_input("Rüçhan ülkesi", key="proc_priority_country").strip()
-            with p2:
-                priority_data["number"] = st.text_input("Rüçhan başvuru numarası", key="proc_priority_number").strip()
-            with p3:
-                priority_data["date"] = st.date_input("Rüçhan tarihi", key="proc_priority_date").isoformat()
-
-        st.markdown("#### Başvuru belgeleri")
+        st.markdown("#### 2. Başvuru belgeleri")
         d1, d2 = st.columns(2)
         with d1:
             specification_upload = st.file_uploader(
-                "Oluşturulan Tarifname Word dosyası",
+                "Tarifname Word dosyası",
                 type=["docx"],
                 key="proc_spec_docx",
-                help="Dosya içindeki İSTEMLER ve ÖZET başlıkları kullanılarak belge otomatik olarak üç parçaya ayrılır.",
+                help=(
+                    "Kırmızı ve mavi şablon açıklamaları otomatik kaldırılır. Ardından TARİFNAME / İSTEMLER / ÖZET yapısı "
+                    "EPATS için ayrı PDF'lere dönüştürülür."
+                ),
             )
         with d2:
             figures_upload = st.file_uploader(
                 "Şekiller dosyası (varsa)",
                 type=["docx", "pdf"],
                 key="proc_figures",
-                help="Şekiller Word ise PDF'ye çevrilir; PDF ise aynen EPATS paketine alınır.",
+                help="Şekiller Word ise PDF'ye çevrilir; PDF ise aynen kullanılır.",
             )
 
-        with st.expander("Başvuru verisi ön kontrolü", expanded=False):
-            st.write(f"**Başvuru türü:** {application_kind}")
-            st.write(f"**DP referansı:** {process_reference.strip() or '-'}")
-            st.write(f"**Buluş başlığı:** {invention_title.strip() or '-'}")
-            st.write(f"**Hak sahibi sayısı:** {len(applicants)}")
-            st.write(f"**Buluş sahibi sayısı:** {len(inventors)}")
-            st.write(f"**Rüçhan:** {priority_choice}")
-            st.write(f"**Tarifname Word:** {specification_upload.name if specification_upload else '-'}")
-            st.write(f"**Şekiller:** {figures_upload.name if figures_upload else '-'}")
-
-        if st.button("EPATS başvuru paketini hazırla", type="primary", use_container_width=True, key="proc_build_package"):
-            missing: list[str] = []
-            if not process_reference.strip():
-                missing.append("DP referans numarası")
-            if not invention_title.strip():
-                missing.append("buluş başlığı")
-            if any(not a.get("name") for a in applicants):
-                missing.append("hak sahibi unvan/ad soyad bilgisi")
-            if any(not i.get("name") for i in inventors):
-                missing.append("buluş sahibi ad soyad bilgisi")
+        if st.button("Belgeleri analiz et ve ön kontrolü oluştur", type="primary", use_container_width=True, key="proc_analyze_precheck"):
             if specification_upload is None:
-                missing.append("Tarifname Word dosyası")
-
-            if missing:
-                st.error("Eksik alanlar: " + ", ".join(missing))
+                st.error("Ön kontrol için Tarifname Word dosyası yüklenmelidir.")
             else:
                 try:
-                    metadata = {
-                        "application_kind": application_kind,
-                        "reference": process_reference.strip(),
-                        "invention_title": invention_title.strip(),
-                        "applicants": applicants,
-                        "inventors": inventors,
-                        "priority": priority_data,
-                    }
-                    progress = st.progress(0, text="Tarifname Word bölümleri ayrılıyor...")
+                    progress = st.progress(0, text="Başvuru bilgi kaynakları okunuyor...")
+                    source_blocks: list[tuple[str, str]] = []
+                    source_errors: list[str] = []
+                    for uploaded in info_sources or []:
+                        try:
+                            source_blocks.append((uploaded.name, extract_application_source_text(uploaded.name, uploaded.getvalue())))
+                        except Exception as exc:
+                            source_errors.append(f"{uploaded.name}: {exc}")
+                    if pasted_source.strip():
+                        source_blocks.append(("Yapıştırılan metin", pasted_source.strip()))
+
+                    specification_data = specification_upload.getvalue()
+                    specification_text = docx_text(specification_data)
+                    progress.progress(25, text="Hak sahibi, buluş sahibi ve diğer başvuru bilgileri çıkarılıyor...")
+
+                    if source_blocks:
+                        prompt = build_application_information_prompt(source_blocks, specification_text=specification_text)
+                        extracted = normalize_application_information(ask_json(prompt))
+                    else:
+                        # Kaynak belge yoksa tarifnameden yalnız buluş başlığının açıkça teyit edilmesine izin verilir.
+                        # Hak sahibi/buluş sahibi/rüçhan gibi bilgiler teknik tarifnameden çıkarılmaz veya tahmin edilmez.
+                        prompt = build_application_information_prompt([], specification_text=specification_text)
+                        extracted = normalize_application_information(ask_json(prompt))
+                        extracted["application_kind"] = ""
+                        extracted["reference"] = ""
+                        extracted["applicants"] = []
+                        extracted["inventors"] = []
+                        extracted["priority"] = {"status": "Belirsiz", "country": "", "number": "", "date": "", "source": ""}
+                        extracted["other_information"] = []
+
+                    progress.progress(50, text="Kırmızı/mavi şablon yazıları temizleniyor ve EPATS PDF'leri hazırlanıyor...")
                     figures_data = figures_upload.getvalue() if figures_upload is not None else None
                     figures_name = figures_upload.name if figures_upload is not None else None
-                    progress.progress(35, text="Tarifname, istemler ve özet PDF'ye dönüştürülüyor...")
                     package, pdfs = build_epats_application_package(
-                        specification_upload.getvalue(),
+                        specification_data,
                         figures_data=figures_data,
                         figures_name=figures_name,
-                        metadata=metadata,
+                        metadata=extracted,
                     )
-                    st.session_state.proc_epats_package = package
-                    st.session_state.proc_epats_pdf_names = list(pdfs.keys())
-                    st.session_state.proc_epats_metadata = metadata
-                    progress.progress(100, text="EPATS başvuru paketi hazır")
+                    metrics = epats_document_metrics(specification_data, pdfs)
+
+                    # Tarifnamede şekil referansı bulunuyorsa şekiller belgesi zorunlu kabul edilir.
+                    figures_required = bool(re.search(r"\bŞekil\s*[-:]?\s*\d+", specification_text, flags=re.IGNORECASE))
+                    missing = application_precheck_missing(extracted, metrics, figures_required=figures_required)
+                    conflicts = list(extracted.get("conflicts") or [])
+                    blocking_issues = list(missing)
+                    if conflicts:
+                        blocking_issues.extend([f"Çelişkili bilgi: {x}" for x in conflicts])
+                    # Okunamayan ek bir kaynak uyarı olarak gösterilir; zorunlu alanlar başka kaynaklardan
+                    # eksiksiz ve çelişkisiz elde edilmişse tek başına EPATS geçişini bloke etmez.
+
+                    st.session_state.proc_precheck = {
+                        "metadata": extracted,
+                        "metrics": metrics,
+                        "pdfs": pdfs,
+                        "package": package,
+                        "missing": missing,
+                        "conflicts": conflicts,
+                        "source_errors": source_errors,
+                        "blocking_issues": blocking_issues,
+                        "figures_required": figures_required,
+                        "source_names": [name for name, _ in source_blocks],
+                        "specification_name": specification_upload.name,
+                        "figures_name": figures_upload.name if figures_upload is not None else "",
+                    }
+                    progress.progress(100, text="Ön kontrol hazır")
                 except Exception as exc:
                     st.exception(exc)
 
-        if st.session_state.get("proc_epats_package"):
-            st.success("EPATS için belge paketi hazırlandı.")
-            st.write("**Hazırlanan belgeler:** " + ", ".join(st.session_state.get("proc_epats_pdf_names") or []))
-            zip_name = f"EPATS_{process_reference.strip() or 'Basvuru'}_{application_kind.replace(' ', '_')}.zip"
-            st.download_button(
-                "EPATS başvuru paketini indir",
-                data=st.session_state.proc_epats_package,
-                file_name=safe_output_name(zip_name, "EPATS_Basvuru.zip"),
-                mime="application/zip",
-                use_container_width=True,
-            )
+        precheck = st.session_state.get("proc_precheck")
+        if precheck:
+            metadata = precheck.get("metadata") or {}
+            metrics = precheck.get("metrics") or {}
+            pdfs = precheck.get("pdfs") or {}
+            blocking_issues = precheck.get("blocking_issues") or []
 
-            st.markdown("#### EPATS otomatik aktarım")
-            st.info(
-                "Bu ekranın sonraki adımı, kullanıcı EPATS/e-Devlet girişini tamamladıktan sonra aynı başvuru verilerini "
-                "sayfa sayfa EPATS'a aktaran tarayıcı otomasyonudur. Belge ve başvuru veri modeli bu otomasyona hazır olacak şekilde yapılandırıldı."
-            )
-            st.button("EPATS otomasyon oturumunu başlat", disabled=True, use_container_width=True, key="proc_epats_disabled")
+            st.markdown("---")
+            st.markdown("### Zorunlu Ön Kontrol")
+            if blocking_issues:
+                st.error("Eksik veya çelişkili bilgi bulundu. Bu bilgiler tamamlanmadan EPATS aşamasına geçilemez.")
+            else:
+                st.success("Ön kontrol tamamlandı. EPATS'a geçiş için gerekli veri ve belgeler hazır.")
+
+            c1, c2, c3, c4 = st.columns(4)
+            codes = metrics.get("codes") or {}
+            with c1:
+                st.metric("Tarifname", codes.get("specification", "T-?"), f"{metrics.get('specification_pages', 0)} sayfa")
+            with c2:
+                st.metric("İstemler", codes.get("claims", "İ-?"), f"{metrics.get('claim_count', 0)} istem")
+            with c3:
+                st.metric("Özet", codes.get("abstract", "Ö-?"))
+            with c4:
+                fig_pages = int(metrics.get("figures_pages") or 0)
+                st.metric("Şekiller", codes.get("figures", "Ş-"), f"{fig_pages} sayfa" if fig_pages else "yüklenmedi")
+
+            st.markdown("#### Başvuru bilgileri")
+            info_rows = [
+                {"Alan": "Başvuru türü", "Bulunan bilgi": metadata.get("application_kind") or "EKSİK"},
+                {"Alan": "DP / dosya referansı", "Bulunan bilgi": metadata.get("reference") or "-"},
+                {"Alan": "Buluş başlığı", "Bulunan bilgi": metadata.get("invention_title") or "EKSİK"},
+                {"Alan": "Rüçhan", "Bulunan bilgi": (metadata.get("priority") or {}).get("status") or "Belirsiz"},
+            ]
+            st.table(info_rows)
+
+            applicants = metadata.get("applicants") or []
+            st.markdown("##### Hak sahibi / başvuru sahibi")
+            if applicants:
+                st.table([
+                    {
+                        "#": idx,
+                        "Tür": a.get("entity_type") or "-",
+                        "VKN / TCKN": a.get("identity") or "-",
+                        "Unvan / Ad Soyad": a.get("name") or "EKSİK",
+                        "Ülke": a.get("country") or "EKSİK",
+                        "İl": a.get("city") or "-",
+                        "Adres": a.get("address") or "EKSİK",
+                        "Kaynak": a.get("source") or "-",
+                    }
+                    for idx, a in enumerate(applicants, 1)
+                ])
+            else:
+                st.error("Hak sahibi / başvuru sahibi bilgisi bulunamadı.")
+
+            inventors = metadata.get("inventors") or []
+            st.markdown("##### Buluş sahibi")
+            if inventors:
+                st.table([
+                    {
+                        "#": idx,
+                        "TCKN / Kimlik": inv.get("identity") or "-",
+                        "Ad Soyad": inv.get("name") or "EKSİK",
+                        "Ülke": inv.get("country") or "-",
+                        "İl": inv.get("city") or "-",
+                        "Adres": inv.get("address") or "-",
+                        "Kaynak": inv.get("source") or "-",
+                    }
+                    for idx, inv in enumerate(inventors, 1)
+                ])
+            else:
+                st.error("Buluş sahibi bilgisi bulunamadı.")
+
+            priority = metadata.get("priority") or {}
+            if priority.get("status") == "Var":
+                st.markdown("##### Rüçhan bilgileri")
+                st.table([{
+                    "Ülke": priority.get("country") or "EKSİK",
+                    "Başvuru no": priority.get("number") or "EKSİK",
+                    "Tarih": priority.get("date") or "EKSİK",
+                    "Kaynak": priority.get("source") or "-",
+                }])
+
+            other_info = metadata.get("other_information") or []
+            if other_info:
+                with st.expander("Kaynaklardan bulunan diğer bilgiler", expanded=False):
+                    st.table([
+                        {"Bilgi": x.get("label") or "-", "Değer": x.get("value") or "-", "Kaynak": x.get("source") or "-"}
+                        for x in other_info
+                    ])
+
+            if precheck.get("conflicts"):
+                st.markdown("##### Çelişkili bilgiler")
+                for item in precheck.get("conflicts") or []:
+                    st.error(item)
+            if precheck.get("source_errors"):
+                st.markdown("##### Okunamayan kaynaklar")
+                for item in precheck.get("source_errors") or []:
+                    st.error(item)
+
+            if blocking_issues:
+                st.markdown("##### Tamamlanması gerekenler")
+                for item in blocking_issues:
+                    st.write(f"❌ {item}")
+                st.caption("Eksik bilgiyi içeren yeni bir belge/e-posta yükleyin veya yukarıdaki metin alanına bilgiyi ekleyip ön kontrolü yeniden çalıştırın.")
+            else:
+                st.write("✅ Zorunlu alanlar tamamlandı")
+
+            st.markdown("#### Oluşturulan EPATS belgelerini kontrol et")
+            doc_cols = st.columns(max(1, len(pdfs)))
+            labels = {
+                "Tarifname.pdf": f"Tarifname {codes.get('specification', '')}",
+                "Istemler.pdf": f"İstemler {codes.get('claims', '')}",
+                "Ozet.pdf": "Özet Ö",
+                "Sekiller.pdf": f"Şekiller {codes.get('figures', '')}",
+            }
+            for col, (name, payload) in zip(doc_cols, pdfs.items()):
+                with col:
+                    st.download_button(
+                        labels.get(name, name),
+                        data=payload,
+                        file_name=name,
+                        mime="application/pdf",
+                        use_container_width=True,
+                        key=f"proc_pdf_download_{name}",
+                    )
+
+            if not blocking_issues:
+                ref = metadata.get("reference") or "Basvuru"
+                kind = metadata.get("application_kind") or "Patent_Faydali_Model"
+                zip_name = f"EPATS_{ref}_{kind.replace(' ', '_')}.zip"
+                st.download_button(
+                    "Kontrol edilmiş EPATS başvuru paketini indir",
+                    data=precheck.get("package") or b"",
+                    file_name=safe_output_name(zip_name, "EPATS_Basvuru.zip"),
+                    mime="application/zip",
+                    use_container_width=True,
+                )
+                st.markdown("#### EPATS'a devam")
+                st.success("Ön kontrol kilidi açık. Bir sonraki geliştirme adımında bu düğme EPATS tarayıcı otomasyonunu başlatacak.")
+                st.button("EPATS'a devam et", disabled=True, use_container_width=True, key="proc_epats_next_pending")
+            else:
+                st.markdown("#### EPATS'a devam")
+                st.button("EPATS'a devam et", disabled=True, use_container_width=True, key="proc_epats_blocked")
+                st.caption("Eksik/çelişkili bilgi nedeniyle geçiş kilitli.")
 
     elif process_type == "Görüş Sunma":
         st.markdown("### Görüş Sunma")
-        st.info("Bu süreç, Patent / Faydalı Model Başvurusu otomasyonu tamamlandıktan sonra aynı süreç motoruna eklenecektir.")
+        st.info("Bu süreç, Patent / Faydalı Model Başvurusu akışı tamamlandıktan sonra aynı süreç motoruna eklenecektir.")
 
     else:
         st.markdown("### Diğer İşlemler")
