@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.39
+# Patent Atölyesi v5.4.41
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 26.08.2026 tarihli güncel tam sürümüdür.
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-08-31.v29`
+Kural sürümü: `2026-09-01.v31`
 
 ## Yerel çalıştırma
 
@@ -430,3 +430,20 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Word kalite kapısı giriş paragrafında D1 ve varsa D2 etiketlerinin gerçekten kalın run içinde olduğunu deterministik olarak doğrular.
 - Yenilik ve buluş basamağı değerlendirmeleri ön araştırma niteliğine uygun ihtiyatlı dille yazılır: `... kriterini sağladığı düşünülmektedir` / `... kriterini sağlamadığı düşünülmektedir`. Kategorik `sağlamaktadır`, `sağlamamaktadır`, `sağlar/sağlamaz`, `sağlanır/sağlanmaz` sonuç dili değerlendirme alanlarında reddedilir.
 - Aynı kurallar normal Tip 3 ve `Araştırma güncelleme - Tip 3` çıktılarına birlikte uygulanır.
+
+
+## v5.4.40 / 2026-09-01.v30 — Gerçek bağımsız ham-BBF ikinci okuma + cümle içi başlık/unsur sentence-case kapısı
+
+- Tarifname taslağı sonrasında yapılan SON HAM KAYNAK kontrolü artık önceki `source_passage_audit`, `technical_facts`, `source_coverage_map` veya `coverage_audit` verilerini ikinci okuyucuya vermez. Ham kaynak pasajlarının tamamı sıfırdan yeniden `technical/nontechnical` sınıflandırılır.
+- Her ikinci-okuma satırında gerçek ham kaynak `source_quote`, sınıflandırma gerekçesi ve teknik pasaj için nihai taslaktan birebir evidence zorunludur. Audit; çalıştırmaya özgü nonce, ham-pasaj envanteri SHA-256 parmak izi ve nihai taslak SHA-256 parmak izi ile doğrulanır. Eksik/uyuşmayan meta, eski audit'in yeniden kullanılması veya önceki sınıflandırmanın kullanıldığını bildiren audit kapıdan geçmez.
+- Nihai ekstra-kontrol bildirimi artık ayrı `independent_raw_second_read` boolean kapısına da bağlıdır. Bu kapı gerçekten PASS olmadan `EKSTRA KONTROLLER YAPILDI` yazılamaz.
+- BBF'de buluş başlığı tamamı büyük harfli olsa bile detaylı açıklama girişinde normal sözcükler cümle-içi küçük harfe çevrilir; yalnız gerçek teknik kısaltmalar korunur. `AYARLANABİLİR ... SİSTEMİ` gibi kaynak başlığı cümle içine aynen büyük harfle taşınamaz.
+- Unsur adları gövde içinde cümle-içi küçük harfle yazılır; fakat paragraf başında veya `.`, `?`, `!` sonrasında yeni cümle unsur adıyla başlıyorsa ilk normal kelime doğal büyük harfle başlamak zorundadır. Hem taslak hem nihai Word kapısı bu hatayı deterministik olarak reddeder.
+
+
+## v5.4.41 / 2026-09-01.v31 — Bağımlı istem kısa giriş kuralı + Word çıktı kapısı
+
+- Türkçe yöntem dışı bağımlı istemler yalnız `İstem X’e uygun sistem olup, özelliği;` kısa giriş kalıbıyla başlar. Buluş adı, cihaz/sistem alt türü veya başka tanımlayıcı ifade bağımlı istem girişinde tekrar edilmez.
+- Türkçe yöntem bağımlı istemleri yalnız `İstem X’e uygun yöntem olup, özelliği;` kısa giriş kalıbıyla başlar.
+- X, ek teknik özelliğin gerçekten dayandığı istem numarasıdır; zincir bağımlılık kuralları değişmez.
+- Taslak kalite kapısı ve nihai Word kalite kapısı bu başlangıçları ayrı ayrı doğrular. `İstem 1’e uygun ayarlanabilir ... sistemi olup, özelliği;` gibi uzatılmış giriş varsa çıktı kullanıcıya açılmaz.

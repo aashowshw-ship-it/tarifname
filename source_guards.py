@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 from typing import Any
 
 TECHNICAL_PASSAGE_HINT_RE = re.compile(
@@ -200,79 +201,86 @@ def validate_final_source_coverage_chain(
     }
 
 
+def _registry_fingerprint(registry: list[dict[str, str]]) -> str:
+    payload = "\n".join(
+        f"{str(r.get('passage_id','')).strip()}|{str(r.get('source','')).strip()}|{re.sub(r'\s+', ' ', str(r.get('text','') or '')).strip()}"
+        for r in registry
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _draft_fingerprint(final_draft_text: str) -> str:
+    normalized = re.sub(r"\s+", " ", str(final_draft_text or "")).strip()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
 def validate_final_raw_source_audit(
     audit: dict[str, Any],
     extracted: dict[str, Any],
     registry: list[dict[str, str]],
     final_draft_text: str,
+    *,
+    expected_audit_nonce: str = "",
 ) -> dict[str, int]:
-    """Taslak üretildikten sonra yapılan bağımsız ham-BBF ikinci okumasının eksiksiz olduğunu doğrular."""
-    validate_source_passage_audit(extracted, registry)
-    source_rows = {
-        str(r.get("passage_id", "") or "").strip(): r
-        for r in (extracted.get("source_passage_audit") or [])
-        if str(r.get("passage_id", "") or "").strip()
-    }
-    expected_passages = {
-        rec["passage_id"]
-        for rec in registry
-        if str((source_rows.get(rec["passage_id"]) or {}).get("classification", "") or "").strip().casefold() == "technical"
-    }
-    expected_facts = {
-        str(f.get("id", "") or "").strip()
-        for f in (extracted.get("technical_facts") or [])
-        if str(f.get("id", "") or "").strip()
-    }
+    """Gerçek bağımsız ikinci okumayı doğrular; önceki teknik sınıflandırmaya güvenmez."""
+    validate_source_passage_audit(extracted, registry)  # birinci kaynak envanteri kapısı ayrı olarak hâlâ zorunlu
+    meta = audit.get("audit_meta") or {}
+    expected_source_fp = _registry_fingerprint(registry)
+    expected_draft_fp = _draft_fingerprint(final_draft_text)
+    meta_errors=[]
+    if meta.get("audit_mode") != "independent_raw_source_second_read_v2": meta_errors.append("audit_mode")
+    if meta.get("independent_second_read") is not True: meta_errors.append("independent_second_read")
+    if meta.get("prior_classification_used") is not False: meta_errors.append("prior_classification_used")
+    if meta.get("source_coverage_map_used") is not False: meta_errors.append("source_coverage_map_used")
+    if expected_audit_nonce and str(meta.get("audit_nonce", "")) != expected_audit_nonce: meta_errors.append("audit_nonce")
+    if str(meta.get("source_fingerprint", "")) != expected_source_fp: meta_errors.append("source_fingerprint")
+    if str(meta.get("draft_fingerprint", "")) != expected_draft_fp: meta_errors.append("draft_fingerprint")
+    if meta_errors:
+        raise ValueError("SON HAM KAYNAK İKİNCİ OKUMA bağımsızlık/provenance kapısı başarısız: " + ", ".join(meta_errors))
 
-    def index_rows(rows: list[dict[str, Any]], key: str) -> tuple[dict[str, dict[str, Any]], list[str]]:
-        out: dict[str, dict[str, Any]] = {}
-        dups: list[str] = []
-        for row in rows:
-            rid = str(row.get(key, "") or "").strip()
-            if not rid:
-                continue
-            if rid in out:
-                dups.append(rid)
-            out[rid] = row
-        return out, dups
+    expected={str(r.get("passage_id", "") or "").strip(): r for r in registry if str(r.get("passage_id", "") or "").strip()}
+    checks={}
+    dups=[]
+    for row in audit.get("passage_checks") or []:
+        rid=str(row.get("passage_id", "") or "").strip()
+        if not rid: continue
+        if rid in checks: dups.append(rid)
+        checks[rid]=row
+    missing=sorted(set(expected)-set(checks)); extra=sorted(set(checks)-set(expected))
+    if missing or extra or dups:
+        parts=[]
+        if missing: parts.append("eksik pasaj="+", ".join(missing[:30]))
+        if extra: parts.append("tanımsız pasaj="+", ".join(extra[:20]))
+        if dups: parts.append("tekrar pasaj="+", ".join(sorted(set(dups))[:20]))
+        raise ValueError("SON HAM KAYNAK İKİNCİ OKUMA kapısı eksik: " + "; ".join(parts))
 
-    passage_checks, pdups = index_rows(audit.get("passage_checks") or [], "passage_id")
-    fact_checks, fdups = index_rows(audit.get("fact_checks") or [], "fact_id")
-    missing_p = sorted(expected_passages - set(passage_checks))
-    extra_p = sorted(set(passage_checks) - expected_passages)
-    missing_f = sorted(expected_facts - set(fact_checks))
-    extra_f = sorted(set(fact_checks) - expected_facts)
-    if pdups or fdups or missing_p or extra_p or missing_f or extra_f:
-        details: list[str] = []
-        if missing_p: details.append("eksik teknik pasaj=" + ", ".join(missing_p[:30]))
-        if extra_p: details.append("tanımsız pasaj=" + ", ".join(extra_p[:20]))
-        if pdups: details.append("tekrar pasaj=" + ", ".join(sorted(set(pdups))[:20]))
-        if missing_f: details.append("eksik fact=" + ", ".join(missing_f[:30]))
-        if extra_f: details.append("tanımsız fact=" + ", ".join(extra_f[:20]))
-        if fdups: details.append("tekrar fact=" + ", ".join(sorted(set(fdups))[:20]))
-        raise ValueError("SON HAM KAYNAK İKİNCİ OKUMA kapısı eksik: " + "; ".join(details))
-
-    failed: list[str] = []
-    for label, rows in (("P", passage_checks), ("T", fact_checks)):
-        for rid, row in rows.items():
-            evidence_items = row.get("evidence") or []
-            if isinstance(evidence_items, str):
-                evidence_items = [evidence_items]
-            evidence_items = [str(x or "").strip() for x in evidence_items if str(x or "").strip()]
+    failed=[]; technical_count=0; nontechnical_count=0
+    for rid,row in checks.items():
+        classification=str(row.get("classification", "") or "").strip().casefold()
+        reason=str(row.get("classification_reason", "") or "").strip()
+        source_quote=re.sub(r"\s+", " ", str(row.get("source_quote", "") or "")).strip()
+        source_text=re.sub(r"\s+", " ", str(expected[rid].get("text", "") or "")).strip()
+        evidence=row.get("evidence") or []
+        if isinstance(evidence,str): evidence=[evidence]
+        evidence=[str(x or "").strip() for x in evidence if str(x or "").strip()]
+        if classification not in {"technical","nontechnical"} or len(reason) < 10:
+            failed.append(f"{rid}:classification") ; continue
+        min_quote = min(20, len(source_text))
+        if len(source_quote) < min_quote or source_quote not in source_text:
+            failed.append(f"{rid}:source_quote") ; continue
+        if classification == "technical":
+            technical_count += 1
             if row.get("covered") is not True:
-                failed.append(f"{label}:{rid}")
-                continue
-            if not evidence_items or any(len(ev) < 20 or ev not in final_draft_text for ev in evidence_items):
-                failed.append(f"{label}:{rid}")
-    if audit.get("all_pass") is not True:
-        failed.append("all_pass")
+                failed.append(f"{rid}:covered") ; continue
+            if not evidence or any(len(ev) < 20 or ev not in final_draft_text for ev in evidence):
+                failed.append(f"{rid}:evidence")
+        else:
+            nontechnical_count += 1
+            if row.get("covered") is not True:
+                failed.append(f"{rid}:nontechnical_covered")
+    if audit.get("all_pass") is not True: failed.append("all_pass")
     if failed:
-        missing_notes = []
-        for row in [*(audit.get("passage_checks") or []), *(audit.get("fact_checks") or [])]:
-            if row.get("covered") is not True and str(row.get("missing_detail", "") or "").strip():
-                rid = row.get("passage_id") or row.get("fact_id") or "?"
-                missing_notes.append(f"{rid}: {str(row.get('missing_detail')).strip()}")
-        suffix = (" | " + " ; ".join(missing_notes[:12])) if missing_notes else ""
-        raise ValueError("SON HAM KAYNAK İKİNCİ OKUMA başarısız: " + ", ".join(failed[:50]) + suffix)
-
-    return {"audited_technical_passages": len(expected_passages), "audited_technical_facts": len(expected_facts)}
+        raise ValueError("SON HAM KAYNAK İKİNCİ OKUMA başarısız: " + ", ".join(failed[:50]))
+    if technical_count == 0:
+        raise ValueError("SON HAM KAYNAK İKİNCİ OKUMA başarısız: hiçbir ham pasaj teknik olarak sınıflandırılmadı; kaynak yeniden okunmalıdır.")
+    return {"audited_raw_passages":len(expected),"audited_technical_passages":technical_count,"audited_nontechnical_passages":nontechnical_count,"independent_raw_second_read":1}

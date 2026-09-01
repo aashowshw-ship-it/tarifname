@@ -112,6 +112,7 @@ NOTLAR:
 - Aynı olmayan unsurları “ve/veya” ile tek unsur gibi birleştirme.
 - Zorunlu olmayan “vidalanan/kaynaklanan/yapıştırılan” ve örnek ölçü/diş/çap ifadeleriyle ana istemi daraltma; teknik farkın kendisiyse koru.
 - Bağımlı istemler ana/üst istemi anlam olarak tekrar etmesin; sistem ve yöntem alt istemlerinin HER BİRİ semantik tekrar kontrolünden geçsin. Her biri gerçek ek teknik sınırlama getirsin ve bağımlılık numaraları silme/değişiklik sonrası yeniden kontrol edilsin.
+- Türkçe bağımlı istem girişini UZATMA: yöntem dışındaki alt istemler yalnız `İstem X’e uygun sistem olup, özelliği;`, yöntem alt istemleri yalnız `İstem X’e uygun yöntem olup, özelliği;` ile başlasın. Buluş adını veya `... solar simülatör sistemi / ... cihazı / ... yapılanması` gibi alt tür adını bağımlı istem girişinde tekrar etme. X gerçek bağımlılık numarasıdır.
 - Bağımlı sistem istemini yalnız `sistemin ... ortamında çalışmaya uygun bir sistem olmasıdır` diye kurma; 5G/6G/hibrit vb. ortam özelliğini ilgili baz istasyonu, arayüz, iletişim birimi veya başka somut unsurun teknik niteliğine bağla. Bağımlı yöntemde de yalnız `yöntemin ... ortamında gerçekleştirilmesidir` demek yasaktır; ortamı gerçek bir işlem adımı/girdi/teknik taşıyıcı ile ilişkilendir.
 
 - Özel uygulama unsur adını gereksiz daraltma; kaynak destekliyorsa O-ring gibi örneği “sızdırmazlık elemanı” altında detaylı açıklamada ver. Her ayrıntıya zorla referans numarası verme.

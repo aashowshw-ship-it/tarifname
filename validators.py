@@ -408,6 +408,15 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
         if re.search(r"önceki\s+istemlerden\s+herhangi\s+birine", str(claim), re.I):
             findings.append({"level": "Hata", "message": "Bağımlı istemde ‘Önceki istemlerden herhangi birine’ kullanılmış; ek özelliğin dayandığı doğrudan istem numarası seçilmeli."})
 
+    dep_system_start = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*e\s+uygun\s+sistem\s+olup,\s*özelliği;", re.I)
+    for claim in draft.get("dependent_system_claims") or []:
+        if not dep_system_start.match(str(claim or "")):
+            findings.append({"level": "Hata", "message": "Bağımlı sistem istemi `İstem X’e uygun sistem olup, özelliği;` kısa giriş kalıbıyla başlamalı; buluş adı/tür adı tekrar edilmemeli."})
+    dep_method_start = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*e\s+uygun\s+yöntem\s+olup,\s*özelliği;", re.I)
+    for claim in draft.get("dependent_method_claims") or []:
+        if not dep_method_start.match(str(claim or "")):
+            findings.append({"level": "Hata", "message": "Bağımlı yöntem istemi `İstem X’e uygun yöntem olup, özelliği;` kısa giriş kalıbıyla başlamalı; yöntem adı tekrar edilmemeli."})
+
     findings.extend(_reference_identity_findings(draft))
     findings.extend(_reference_presence_findings(draft))
     findings.extend(_main_claim_first_definition_findings(draft))

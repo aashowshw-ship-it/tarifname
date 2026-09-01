@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import hashlib
+import re
 import pytest
 
 from source_guards import (
@@ -45,9 +47,23 @@ def _sample_source_state():
     evidence = "Teknik modül, sanal makine belleğini hipervizör üzerinden dışarıdan okur."
     coverage = [{"fact_id": "T001", "covered": True, "sections": ["BULUŞUN DETAYLI AÇIKLAMASI"], "evidence": evidence}]
     final_text = "Başlık\n" + evidence + "\nSonuç"
+    source_payload = "\n".join(f"{r['passage_id']}|{r['source']}|{re.sub(r'\s+', ' ', r['text']).strip()}" for r in registry)
+    source_fp = hashlib.sha256(source_payload.encode("utf-8")).hexdigest()
+    draft_fp = hashlib.sha256(re.sub(r"\s+", " ", final_text).strip().encode("utf-8")).hexdigest()
     raw_audit = {
-        "passage_checks": [{"passage_id": "B0001", "covered": True, "evidence": [evidence], "missing_detail": ""}],
-        "fact_checks": [{"fact_id": "T001", "covered": True, "evidence": [evidence], "missing_detail": ""}],
+        "audit_meta": {
+            "audit_mode": "independent_raw_source_second_read_v2",
+            "audit_nonce": "",
+            "source_fingerprint": source_fp,
+            "draft_fingerprint": draft_fp,
+            "independent_second_read": True,
+            "prior_classification_used": False,
+            "source_coverage_map_used": False,
+        },
+        "passage_checks": [
+            {"passage_id": "B0001", "classification":"technical", "classification_reason":"teknik modülün bellek okuma işlevini açıkladığı için", "source_quote":"Teknik modül belleği dışarıdan okur.", "covered": True, "evidence": [evidence], "missing_detail": ""},
+            {"passage_id": "B0002", "classification":"nontechnical", "classification_reason":"yalnız imza ve iletişim idari alanı olduğu için", "source_quote":"İmza ve iletişim bilgileri.", "covered": True, "evidence": [], "missing_detail": ""},
+        ],
         "all_pass": True,
     }
     return registry, extracted, coverage, final_text, raw_audit, evidence
@@ -65,7 +81,7 @@ def test_final_raw_source_chain_passes_only_with_real_final_evidence():
     }
     audit_stats = validate_final_raw_source_audit(raw_audit, extracted, registry, final_text)
     assert audit_stats["audited_technical_passages"] == 1
-    assert audit_stats["audited_technical_facts"] == 1
+    assert audit_stats["audited_raw_passages"] == 2
 
 
 def test_final_source_chain_rejects_fact_without_word_evidence():
@@ -88,4 +104,4 @@ def test_tarifname_ui_no_longer_asks_for_output_filenames():
     assert 'st.text_input("Çıktı dosyasının adı"' not in tarifname_section
     assert 'st.text_input("Şekiller dosyasının adı"' not in tarifname_section
     assert 'derive_tarifname_output_names(reference)' in tarifname_section
-    assert 'Ham veri kontrolü yapıldı:' in tarifname_section
+    assert 'Bağımsız ham-BBF ikinci okuması fiilen tamamlandı:' in tarifname_section

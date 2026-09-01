@@ -487,3 +487,20 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - `2. DEĞERLENDİRME` giriş paragrafında teknik yakınlığı en yüksek dokümanların yayın numaraları ile `(D1)` / `(D2)` etiketleri tek kalın grup olarak yazılır. Şablondaki mixed-run bold biçimi dinamik metin doldurulurken korunmak zorundadır.
 - Tip 3 raporu kesin patentlenebilirlik kararı değil ön araştırma olduğundan, D1/D2 yenilik değerlendirmesi, buluş basamağı değerlendirmesi ve SONUÇ içinde `sağlamaktadır/sağlamamaktadır` gibi kesin hüküm dili kullanılmaz. `... kriterini sağladığı düşünülmektedir` / `... kriterini sağlamadığı düşünülmektedir` kalıbı kullanılır.
 - Word kalite kapısı hem D1/D2 kalın run yapısını hem de ihtiyatlı değerlendirme dilini deterministik olarak kontrol eder.
+
+
+## v5.4.40 / 2026-09-01.v30 — Gerçek bağımsız ham-BBF ikinci okuma + cümle içi başlık/unsur sentence-case kapısı
+
+- SON HAM KAYNAK ikinci okuması önceki `source_passage_audit`, `technical_facts`, `source_coverage_map` ve `coverage_audit` alanlarından bağımsızdır. İkinci okuyucu ham kaynak pasajlarının tamamını sıfırdan yeniden sınıflandırır; önceki sınıflandırma/fact listesi ikinci okuma promptuna taşınmaz.
+- İkinci okuma çıktısında her ham passage_id tam bir kez bulunur. Her satırda gerçek kaynak `source_quote` ve gerekçe; teknik pasajlarda ayrıca nihai taslaktan birebir evidence bulunur. Audit nonce + kaynak SHA-256 + taslak SHA-256 ile o çalıştırmaya bağlanır.
+- `EKSTRA KONTROLLER YAPILDI` ancak `independent_raw_second_read` dahil bütün kalite kapıları ve render gerçekten PASS ise gösterilebilir; elle `covered=true/all_pass=true` kurulmuş audit yeterli değildir.
+- Detaylı açıklama girişinde buluş başlığı kaynakta tamamen büyük harfli olsa dahi normal cümle-içi yazıma dönüştürülür. Yalnız gerçek teknik kısaltmalar korunur.
+- REFERANS NUMARALARI unsur adları sentence-case kalır; gövde içinde cümle-içi küçük yazılır. Bununla birlikte paragraf/cümle başlangıcında ilk normal kelime doğal büyük harfle başlar. Taslak ve Word kapısı `... . solar spektrum...` gibi hataları reddeder.
+
+
+## v5.4.41 / 2026-09-01.v31 — Bağımlı istem kısa giriş kalıbı
+
+- Türkçe yöntem dışı bağımlı istemlerde buluş adı veya alt tür adı tekrar edilmez; giriş tam olarak `İstem X’e uygun sistem olup, özelliği;` biçimindedir.
+- Türkçe yöntem bağımlı istemlerinin girişi tam olarak `İstem X’e uygun yöntem olup, özelliği;` biçimindedir.
+- `İstem X’e uygun <buluş adı> sistemi/cihazı/yapılanması olup, özelliği;` gibi uzatılmış girişler yasaktır.
+- X gerçek teknik bağımlılık numarasıdır. Taslak istem kapısı ile nihai Word çıktı kapısı bu kuralı ayrı ayrı kontrol eder ve ihlalde indirmeyi bloke eder.

@@ -1716,40 +1716,66 @@ def _tarifname_visible_draft_for_audit(draft: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _audit_registry_fingerprint(source_passage_registry: list[dict[str, str]]) -> str:
+    payload = "\n".join(
+        f"{str(r.get('passage_id','')).strip()}|{str(r.get('source','')).strip()}|{re.sub(r'\s+', ' ', str(r.get('text','') or '')).strip()}"
+        for r in source_passage_registry
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _audit_draft_fingerprint(draft: dict[str, Any]) -> str:
+    visible_text = _visible_draft_text_for_audit(draft)
+    normalized = re.sub(r"\s+", " ", visible_text).strip()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
 def tarifname_final_raw_source_audit_prompt(
     source_passage_registry: list[dict[str, str]],
-    extracted: dict[str, Any],
     draft: dict[str, Any],
     language: str = "Türkçe",
+    audit_nonce: str = "",
 ) -> str:
+    """Final draft sonrası, önceki sınıflandırmaları görmeyen gerçek ikinci ham-kaynak okuması."""
     visible_draft = _tarifname_visible_draft_for_audit(draft)
+    source_fp = _audit_registry_fingerprint(source_passage_registry)
+    draft_fp = _audit_draft_fingerprint(draft)
     return f"""{TARIFNAME_RULES}
-Bu işlem tarifname TASLAĞI OLUŞTURULDUKTAN SONRA çalışan bağımsız SON HAM KAYNAK kontrolüdür. Tarifnameyi yeniden yazma.
+Bu işlem tarifname TASLAĞI OLUŞTURULDUKTAN SONRA çalışan BAĞIMSIZ SON HAM KAYNAK İKİNCİ OKUMASIDIR. Tarifnameyi yeniden yazma.
 Çıktı dili: {language}.
 
+KRİTİK BAĞIMSIZLIK KURALI:
+- Önceki source_passage_audit, technical_facts, source_coverage_map ve coverage_audit bu istekte YOKTUR ve kullanılmayacaktır.
+- Aşağıdaki HAM PASAJLARIN TAMAMINI sıfırdan oku; HER passage_id'yi teknik veya teknik-dışı olarak yeniden sınıflandır.
+- Önceki bir audit sonucunu, ezberlenmiş fact kimliklerini veya taslak içindeki coverage meta alanlarını kullanma.
+
 AMAÇ:
-1. Ham kaynak pasaj auditinde `technical` olarak sınıflandırılmış HER passage_id'yi nihai tarifname taslağıyla yeniden karşılaştır.
-2. `technical_facts` içindeki HER fact'i nihai tarifname taslağıyla bağımsız olarak yeniden karşılaştır.
-3. Örnek senaryo, çalışma koşulu, avantaj, teknik etki, alternatif, performans sonucu, karşılaştırma, süreç ayrıntısı ve görselden çıkarılmış teknik bilgi dahil hiçbir teknik anlamı “benzer bir cümle var” diyerek geçme.
-4. `source_coverage_map` ve `coverage_audit` bu kontrolde KANIT değildir; aşağıda bilerek verilmemiştir. Kanıt yalnız kullanıcıya gidecek tarifname taslağının gerçek metninden alınmalıdır.
-5. Her evidence öğesi taslakta BİREBİR geçen en az 20 karakterlik bir alıntı olmalıdır.
-6. En küçük teknik anlam kaybında `covered=false` yap ve `missing_detail` alanında neyin eksik olduğunu açıkça yaz.
-7. passage_checks içinde yalnız source_passage_audit tarafından `technical` sınıflandırılmış pasajlar TAM BİR KEZ yer almalıdır. fact_checks içinde bütün technical_facts kimlikleri TAM BİR KEZ yer almalıdır.
-8. Bütün satırlar covered=true değilse `all_pass=false` olmalıdır.
+1. HAM_PASAJLAR içindeki HER passage_id passage_checks içinde TAM BİR KEZ yer almalıdır.
+2. Her satırda classification yalnız `technical` veya `nontechnical` olabilir ve en az 10 karakterlik classification_reason zorunludur.
+3. source_quote, ilgili ham pasajın kendi metninden birebir alınmış; pasaj 20 karakter veya daha uzunsa en az 20 karakterlik, daha kısaysa pasajın tamamını kapsayan bir bölüm olmalıdır.
+4. `technical` sınıflandırılan her pasaj için covered=true/false kararı ver; covered=true ise nihai taslaktan BİREBİR geçen en az 20 karakterlik evidence zorunludur. Teknik anlamın bir parçası eksikse covered=false ve missing_detail zorunludur.
+5. `nontechnical` pasaj için evidence boş liste olabilir; covered=true yazılır.
+6. Bütün teknik pasajlar covered=true değilse all_pass=false olmalıdır.
+7. audit_meta değerlerini aşağıda verilen değerlerle KARAKTER-KARAKTER aynen döndür. `independent_second_read=true`, `prior_classification_used=false`, `source_coverage_map_used=false` olmak zorundadır.
 
 JSON dışında hiçbir şey yazma.
 ŞEMA:
 {{
-  "passage_checks":[{{"passage_id":"B0001","covered":true,"evidence":["nihai taslaktan birebir alıntı"],"missing_detail":""}}],
-  "fact_checks":[{{"fact_id":"T001","covered":true,"evidence":["nihai taslaktan birebir alıntı"],"missing_detail":""}}],
+  "audit_meta":{{
+    "audit_mode":"independent_raw_source_second_read_v2",
+    "audit_nonce":"{audit_nonce}",
+    "source_fingerprint":"{source_fp}",
+    "draft_fingerprint":"{draft_fp}",
+    "independent_second_read":true,
+    "prior_classification_used":false,
+    "source_coverage_map_used":false
+  }},
+  "passage_checks":[{{"passage_id":"B0001","classification":"technical","classification_reason":"teknik yapı/işlev açıklandığı için","source_quote":"ham pasajdan birebir alıntı","covered":true,"evidence":["nihai taslaktan birebir alıntı"],"missing_detail":""}}],
   "all_pass":true
 }}
 
-SOURCE_PASSAGE_REGISTRY:
+HAM_PASAJLAR (önceki teknik/teknik-dışı sınıflandırma YOK):
 {json.dumps(source_passage_registry, ensure_ascii=False, indent=2)}
-
-KAYNAK PASAJ SINIFLANDIRMASI VE TECHNICAL FACT ENVANTERİ:
-{json.dumps({"source_passage_audit": extracted.get("source_passage_audit") or [], "technical_facts": extracted.get("technical_facts") or []}, ensure_ascii=False, indent=2)}
 
 KULLANICIYA GİDECEK NİHAİ TASLAK (coverage meta alanları hariç):
 {json.dumps(visible_draft, ensure_ascii=False, indent=2)}
@@ -2067,10 +2093,53 @@ def _inline_reference_name(name: str) -> str:
     if not match:
         return canonical
     word = match.group(0)
-    if len(word) > 1 and word.isupper():
+    if _is_technical_acronym_token(word):
         return canonical
     low = _tr_lower(word)
     return canonical[:match.start()] + low + canonical[match.end():]
+
+
+def _restore_sentence_initial_element_case(text: str, mappings: list[tuple[str, str, str, str]]) -> str:
+    """Cümle/paragraf başındaki unsur adının ilk normal kelimesini doğal büyük harfe geri getirir."""
+    out = str(text or "")
+    for _number, _old, canonical, inline in mappings:
+        if not inline or inline == canonical:
+            continue
+        # Paragraf başı veya gerçek cümle sonu (.!?) sonrası. Virgül/noktalı virgül sonrası cümle başlangıcı sayılmaz.
+        pat = re.compile(r"(^|(?<=[.!?])\s+)(" + re.escape(inline) + r")(?=\b|\s|\()", re.IGNORECASE)
+        def repl(m: re.Match[str]) -> str:
+            prefix=m.group(1) or ""
+            found=m.group(2)
+            # canonical'ın ilk kelime büyük düzenini kullan, kalan çekim/ek metni found'dan koru.
+            if len(found) == len(inline):
+                return prefix + canonical
+            return prefix + canonical + found[len(inline):]
+        out = pat.sub(repl, out)
+    return out
+
+
+def _capitalize_turkish_prose_sentence_starts(text: str) -> str:
+    """Paragraf ve .?! sonrası gerçek cümle başlangıcındaki ilk normal sözcüğü doğal büyük harfe çevirir."""
+    out = str(text or "")
+    pat = re.compile(r"(^|(?<=[.!?])\s+)([A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü0-9]*)", re.MULTILINE)
+    def repl(m: re.Match[str]) -> str:
+        prefix, word = m.group(1) or "", m.group(2)
+        if _is_technical_acronym_token(word):
+            return prefix + word
+        low = _tr_lower(word)
+        return prefix + low[:1].upper() + low[1:]
+    return pat.sub(repl, out)
+
+
+def _normalize_prose_sentence_initials(draft: dict[str, Any], mappings: list[tuple[str, str, str, str]]) -> None:
+    list_fields = ["detailed_paragraphs", "prior_art_general_paragraphs", "literature_paragraphs", "alternatives"]
+    scalar_fields = ["working_principle", "short_description_intro", "technical_field", "abstract"]
+    for key in list_fields:
+        if isinstance(draft.get(key), list):
+            draft[key] = [_capitalize_turkish_prose_sentence_starts(_restore_sentence_initial_element_case(str(x or ""), mappings)) for x in draft[key]]
+    for key in scalar_fields:
+        if isinstance(draft.get(key), str):
+            draft[key] = _capitalize_turkish_prose_sentence_starts(_restore_sentence_initial_element_case(draft[key], mappings))
 
 
 def _normalize_turkish_element_case_in_draft(draft: dict[str, Any]) -> dict[str, Any]:
@@ -2106,11 +2175,12 @@ def _normalize_turkish_element_case_in_draft(draft: dict[str, Any]) -> dict[str,
         text = str(step.get("text", "") or "").strip()
         if text:
             first = re.search(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", text)
-            if first and not (len(first.group(0)) > 1 and first.group(0).isupper()):
+            if first and not _is_technical_acronym_token(first.group(0)):
                 word = first.group(0)
                 low = _tr_lower(word)
                 cap = low[:1].upper() + low[1:]
                 step["text"] = text[:first.start()] + cap + text[first.end():]
+    _normalize_prose_sentence_initials(draft, mappings)
     return draft
 
 
@@ -2596,6 +2666,27 @@ def _validate_turkish_reference_sentence_case(draft: dict[str, Any], language: s
     if forbidden:
         raise ValueError("BULUŞUN DETAYLI AÇIKLAMASI/İSTEMLER içinde unsur adları Title Case yazılamaz. Yasak varyant: " + "; ".join(sorted(set(forbidden))))
 
+    # Paragraf/cümle başlangıcındaki ilk normal sözcük küçük bırakılamaz.
+    sentence_errors: list[str] = []
+    prose_fields = [*map(str, draft.get("detailed_paragraphs") or []), str(draft.get("working_principle", "") or ""), *map(str, draft.get("alternatives") or [])]
+    start_re = re.compile(r"(^|(?<=[.!?])\s+)([A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü0-9]*)", re.MULTILINE)
+    for paragraph in prose_fields:
+        for sm in start_re.finditer(paragraph):
+            word = sm.group(2)
+            if _is_technical_acronym_token(word):
+                continue
+            if word[:1] in "abcçdefgğhıijklmnoöprsştuüvyz":
+                sentence_errors.append(word)
+    if sentence_errors:
+        raise ValueError("BULUŞUN DETAYLI AÇIKLAMASI cümle/paragraf başlangıcındaki ilk normal sözcük küçük harfle bırakılamaz. Hatalı: " + "; ".join(sorted(set(sentence_errors))))
+
+    title = str(draft.get("title", "") or "").strip()
+    inline_title = _inline_invention_title(title)
+    if title and inline_title != title:
+        for paragraph in prose_fields:
+            if title in paragraph:
+                raise ValueError("BULUŞUN DETAYLI AÇIKLAMASI içinde buluş başlığı başlık/tam-büyük biçimiyle kullanılamaz; cümle-içi normal yazım kullanılmalıdır.")
+
 
 def _normalize_turkish_invention_title(title: str) -> str:
     """Bağlayıcı tarifname başlık biçimi: anlam taşıyan normal sözcükler Title Case, bağlaç/ilgeçler küçük, teknik kısaltmalar korunur."""
@@ -3053,39 +3144,50 @@ def _tr_lower(text: str) -> str:
     return str(text or "").translate(str.maketrans({"I": "ı", "İ": "i"})).lower()
 
 
-def _inline_invention_title(title: str) -> str:
-    """Buluş başlığını cümle içinde normal küçük harf düzenine çevir; teknik kısaltmaları koru."""
-    text = str(title or "").strip()
+_TECHNICAL_ACRONYM_ALLOWLIST = {
+    "LED", "UV", "IR", "NIR", "PWM", "API", "NFC", "SIM", "IMEI", "IMSI", "RFID", "BLE",
+    "GPS", "GNSS", "CAN", "LIN", "ECU", "CPU", "GPU", "AI", "ML", "RF", "THZ", "SNR", "MFC",
+    "PLR", "PPV", "SVV", "FWA", "CPE", "QR", "SDK", "AID", "FAST", "MPIS", "POS", "WHO", "VCL", "VSL", "MSC",
+    "RRC", "QOS", "LTE", "NR", "WIFI", "USB", "TCP", "IP", "HTTP", "HTTPS", "AM", "PV"
+}
 
+
+def _is_technical_acronym_token(token: str) -> bool:
+    raw = str(token or "")
+    upper = raw.upper()
+    if upper in _TECHNICAL_ACRONYM_ALLOWLIST:
+        return True
+    # eSIM / gNodeB gibi yerleşik mixed-case teknik simgeleri koru; salt Title Case normal sözcüğü koruma.
+    if any(ch.isdigit() for ch in raw):
+        return True
+    return bool(len(raw) >= 2 and not raw.isupper() and any(ch.isupper() for ch in raw[1:]))
+
+
+def _inline_invention_title(title: str) -> str:
+    """Buluş başlığını cümle içi normal yazıma çevir; yalnız gerçek teknik kısaltmaları koru."""
+    text = str(title or "").strip()
     def repl(match: re.Match[str]) -> str:
         token = match.group(0)
-        if (len(token) > 1 and token.isupper()) or any(ch.isupper() for ch in token[1:]):
-            return token
-        return _tr_lower(token)
-
-    return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşüÂâÎîÛû]+", repl, text)
+        return token if _is_technical_acronym_token(token) else _tr_lower(token)
+    return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşüÂâÎîÛû0-9]+", repl, text)
 
 
 def _reference_sentence_case(name: str) -> str:
-    """Referans unsurunu başlık biçiminden çıkar; yalnız ilk normal kelimeyi büyüt, teknik kısaltmaları koru."""
+    """Referans unsurunu sentence-case yap; yalnız gerçek teknik kısaltmaları koru."""
     text = str(name or "").strip()
     first_seen = False
-
     def repl(match: re.Match[str]) -> str:
         nonlocal first_seen
         word = match.group(0)
-        is_acronym = len(word) > 1 and word.isupper()
+        if _is_technical_acronym_token(word):
+            first_seen = True
+            return word
+        low = _tr_lower(word)
         if not first_seen:
             first_seen = True
-            if is_acronym:
-                return word
-            low = _tr_lower(word)
             return low[:1].upper() + low[1:]
-        if is_acronym:
-            return word
-        return _tr_lower(word)
-
-    return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", repl, text)
+        return low
+    return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9]+", repl, text)
 
 
 
@@ -3233,6 +3335,35 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
             if ni + 1 >= len(texts) or texts[ni + 1] != "":
                 raise ValueError("Word şablon kontrolü: İSTEMLER açıklama paragrafları arasındaki boşluk şablona uymuyor.")
 
+    if not _english_spec(language):
+        # Detaylı açıklama girişinde başlık cümle-içi normal yazımla kullanılmalı.
+        detail_label = "BULUŞUN DETAYLI AÇIKLAMASI"
+        if detail_label in texts:
+            di = texts.index(detail_label)
+            detail_intro = next((texts[j] for j in range(di + 1, min(len(texts), di + 5)) if texts[j]), "")
+            raw_title = str(draft.get("title", "") or "").strip()
+            inline_title = _inline_invention_title(raw_title)
+            if raw_title and raw_title != inline_title and raw_title in detail_intro:
+                raise ValueError("Word detaylı açıklama kapısı: buluş başlığı cümle içinde tam-büyük/başlık biçiminde kalmış; cümle-içi normal yazım zorunludur.")
+        # Detaylı açıklama gövdesinde unsur adı paragraf/cümle başında küçük kalamaz.
+        try:
+            di = texts.index("BULUŞUN DETAYLI AÇIKLAMASI")
+            ci = texts.index("İSTEMLER")
+        except ValueError:
+            di = ci = -1
+        if 0 <= di < ci:
+            detail_segment = "\n".join(texts[di + 1:ci])
+            bad_starts=[]
+            start_re = re.compile(r"(^|(?<=[.!?])\s+)([A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü0-9]*)", re.MULTILINE)
+            for sm in start_re.finditer(detail_segment):
+                word=sm.group(2)
+                if _is_technical_acronym_token(word):
+                    continue
+                if word[:1] in "abcçdefgğhıijklmnoöprsştuüvyz":
+                    bad_starts.append(word)
+            if bad_starts:
+                raise ValueError("Word detaylı açıklama kapısı: cümle/paragraf başlangıcındaki ilk normal sözcük küçük harfle bırakılmış: " + "; ".join(sorted(set(bad_starts))))
+
     # 4. kapının tam sürümü: bütün bölüm geçişleri, paragraf arketipleri, header/footer ve sayfa numarası konumu.
     validate_full_tarifname_template_fidelity(data, TARIFNAME_TEMPLATE, draft, language)
 
@@ -3246,6 +3377,7 @@ def validate_tarifname_post_generation_quality(
     language: str = "Türkçe",
     source_passage_registry: list[dict[str, str]] | None = None,
     final_raw_audit: dict[str, Any] | None = None,
+    expected_raw_audit_nonce: str = "",
 ) -> dict[str, Any]:
     """Word üretildikten sonra ham-kaynak zincirini ve 5 zorunlu kalite kapısını nihai çıktı üzerinde yeniden çalıştırır."""
     doc = Document(io.BytesIO(data))
@@ -3257,11 +3389,12 @@ def validate_tarifname_post_generation_quality(
         raise ValueError("ÇIKTI SONRASI KAPI 1/5 — taslak sonrası bağımsız ham kaynak ikinci okuması yapılmadan tarifname indirilemez.")
 
     # 1A) Taslak üretildikten sonra yapılan bağımsız ham kaynak ikinci okumasını tekrar doğrula.
-    validate_final_raw_source_audit(
+    independent_stats = validate_final_raw_source_audit(
         final_raw_audit,
         extracted,
         source_passage_registry,
         _visible_draft_text_for_audit(draft),
+        expected_audit_nonce=expected_raw_audit_nonce,
     )
 
     # 1B) Ham pasaj -> atomik technical_fact -> source_coverage_map -> nihai Word kanıt zinciri.
@@ -3313,6 +3446,7 @@ def validate_tarifname_post_generation_quality(
 
     return {
         "source_completeness": True,
+        "independent_raw_second_read": True,
         "prior_art": True,
         "draft_quality": True,
         "claims": True,
@@ -3322,6 +3456,7 @@ def validate_tarifname_post_generation_quality(
         "formula_format": True,
         "how_test": True,
         **source_stats,
+        **independent_stats,
     }
 
 
