@@ -1,4 +1,15 @@
-# Patent Atölyesi v5.4.46
+# Patent Atölyesi v5.4.47
+
+
+## v5.4.47 / 2026-09-01 — Süreçler / AI'sız Patent-Faydalı Model Ön Kontrolü
+
+- `Süreçler > Patent / Faydalı Model Başvurusu` artık **OpenAI/API çağrısı yapmaz**; `OPENAI_API_KEY` tanımlı olmasa da bu bölüm çalışır.
+- Beyan formu, DOC/DOCX/PDF/TXT/MD, EML, MSG ve yapıştırılan metindeki başvuru verileri etiket/tablo/bağlam kurallarıyla yerel olarak çıkarılır.
+- Hak sahibi, buluş sahibi, VKN/TCKN, ülke, il, adres, başvuru türü, DP/dosya referansı, buluş başlığı ve rüçhan bilgileri yalnız açık kaynak verisinden alınır; bulunmayan bilgi tahmin edilmez.
+- Bir Word tablosunda aynı satırda birden fazla `etiket | değer` çifti bulunması desteklenir. Serbest e-postada yalnız açık `hak/başvuru sahibi` ve `buluş sahibi` ifadeleri kabul edilir.
+- Tarifname yalnız buluş başlığını teyit etmek/eksikse başlığı almak için kullanılır; tarifnameden hak sahibi veya buluş sahibi çıkarılmaz.
+- Eksik veya çelişkili zorunlu bilgi varsa EPATS geçiş kilidi kapalı kalır. T/İ/Ö/Ş belge kontrolleri ve PDF üretimi tamamen yerel yazılımla devam eder.
+- Üretim modüllerindeki tarifname/görüş/araştırma yapay zekâ akışları değiştirilmemiştir.
 
 
 ## v5.4.46 / 2026-09-01 — Süreçler / Otomatik Başvuru Ön Kontrolü

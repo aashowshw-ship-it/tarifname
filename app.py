@@ -75,11 +75,11 @@ from tarifname_figure_generation import (
 
 from processes import (
     application_precheck_missing,
-    build_application_information_prompt,
     build_epats_application_package,
     epats_document_metrics,
     extract_application_source_text,
     normalize_application_information,
+    extract_application_information_rule_based,
 )
 
 from gorus_audit import (
@@ -5934,14 +5934,14 @@ st.markdown(
 )
 
 
-if not os.getenv("OPENAI_API_KEY", "").strip():
-    st.warning("OPENAI_API_KEY henüz tanımlı değil. Arayüzü inceleyebilirsiniz; üretim düğmeleri API anahtarı olmadan çalışmaz.")
-
 work_type = st.radio(
     "İş türü",
     ["Tarifname oluşturma", "Tarifname düzenleme", "Görüş hazırlama", "Tip 3 - Ön araştırma raporu", "Araştırma güncelleme - Tip 3", "Süreçler"],
     horizontal=True,
 )
+
+if work_type != "Süreçler" and not os.getenv("OPENAI_API_KEY", "").strip():
+    st.warning("OPENAI_API_KEY henüz tanımlı değil. Üretim düğmeleri API anahtarı olmadan çalışmaz. Süreçler bölümü ise API kullanmadan çalışır.")
 
 # TARİFNAME
 if work_type == "Tarifname oluşturma":
@@ -7313,9 +7313,10 @@ elif work_type == "Süreçler":
     if process_type == "Patent / Faydalı Model Başvurusu":
         st.markdown("### Patent / Faydalı Model Başvurusu")
         st.caption(
-            "Beyan formu, yazı veya e-posta gibi kaynakları yükleyin; başvuru bilgileri otomatik çıkarılsın. "
+            "Beyan formu, yazı veya e-posta gibi kaynakları yükleyin; başvuru bilgileri yapay zekâ/API kullanılmadan otomatik çıkarılsın. "
             "Tarifname Word dosyası kırmızı/mavi şablon açıklamalarından temizlenerek EPATS belgelerine ayrılsın ve zorunlu ön kontrol yapılsın."
         )
+        st.success("Bu başvuru hazırlama ekranı OpenAI/API kredisi kullanmaz; belge okuma ve ön kontrol yerel yazılım kurallarıyla çalışır.")
 
         st.markdown("#### 1. Buluş / başvuru bilgisi kaynakları")
         info_sources = st.file_uploader(
@@ -7370,22 +7371,15 @@ elif work_type == "Süreçler":
 
                     specification_data = specification_upload.getvalue()
                     specification_text = docx_text(specification_data)
-                    progress.progress(25, text="Hak sahibi, buluş sahibi ve diğer başvuru bilgileri çıkarılıyor...")
+                    progress.progress(25, text="Hak sahibi, buluş sahibi ve diğer başvuru bilgileri yerel kurallarla çıkarılıyor...")
 
-                    if source_blocks:
-                        prompt = build_application_information_prompt(source_blocks, specification_text=specification_text)
-                        extracted = normalize_application_information(ask_json(prompt))
-                    else:
-                        # Kaynak belge yoksa tarifnameden yalnız buluş başlığının açıkça teyit edilmesine izin verilir.
-                        # Hak sahibi/buluş sahibi/rüçhan gibi bilgiler teknik tarifnameden çıkarılmaz veya tahmin edilmez.
-                        prompt = build_application_information_prompt([], specification_text=specification_text)
-                        extracted = normalize_application_information(ask_json(prompt))
-                        extracted["application_kind"] = ""
-                        extracted["reference"] = ""
-                        extracted["applicants"] = []
-                        extracted["inventors"] = []
-                        extracted["priority"] = {"status": "Belirsiz", "country": "", "number": "", "date": "", "source": ""}
-                        extracted["other_information"] = []
+                    # Süreçler modülü OpenAI/API kullanmaz. Tüm başvuru bilgileri
+                    # yalnız açık etiketler, belge tabloları ve güvenli metin kurallarıyla çıkarılır.
+                    # Bulunamayan bilgi tahmin edilmez; zorunlu ön kontrol geçişi bloke eder.
+                    extracted = extract_application_information_rule_based(
+                        source_blocks,
+                        specification_text=specification_text,
+                    )
 
                     progress.progress(50, text="Kırmızı/mavi şablon yazıları temizleniyor ve EPATS PDF'leri hazırlanıyor...")
                     figures_data = figures_upload.getvalue() if figures_upload is not None else None
@@ -7453,11 +7447,12 @@ elif work_type == "Süreçler":
                 st.metric("Şekiller", codes.get("figures", "Ş-"), f"{fig_pages} sayfa" if fig_pages else "yüklenmedi")
 
             st.markdown("#### Başvuru bilgileri")
+            field_sources = metadata.get("field_sources") or {}
             info_rows = [
-                {"Alan": "Başvuru türü", "Bulunan bilgi": metadata.get("application_kind") or "EKSİK"},
-                {"Alan": "DP / dosya referansı", "Bulunan bilgi": metadata.get("reference") or "-"},
-                {"Alan": "Buluş başlığı", "Bulunan bilgi": metadata.get("invention_title") or "EKSİK"},
-                {"Alan": "Rüçhan", "Bulunan bilgi": (metadata.get("priority") or {}).get("status") or "Belirsiz"},
+                {"Alan": "Başvuru türü", "Bulunan bilgi": metadata.get("application_kind") or "EKSİK", "Kaynak": field_sources.get("application_kind") or "-"},
+                {"Alan": "DP / dosya referansı", "Bulunan bilgi": metadata.get("reference") or "-", "Kaynak": field_sources.get("reference") or "-"},
+                {"Alan": "Buluş başlığı", "Bulunan bilgi": metadata.get("invention_title") or "EKSİK", "Kaynak": field_sources.get("invention_title") or "-"},
+                {"Alan": "Rüçhan", "Bulunan bilgi": (metadata.get("priority") or {}).get("status") or "Belirsiz", "Kaynak": field_sources.get("priority") or (metadata.get("priority") or {}).get("source") or "-"},
             ]
             st.table(info_rows)
 

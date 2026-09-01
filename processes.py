@@ -11,6 +11,7 @@ from email import policy
 from email.parser import BytesParser
 from html import unescape
 import xml.etree.ElementTree as ET
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -252,7 +253,20 @@ def _docx_source_text(data: bytes) -> str:
     for table in doc.tables:
         for row in table.rows:
             vals = [cell.text.strip().replace("\n", " | ") for cell in row.cells]
-            if any(vals):
+            if not any(vals):
+                continue
+            # Beyan formlarında bir satırda birden çok etiket/değer çifti bulunabilir.
+            # Örn: Hak Sahibi | ABC A.Ş. | Ülke | Türkiye. Bunları ayrı satırlara
+            # çevirerek deterministik alan çıkarıcının bağlamı doğru kurmasını sağla.
+            paired = False
+            if len(vals) >= 4 and len(vals) % 2 == 0:
+                candidate_pairs = [(vals[i], vals[i + 1]) for i in range(0, len(vals), 2)]
+                if sum(1 for label, _ in candidate_pairs if label and _canonical_label(label)) >= 2:
+                    for label, value in candidate_pairs:
+                        if label or value:
+                            parts.append(f"{label}\t{value}")
+                    paired = True
+            if not paired:
                 parts.append("\t".join(vals))
     return "\n".join(parts)
 
@@ -348,6 +362,389 @@ def extract_application_source_text(filename: str, data: bytes) -> str:
     return text
 
 
+
+
+# -----------------------------------------------------------------------------
+# AI'SIZ / DETERMINISTIK BASVURU BILGISI CIKARIMI
+# -----------------------------------------------------------------------------
+
+_LABEL_SPLIT_RE = re.compile(r"^\s*([^:\t|]{2,80}?)\s*(?::|\t|\|)\s*(.*?)\s*$")
+
+
+def _plain_norm(value: str) -> str:
+    value = (value or "").casefold()
+    value = value.translate(str.maketrans({"ı": "i", "ş": "s", "ğ": "g", "ü": "u", "ö": "o", "ç": "c"}))
+    value = unicodedata.normalize("NFKD", value)
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    value = re.sub(r"[^a-z0-9]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _clean_value(value: str) -> str:
+    value = re.sub(r"\s+", " ", (value or "").strip(" \t|:;-"))
+    return value.strip()
+
+
+def _looks_like_company(name: str) -> bool:
+    n = _plain_norm(name)
+    return bool(re.search(r"\b(a s|anonim|ltd|limited|sanayi|ticaret|holding|sirketi|company|inc|corp|llc)\b", n))
+
+
+def _entity_type(name: str, explicit: str = "") -> str:
+    e = _plain_norm(explicit)
+    if "tuzel" in e or "kurum" in e or "sirket" in e:
+        return "Tüzel kişi"
+    if "gercek" in e or "kisi" in e:
+        return "Gerçek kişi"
+    if _looks_like_company(name):
+        return "Tüzel kişi"
+    return ""
+
+
+def _canonical_label(label: str) -> str:
+    n = _plain_norm(label)
+    # Rol + alan birleşik etiketleri (örn. "Hak Sahibi Adresi", "Buluş Sahibi TCKN").
+    applicant_role = any(x in n for x in ["hak sahibi", "basvuru sahibi", "applicant"])
+    inventor_role = any(x in n for x in ["bulus sahibi", "buluscu", "inventor"])
+    if applicant_role or inventor_role:
+        role = "applicant" if applicant_role else "inventor"
+        if any(x in n for x in ["adres", "address"]):
+            return role + "_address"
+        if any(x in n for x in ["ulke", "uyruk", "tabiyet", "country"]):
+            return role + "_country"
+        if re.search(r"\b(il|sehir|city)\b", n):
+            return role + "_city"
+        if any(x in n for x in ["tckn", "tc kimlik", "vkn", "vergi no", "vergi numarasi", "kimlik no", "identity"]):
+            return role + "_identity"
+        if applicant_role and any(x in n for x in ["kisi turu", "tuzel", "gercek", "entity type"]):
+            return "applicant_entity_type"
+
+    aliases = {
+        "application_kind": ["basvuru turu", "basvuru tipi", "koruma turu", "basvuru sekli"],
+        "reference": ["dp referans", "dp no", "dosya referansi", "dosya no", "referans no", "referans numarasi", "referans"],
+        "invention_title": ["bulus basligi", "bulusun basligi", "bulus adi", "bulusun adi", "invention title"],
+        "applicant": ["hak sahibi", "basvuru sahibi", "basvuru sahipleri", "hak sahipleri", "applicant", "applicants"],
+        "inventor": ["bulus sahibi", "bulus sahipleri", "buluscu", "buluscular", "inventor", "inventors"],
+        "identity": ["tckn", "tc kimlik no", "tc kimlik numarasi", "vkn", "vergi no", "vergi numarasi", "kimlik no", "kimlik numarasi"],
+        "address": ["adres", "tebligat adresi", "ikamet adresi", "merkez adresi"],
+        "country": ["ulke", "uyruk", "tabiyet", "country"],
+        "city": ["il", "sehir", "city"],
+        "entity_type": ["kisi turu", "hak sahibi turu", "basvuru sahibi turu", "tuzel gercek kisi", "entity type"],
+        "priority": ["ruchan", "ruchan durumu", "priority", "priority claim"],
+        "priority_country": ["ruchan ulkesi", "priority country"],
+        "priority_number": ["ruchan numarasi", "ruchan no", "priority number"],
+        "priority_date": ["ruchan tarihi", "priority date"],
+    }
+    # En spesifik etiketler önce kontrol edilir.
+    for key in ("priority_country", "priority_number", "priority_date", "application_kind", "invention_title", "reference", "entity_type", "applicant", "inventor", "identity", "address", "country", "city", "priority"):
+        for alias in aliases[key]:
+            if n == alias or n.startswith(alias + " "):
+                return key
+    return ""
+
+
+def _split_people_value(value: str) -> list[str]:
+    value = _clean_value(value)
+    if not value:
+        return []
+    # Birden fazla kişi açık biçimde noktalı virgül, satır içi numara veya " ve " ile verilmişse ayır.
+    parts = re.split(r"\s*;\s*|\s+\d+[.)]\s+", value)
+    if len(parts) == 1 and " ve " in value.casefold() and not _looks_like_company(value):
+        candidate = re.split(r"\s+ve\s+", value, flags=re.IGNORECASE)
+        if 1 < len(candidate) <= 4 and all(len(x.split()) >= 2 for x in candidate):
+            parts = candidate
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _new_person(name: str, source: str, *, applicant: bool) -> dict[str, str]:
+    row = {
+        "identity": "",
+        "name": _clean_value(name),
+        "country": "",
+        "city": "",
+        "address": "",
+        "source": source,
+    }
+    if applicant:
+        row["entity_type"] = _entity_type(name)
+    return row
+
+
+def _append_unique_person(target: list[dict[str, str]], row: dict[str, str], *, applicant: bool) -> dict[str, str]:
+    name_key = _plain_norm(row.get("name", ""))
+    id_key = re.sub(r"\D", "", row.get("identity", ""))
+    for existing in target:
+        existing_id = re.sub(r"\D", "", existing.get("identity", ""))
+        if (id_key and existing_id and id_key == existing_id) or (name_key and name_key == _plain_norm(existing.get("name", ""))):
+            for key in ("identity", "country", "city", "address"):
+                if not existing.get(key) and row.get(key):
+                    existing[key] = row[key]
+            if applicant and not existing.get("entity_type"):
+                existing["entity_type"] = row.get("entity_type") or _entity_type(existing.get("name", ""))
+            if row.get("source") and row["source"] not in (existing.get("source") or "").split("; "):
+                existing["source"] = "; ".join(x for x in [existing.get("source", ""), row["source"]] if x)
+            return existing
+    target.append(row)
+    return row
+
+
+def _specification_title(specification_text: str) -> str:
+    lines = [_clean_value(x) for x in (specification_text or "").splitlines()]
+    lines = [x for x in lines if x]
+    for idx, line in enumerate(lines[:15]):
+        if _plain_norm(line) == "tarifname":
+            for cand in lines[idx + 1: idx + 5]:
+                n = _plain_norm(cand)
+                if n and n not in {"teknik alan", "onceki teknik", "bulusun kisa aciklamasi"} and not cand.startswith("Araştırma raporunun"):
+                    return cand
+    # Başlık etiketi olan tarifnamelerde geri dönüş.
+    for line in lines[:25]:
+        m = _LABEL_SPLIT_RE.match(line)
+        if m and _canonical_label(m.group(1)) == "invention_title":
+            return _clean_value(m.group(2))
+    return ""
+
+
+def _kind_from_text(text: str) -> str:
+    n = _plain_norm(text)
+    if re.search(r"\bfaydali model\b", n):
+        return "Faydalı Model"
+    if re.search(r"\bpatent\b", n):
+        return "Patent"
+    return ""
+
+
+def _priority_status(value: str) -> str:
+    n = _plain_norm(value)
+    if not n:
+        return "Belirsiz"
+    negative = ["yok", "hayir", "talep edilmiyor", "talep edilmeyecek", "bulunmuyor", "mevcut degil", "no"]
+    positive = ["var", "evet", "talep ediliyor", "talep edilecek", "mevcut", "yes"]
+    if any(x in n for x in negative):
+        return "Yok"
+    if any(x in n for x in positive):
+        return "Var"
+    return "Belirsiz"
+
+
+def _valid_identity(value: str) -> str:
+    digits = re.sub(r"\D", "", value or "")
+    return digits if len(digits) in {10, 11} else _clean_value(value)
+
+
+def _set_singleton(result: dict[str, Any], key: str, value: str, source: str, seen: dict[str, tuple[str, str]]) -> None:
+    value = _clean_value(value)
+    if not value:
+        return
+    prior = seen.get(key)
+    if prior and _plain_norm(prior[0]) != _plain_norm(value):
+        result["conflicts"].append(f"{key}: '{prior[0]}' ({prior[1]}) / '{value}' ({source})")
+        return
+    seen[key] = (value, source)
+    if key == "priority.status":
+        result["priority"]["status"] = value
+        result["priority"]["source"] = source
+    elif key.startswith("priority."):
+        result["priority"][key.split(".", 1)[1]] = value
+        result["priority"]["source"] = source
+    else:
+        result[key] = value
+
+
+def extract_application_information_rule_based(
+    source_blocks: list[tuple[str, str]], *, specification_text: str = ""
+) -> dict[str, Any]:
+    """Başvuru verilerini OpenAI/API kullanmadan etiketler ve bağlam kurallarıyla çıkarır.
+
+    Bilgi uydurmaz. Açıkça bulunamayan alan boş bırakılır ve ön kontrol kapısı tarafından bloke edilir.
+    """
+    result: dict[str, Any] = {
+        "application_kind": "",
+        "reference": "",
+        "invention_title": "",
+        "applicants": [],
+        "inventors": [],
+        "priority": {"status": "Belirsiz", "country": "", "number": "", "date": "", "source": ""},
+        "other_information": [],
+        "conflicts": [],
+        "source_files_used": [],
+        "field_sources": {},
+    }
+    seen: dict[str, tuple[str, str]] = {}
+
+    for source, raw_text in source_blocks:
+        text = (raw_text or "").replace("\r", "\n")
+        result["source_files_used"].append(source)
+        current_role = ""
+        current_person: dict[str, str] | None = None
+        current_applicant = False
+        pending_label = ""
+
+        lines = [x.strip(" \r") for x in text.splitlines()]
+        for line in lines:
+            if not line:
+                continue
+
+            m = _LABEL_SPLIT_RE.match(line)
+            if m:
+                raw_label, value = m.group(1), _clean_value(m.group(2))
+                label = _canonical_label(raw_label)
+            else:
+                raw_label, value, label = line, "", _canonical_label(line)
+
+            # Başlık tek satır, değer sonraki satır biçimini destekle.
+            if pending_label and not label and line:
+                label, value, pending_label = pending_label, line, ""
+            elif label and not value and label in {"application_kind", "reference", "invention_title", "applicant", "inventor", "priority", "priority_country", "priority_number", "priority_date"}:
+                pending_label = label
+                if label == "applicant":
+                    current_role, current_person, current_applicant = "applicant", None, True
+                elif label == "inventor":
+                    current_role, current_person, current_applicant = "inventor", None, False
+                continue
+
+            if label == "application_kind":
+                kind = _kind_from_text(value)
+                if kind:
+                    _set_singleton(result, "application_kind", kind, source, seen)
+                continue
+            if label == "reference":
+                _set_singleton(result, "reference", value, source, seen)
+                continue
+            if label == "invention_title":
+                _set_singleton(result, "invention_title", value, source, seen)
+                continue
+            if label == "priority":
+                status = _priority_status(value)
+                if status != "Belirsiz":
+                    _set_singleton(result, "priority.status", status, source, seen)
+                current_role, current_person = "priority", None
+                continue
+            if label == "priority_country":
+                _set_singleton(result, "priority.country", value, source, seen)
+                current_role, current_person = "priority", None
+                continue
+            if label == "priority_number":
+                _set_singleton(result, "priority.number", value, source, seen)
+                current_role, current_person = "priority", None
+                continue
+            if label == "priority_date":
+                _set_singleton(result, "priority.date", value, source, seen)
+                current_role, current_person = "priority", None
+                continue
+
+            if label in {"applicant", "inventor"}:
+                current_role = label
+                current_applicant = label == "applicant"
+                people = _split_people_value(value)
+                current_person = None
+                for person_name in people:
+                    row = _new_person(person_name, source, applicant=current_applicant)
+                    current_person = _append_unique_person(result["applicants"] if current_applicant else result["inventors"], row, applicant=current_applicant)
+                continue
+
+            if label.startswith("applicant_") or label.startswith("inventor_"):
+                role, field = label.split("_", 1)
+                current_role = role
+                current_applicant = role == "applicant"
+                target = result["applicants"] if current_applicant else result["inventors"]
+                if current_person is None or current_person not in target:
+                    current_person = target[-1] if target else _new_person("", source, applicant=current_applicant)
+                    if not target:
+                        target.append(current_person)
+                if field == "identity":
+                    current_person["identity"] = _valid_identity(value)
+                elif field == "entity_type" and current_applicant:
+                    current_person["entity_type"] = _entity_type(current_person.get("name", ""), value)
+                elif field in {"address", "country", "city"}:
+                    current_person[field] = value
+                continue
+
+            if label in {"identity", "address", "country", "city", "entity_type"} and current_role in {"applicant", "inventor"}:
+                target = result["applicants"] if current_role == "applicant" else result["inventors"]
+                if current_person is None:
+                    current_person = _new_person("", source, applicant=current_role == "applicant")
+                    target.append(current_person)
+                if label == "identity":
+                    current_person["identity"] = _valid_identity(value)
+                elif label == "entity_type" and current_role == "applicant":
+                    current_person["entity_type"] = _entity_type(current_person.get("name", ""), value)
+                else:
+                    current_person[label] = value
+                continue
+
+            # Açık cümle biçimleri: "Rüçhan yoktur", "başvuru patent olarak yapılacaktır".
+            nline = _plain_norm(line)
+            if "ruchan" in nline and result["priority"]["status"] == "Belirsiz":
+                status = _priority_status(line)
+                if status != "Belirsiz":
+                    _set_singleton(result, "priority.status", status, source, seen)
+            if not result["application_kind"] and ("patent basvuru" in nline or "faydali model basvuru" in nline):
+                kind = _kind_from_text(line)
+                if kind:
+                    _set_singleton(result, "application_kind", kind, source, seen)
+
+            # Etiketli fakat başvuru çekirdek alanlarına ait olmayan bilgileri koru.
+            if m and value and not label:
+                result["other_information"].append({"label": _clean_value(raw_label), "value": value, "source": source})
+
+        # Serbest e-posta cümlelerinde yalnız açık rol ifadelerine izin ver.
+        # "XYZ üzerinden ilerleyelim" gibi yoruma açık ifadeler kişi/şirket rolüne çevrilmez.
+        if not result["applicants"]:
+            match = re.search(
+                r"(?i)(?:hak|başvuru)\s+sahibi(?:\s+olarak)?\s*(?::|-)?\s+(.{3,140}?)(?=\s+(?:olacaktır|olacak|olarak\s+belirlenmiştir|belirlenmiştir)\b|[\n;]|$)",
+                text,
+            )
+            if match:
+                name = re.sub(r"(?i)\s+(?:olacaktır|olacak|olarak\s+belirlenmiştir|belirlenmiştir)$", "", _clean_value(match.group(1))).strip(" ,")
+                if name:
+                    _append_unique_person(result["applicants"], _new_person(name, source, applicant=True), applicant=True)
+        if not result["inventors"]:
+            match = re.search(
+                r"(?i)(?:buluş\s+sahibi|buluşçu)(?:\s+olarak)?\s*(?::|-)?\s+(.{3,120}?)(?=\s+(?:olacaktır|olacak|olarak\s+belirlenmiştir|belirlenmiştir|dir|dır)\b|[\n;]|$)",
+                text,
+            )
+            if match:
+                name = re.sub(r"(?i)\s+(?:olacaktır|olacak|olarak\s+belirlenmiştir|belirlenmiştir|dir|dır)$", "", _clean_value(match.group(1))).strip(" ,")
+                if name:
+                    _append_unique_person(result["inventors"], _new_person(name, source, applicant=False), applicant=False)
+
+    # Tarifname yalnız başlık teyidi/geri dönüş kaynağıdır.
+    spec_title = _specification_title(specification_text)
+    if spec_title:
+        if result["invention_title"]:
+            if _plain_norm(result["invention_title"]) != _plain_norm(spec_title):
+                result["conflicts"].append(
+                    f"Buluş başlığı: '{result['invention_title']}' (başvuru kaynağı) / '{spec_title}' (Tarifname)"
+                )
+        else:
+            result["invention_title"] = spec_title
+            result["field_sources"]["invention_title"] = "Tarifname"
+
+    # Tekil alanların kaynaklarını ön kontrolde görünür tut.
+    for field_name in ("application_kind", "reference", "invention_title"):
+        if field_name in seen:
+            result["field_sources"][field_name] = seen[field_name][1]
+    if result["priority"].get("source"):
+        result["field_sources"]["priority"] = result["priority"]["source"]
+
+    # Aynı kimlik numarasının farklı adla kullanılmasını veya aynı kişinin farklı kritik bilgilerini işaretle.
+    for role_key, label in (("applicants", "Hak sahibi"), ("inventors", "Buluş sahibi")):
+        rows = result[role_key]
+        by_id: dict[str, dict[str, str]] = {}
+        for row in rows:
+            digits = re.sub(r"\D", "", row.get("identity", ""))
+            if not digits:
+                continue
+            if digits in by_id and _plain_norm(by_id[digits].get("name", "")) != _plain_norm(row.get("name", "")):
+                result["conflicts"].append(f"{label} kimlik {digits} farklı adlarla bulundu.")
+            else:
+                by_id[digits] = row
+
+    # Tekrarlı conflict metinlerini temizle.
+    result["conflicts"] = list(dict.fromkeys(x for x in result["conflicts"] if x))
+    return normalize_application_information(result)
+
 def build_application_information_prompt(source_blocks: list[tuple[str, str]], *, specification_text: str = "") -> str:
     blocks = []
     for name, text in source_blocks:
@@ -441,6 +838,11 @@ def normalize_application_information(data: dict[str, Any] | None) -> dict[str, 
         ],
         "conflicts": [str(x).strip() for x in (data.get("conflicts") or []) if str(x).strip()] if isinstance(data.get("conflicts"), list) else [],
         "source_files_used": [str(x).strip() for x in (data.get("source_files_used") or []) if str(x).strip()] if isinstance(data.get("source_files_used"), list) else [],
+        "field_sources": {
+            str(k): str(v).strip()
+            for k, v in (data.get("field_sources") or {}).items()
+            if isinstance(data.get("field_sources"), dict) and str(v).strip()
+        },
     }
 
 
