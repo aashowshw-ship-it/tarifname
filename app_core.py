@@ -1538,8 +1538,8 @@ KRİTİK TALİMATLAR:
 - Her bağımlı istem ana isteme göre gerçek bir daraltma sağlamalıdır.
 - Patent literatürü yalnızca ÖNCEKİ TEKNİK bölümünde kullanılsın.
 - Kullanıcıya sunulan tarifname metninde “BBF”, “buluş bildirim formu” veya kaynak dokümana atıf yapan benzer ifadeler kesinlikle bulunmasın; teknik bilgi doğrudan buluş anlatımı olarak yazılsın.
-- YAPILANDIRILMIŞ ENVANTER içindeki `technical_facts` listesinin HER maddesi nihai tarifnamede uygun yerde korunmalıdır. Teknik olarak sınıflandırılmış bir fact için `mandatory=false` kullanılamaz. Ayrıca üçüncü kişilere ait salt önceki-teknik/patent-literatürü fact'leri haricinde, buluşun kendisini açıklayan HER technical_fact (alan/kullanım, problem, çözüm, unsur, işlev, ilişki, akış/çalışma prensibi, avantaj/teknik etki, alternatif, örnek, ölçü-değer-aralık, performans ve görsel teknik bilgi) BULUŞUN DETAYLI AÇIKLAMASI içinde de açıkça bulunmalıdır. `source_coverage_map` evidence alanını bu fact'ler için özellikle DETAYLI AÇIKLAMA metninden seç ve sections içine `BULUŞUN DETAYLI AÇIKLAMASI` yaz. Başka bir bölümde geçmesi tek başına yeterli değildir.
-- BBF kaynak cümlesi teknik ve dilbilgisel olarak düzgünse detaylı açıklamada mümkün olan en yüksek ölçüde aynı cümle yapısını koru; sırf üslup için özetleme veya yeniden icat etme. Yalnız dilbilgisi/noktalama, doğal paragraf geçişi ve referans tablosuna uygun unsur adı/referans normalizasyonu yap. Kaynakta `eleman (1)`, `birinci eleman (1)` veya `unsur (1)` gibi geçici ad varsa ve 1 numaralı gerçek unsur adı belirlenmişse detaylı açıklamada gerçek unsur adını `(1)` ile kullan. Kaynaktaki `AM1.5G`, `365–1000 nm`, `850 nm`, `PWM` gibi teknik literal/değer/kısaltmaları atlama veya genel ifadeyle ikame etme.
+- YAPILANDIRILMIŞ ENVANTER içindeki `technical_facts` listesinin HER maddesi nihai tarifnamede doğru bölümde korunmalıdır. Teknik olarak sınıflandırılmış bir fact için `mandatory=false` kullanılamaz. `önceki_teknik` ve `problem` kategorisindeki fact'ler özellikle ÖNCEKİ TEKNİK bölümünde gerçek evidence ile bulunmalı ve Detaylı Açıklamaya zorla tekrar edilmemelidir. Buluşun kendisini açıklayan diğer technical_fact'ler (alan/kullanım, çözüm, unsur, işlev, ilişki, akış/çalışma prensibi, avantaj/teknik etki, alternatif, örnek, ölçü-değer-aralık, performans ve görsel teknik bilgi) BULUŞUN DETAYLI AÇIKLAMASI içinde de açıkça bulunmalıdır. `source_coverage_map` evidence alanını fact'in doğru bölümünden seç.
+- BBF kaynak cümlesi teknik ve dilbilgisel olarak düzgünse uygun bölümde mümkün olan en yüksek ölçüde aynı cümle yapısını koru; sırf üslup için özetleme veya yeniden icat etme. Yalnız dilbilgisi/noktalama, doğal paragraf geçişi ve referans tablosuna uygun unsur adı/referans normalizasyonu yap. `önceki_teknik` ve `problem` fact'lerini ÖNCEKİ TEKNİK'te tut; bunları Detaylı Açıklamaya kopyalama. Detaylı Açıklamada sabit girişten sonraki İLK teknik paragraf bütün referanslı unsurların kanonik ad+referansla, kaynak sırasına göre tek sürekli tanım paragrafı olmalıdır. Kaynakta `eleman (1)`, `birinci eleman (1)` veya `unsur (1)` gibi geçici ad varsa ve 1 numaralı gerçek unsur adı belirlenmişse gerçek unsur adını `(1)` ile kullan. Kaynaktaki `AM1.5G`, `365–1000 nm`, `850 nm`, `PWM` gibi buluşa ait teknik literal/değer/kısaltmaları atlama veya genel ifadeyle ikame etme. Gövde düzyazısında `Buluş;`/`Sistem;`/`Yöntem;` kullanma; virgül veya yeni cümle kullan. Detaylı Açıklamada `uygundur` kullanma; nesnel kullanım dili kur. `Sunulan çözüm`/`Bu çözüm` öznesi buluşu kastediyorsa `Buluş`/`Sistem`/`Yöntem` olarak normalize et.
 - Sistem ve yöntem istemleri birlikte oluşturuluyorsa başlık seçilen dile uygun olarak “... Sistemi ve Yöntemi” veya “... System and Method” yapısını taşısın.
 - REFERANS NUMARALARI bölümünde unsur adlarında yalnızca ilk normal kelimenin ilk harfi büyük olsun; standart teknik kısaltmaları koru. `Ev içi dijital ikiz simülatörü` doğru, `Ev İçi Dijital İkiz Simülatörü` yanlıştır. Unsur adları cümle içinde geçtiğinde Title Case kullanma; cümle başında yalnız ilk kelime doğal olarak büyük olabilir.
 - Türkçe buluş başlığında parantez içi İngilizce karşılık/kısaltma kullanma. Kaynak destekliyorsa uygulama kısaltması yerine daha genel teknik kavramı seç.
@@ -1618,7 +1618,7 @@ def tarifname_quality_prompt(
     return f"""{TARIFNAME_RULES}
 {language_instruction}
 Aşağıdaki tarifname taslağını kaynaklarla SATIR SATIR ve `technical_facts` bazında karşılaştır ve eksik/yanlış hususları düzelterek tam JSON'u yeniden üret.
-Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi geri eklenmelidir. `technical_facts` içindeki HER madde zorunludur. Salt üçüncü-kişi önceki-teknik/patent-literatürü fact'leri dışındaki buluş-teknik fact'lerin tamamı BULUŞUN DETAYLI AÇIKLAMASI içinde de bulunmalıdır; source_coverage_map evidence'ını bu bölümden gerçek alıntıyla ver. Kaynak cümle düzgünse onu gereksiz yere yeniden yazma/özetleme; yalnız dilbilgisi, noktalama ve unsur/referans normalizasyonu yap. `AM1.5G`, sayısal aralık/değer, standart/kısaltma ve örnekler kaynakta varsa detaylı açıklamadan düşemez. Her fact için `source_coverage_map` kaydı oluştur; bölüm ve kanıt metni boş bırakılamaz; evidence alanı tarifname taslağında birebir geçen en az 20 karakterlik bir alıntı olmalıdır. Genel “tam” beyanı yeterli değildir.
+Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi doğru bölüme geri eklenmelidir. `technical_facts` içindeki HER madde zorunludur. `önceki_teknik` ve `problem` fact'leri ÖNCEKİ TEKNİK'te kalır; bunları Detaylı Açıklamaya tekrar kopyalama. Buluşun kendisini açıklayan diğer fact'lerin tamamı BULUŞUN DETAYLI AÇIKLAMASI içinde de bulunmalıdır. Detaylı Açıklamada sabit girişten sonra ilk teknik paragraf mutlaka bütün referanslı unsurların kaynak sırasındaki tek sürekli tanım paragrafıdır; kullanım/çözüm/avantaj/çalışma prensibi ancak bunun ardından gelir. Kaynak cümle düzgünse onu gereksiz yere yeniden yazma/özetleme; yalnız dilbilgisi, noktalama, bağlam ve unsur/referans normalizasyonu yap. `AM1.5G`, sayısal aralık/değer, standart/kısaltma ve örnekler kaynakta buluşa ait teknik bilgi olarak varsa detaylı açıklamadan düşemez. Gövde düzyazısında `Buluş;`, `Sistem;`, `Yöntem;` kullanma; Detaylı Açıklamada `uygundur` kullanma; `Sunulan çözüm/Bu çözüm` öznesini gerektiğinde `Buluş/Sistem/Yöntem` olarak düzelt. Her fact için `source_coverage_map` kaydı oluştur; bölüm ve kanıt metni boş bırakılamaz; evidence alanı tarifname taslağında birebir geçen en az 20 karakterlik bir alıntı olmalıdır. Genel “tam” beyanı yeterli değildir.
 
 ÖNCEKİ OTOMATİK DOĞRULAMA GERİ BİLDİRİMİ (varsa):
 {validation_feedback or "Yok"}
@@ -1676,7 +1676,7 @@ ZORUNLU KONTROL LİSTESİ:
 49. İstemlerde standart “olup, özelliği;” dışında noktalı virgül var mı? Varsa virgül veya noktayla düzelt.
 50. Son kalite kapısında şu soruların tamamı EVET mi: kaynak tamlığı, açık referans adları, unsur tanımlama sırası, uzman-nasıl testi, farklılaştırıcı çekirdek, gereksiz kapsam daraltma yokluğu, bağımlı istem tekrarının olmaması, geçerli bağımlılık, örnek ölçülerin istemden uzak tutulması, ürün istem dili, referans senkronizasyonu ve tek paragraf/tek cümle özet?
 51. YAPILANDIRILMIŞ ENVANTER içindeki HER `technical_facts` maddesinin `source_coverage_map` içinde tek tek karşılığı var mı? Teknik fact için mandatory=false kabul edilmez; Her kaydın `covered=true`, en az bir bölüm adı ve tarifname taslağında birebir geçen en az 20 karakterlik gerçek bir kanıt alıntısı var mı? Özellikle teknik avantajlar, ayırt edici yönler ve bağımsızlık/performans sonuçları “benzer anlam var” denilerek atlanmış mı?
-51A. Salt üçüncü-kişi önceki-teknik/patent-literatürü fact'leri dışındaki bütün buluş-teknik fact'ler ayrıca BULUŞUN DETAYLI AÇIKLAMASI içinde gerçek evidence ile bulunuyor mu? Kaynaktaki AM1.5G, dalga boyu/aralık/değer, PWM gibi teknik literal/kısaltmalar korunmuş mu? Kaynak cümle düzgünse gereksiz özetleme/rewrite yapılmış mı? `eleman (N)` gibi geçici adlandırma gerçek unsur adıyla normalize edilmiş mi?
+51A. `önceki_teknik` ve `problem` fact'leri ÖNCEKİ TEKNİK'te tutulmuş ve Detaylı Açıklamaya yanlışlıkla taşınmamış mı? Bunların dışındaki bütün buluş-teknik fact'ler ayrıca BULUŞUN DETAYLI AÇIKLAMASI içinde gerçek evidence ile bulunuyor mu? Kaynaktaki AM1.5G, dalga boyu/aralık/değer, PWM gibi teknik literal/kısaltmalar korunmuş mu? Kaynak cümle düzgünse gereksiz özetleme/rewrite yapılmış mı? `eleman (N)` gibi geçici adlandırma gerçek unsur adıyla normalize edilmiş mi?
 52. Yazılım/modül ağırlıklı buluşta yalnız “işlemci/donanım” kelimesi geçmesiyle yetinilmiş mi, yoksa modül/yazılımın kaynakta dayanaklı teknik taşıyıcı üzerinde çalıştığı/koşturulduğu açık ilişkiyle yazılmış mı? Kaynak özel taşıyıcı veriyorsa genel elektronik cihaz ifadesi özel taşıyıcıyı silmiş mi?
 53. BULUŞUN DETAYLI AÇIKLAMASI giriş cümlesinde buluş adı cümle içi normal yazımla mı kullanılmış? Başlıktaki Title Case düzeni cümle içine kopyalanmamış mı; SIM/eSIM gibi kısaltmalar korunmuş mu?
 54. REFERANS NUMARALARI bölümündeki yöntem adımları `1001. ...` biçiminde önden yöntem numarasıyla mı yazılmış ve bu satırlarda sistem/cihaz `(1)`, `(2)` türü parantezli referans işaretleri kaldırılmış mı? Parantezli unsur referansları yalnız BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren mi başlıyor? Sistem ve yöntem alt istemlerinin tamamı semantik tekrar kontrolünden geçti mi?
@@ -1686,6 +1686,9 @@ ZORUNLU KONTROL LİSTESİ:
 58. Ortak `elektronik işlem birimi üzerinde koşturulan yazılım` üst maddesinin altında yalnız gerçekten yürütülebilir yazılım/modül/kontrolör/arayüz/yığın mı var? Veritabanı/bellek/veri deposu gibi pasif veri taşıyan unsur kaynakça açıkça yürütülebilir değilse ortak gruptan çıkarılmış mı?
 59. BULUŞUN DETAYLI AÇIKLAMASI ve İSTEMLER içinde REFERANS NUMARALARI listesindeki bir unsur adı her geçtiğinde aynı/çekimli unsur adıyla doğru `(N)` referansını taşıyor mu? Özellikle bağımsız ve bağımlı yöntem istemlerindeki gNodeB, arayüz, kontrolör, veritabanı, yığın ve cihaz kullanımları numaralı mı?
 60. Nihai Word üretildikten sonra ham kaynak zinciri ve altı son kapının tamamı tekrar geçmelidir: ham pasaj -> technical_fact -> nihai Word kanıtı; 1/6 BBF/KAYNAK TAMLIK, 2/6 DETAYLI AÇIKLAMA TAM KAYNAK AKTARIMI, 3/6 ANA+ALT İSTEM kalite/tekrar/gereklilik, 4/6 DETAYLI AÇIKLAMA+İSTEMLER REFERANS NUMARASI tamlığı, 5/6 TAM ŞABLON, 6/6 UNSUR/YÖNTEM DİLİ. Sistem alt istemlerinde `bulunmasıdır` kullanılmışsa mutlaka unsur merkezli `olmasıdır/içermesidir` diline dönüştür.
+61A. BULUŞUN DETAYLI AÇIKLAMASI sabit girişinden sonraki ilk teknik paragraf bütün referanslı unsurları REFERANS NUMARALARI sırasıyla, kanonik ad + `(N)` referansla ve temel kaynak tanımlarıyla tek sürekli paragrafta açıklıyor mu? Kullanım alanı/çözüm/avantaj/çalışma prensibi bu paragraftan önce gelmişse sırayı düzelt.
+61B. `Bu uygulamalar sonucunda...`, `Mevcut uygulamalarda...`, `Mevcut sistemlerde...` gibi önceki-teknik/problem anlatımı Detaylı Açıklamaya yanlış taşınmış mı? Varsa ÖNCEKİ TEKNİK'e geri taşı; bağlaçların aynı bölümde gerçek öncülü bulunmalı.
+61C. Gövde düzyazısında `Buluş;`, `Sistem;`, `Yöntem;`, `Düzenek;` veya gereksiz `;` var mı? İstemlerdeki `olup, özelliği;` ve izinli ortak-grup `ve;` dışında virgül/nokta kullan. Detaylı Açıklamada `uygundur` sözcüğü veya buluşu kasteden `Sunulan çözüm/Bu çözüm` öznesi varsa nesnel patent diline ve `Buluş/Sistem/Yöntem` öznesine düzelt.
 61. Türkçe BAĞIMSIZ istemlerin preamble'ı yalnız buluş adı kadar kısa mı? `olup, özelliği;` öncesi kaynak-destekli teknik giriş Word şablonunda en az iki fiziksel satır oluşturacak kadar anlamlı teknik bağlam/temel işlev içermeli; manuel satır sonu veya anlamsız dolgu kullanılmamalıdır. Açıkça kısa preamble varsa yeniden yaz.
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
@@ -1759,7 +1762,7 @@ AMAÇ:
 2. Her satırda classification yalnız `technical` veya `nontechnical` olabilir ve en az 10 karakterlik classification_reason zorunludur.
 3. source_quote, ilgili ham pasajın kendi metninden birebir alınmış; pasaj 20 karakter veya daha uzunsa en az 20 karakterlik, daha kısaysa pasajın tamamını kapsayan bir bölüm olmalıdır.
 4. `technical` sınıflandırılan her pasaj için covered=true/false kararı ver; covered=true ise nihai taslaktan BİREBİR geçen en az 20 karakterlik evidence zorunludur. Teknik anlamın bir parçası eksikse covered=false ve missing_detail zorunludur.
-5. Teknik pasaj buluşun kendisini açıklıyorsa (alan/kullanım, teknik problem, çözüm, unsur, işlev/ilişki, çalışma prensibi/akışı, etki/avantaj, alternatif, örnek, ölçü/değer/aralık, performans veya görsel teknik bilgi) `detail_transfer_required=true` yaz ve `detail_evidence` alanına yalnız BULUŞUN DETAYLI AÇIKLAMASI içinden birebir en az 20 karakterlik kanıt koy. Salt üçüncü kişilere ait önceki-teknik/patent-literatürü pasajında `detail_transfer_required=false` olabilir.
+5. Teknik pasaj mevcut uygulamaları/önceki tekniği veya bunlardan doğan teknik problemi anlatıyorsa `detail_transfer_required=false` yaz; bu içerik ÖNCEKİ TEKNİK'te kalır. Teknik pasaj buluşun kendisini açıklıyorsa (alan/kullanım, çözüm, unsur, işlev/ilişki, çalışma prensibi/akışı, etki/avantaj, alternatif, örnek, ölçü/değer/aralık, performans veya görsel teknik bilgi) `detail_transfer_required=true` yaz ve `detail_evidence` alanına yalnız BULUŞUN DETAYLI AÇIKLAMASI içinden birebir en az 20 karakterlik kanıt koy.
 6. Kaynak cümle düzgünse ayrıntının özetlenmeden korunduğunu denetle; teknik literal/değer/kısaltma (örn. AM1.5G, 365–1000 nm, 850 nm, PWM) düşmüşse covered=false yap. Genel/geçici `eleman (N)` adı nihai referans tablosundaki gerçek unsur adına çevrilmiş olabilir ve bu tek başına eksiklik değildir.
 7. `nontechnical` pasaj için evidence boş liste olabilir; covered=true, detail_transfer_required=false ve detail_evidence="" yazılır.
 8. Bütün teknik pasajlar covered=true değilse all_pass=false olmalıdır. Detail-transfer zorunlu bir teknik pasajın detail_evidence'ı yoksa all_pass=false olmalıdır.
@@ -2816,6 +2819,70 @@ def _validate_detailed_element_cohesion(draft: dict[str, Any], language: str = "
                 raise ValueError(f"BULUŞUN DETAYLI AÇIKLAMASI {idx}. paragrafı aynı unsur zincirini '{name} ({n})' ile yeniden başlatıyor; unsur açıklamaları tek sürekli paragrafta birleştirilmelidir.")
 
 
+
+def _validate_detailed_section_order_routing_and_style(draft: dict[str, Any], extracted: dict[str, Any] | None, language: str = "Türkçe") -> None:
+    """Detaylı açıklama ilk-unsur sırası, önceki-teknik yerleşimi ve Türkçe düzyazı kapısı."""
+    if _english_spec(language):
+        return
+    paras = [str(x or "").strip() for x in (draft.get("detailed_paragraphs") or []) if str(x or "").strip()]
+    if not paras:
+        raise ValueError("BULUŞUN DETAYLI AÇIKLAMASI boş bırakılamaz.")
+    first = paras[0]
+    # Unsurlar ilk paragrafta ve kaynak/referans sırasıyla görünmelidir.
+    last_pos = -1
+    missing=[]; out_of_order=[]
+    for e in draft.get("elements") or []:
+        n=str(e.get("number","") or "").strip(); name=str(e.get("name","") or "").strip()
+        if not n or not name: continue
+        m=re.search(_reference_mention_pattern(name).pattern + r"\s*\(\s*" + re.escape(n) + r"\s*\)", first, flags=re.IGNORECASE)
+        if not m:
+            missing.append(f"{name} ({n})")
+        elif m.start() < last_pos:
+            out_of_order.append(f"{name} ({n})")
+        else:
+            last_pos=m.start()
+    if missing:
+        raise ValueError("DETAYLI AÇIKLAMA sıra kapısı: sabit girişten sonraki ilk teknik paragraf bütün referanslı unsur tanımlarını içermelidir. Eksik: " + "; ".join(missing))
+    if out_of_order:
+        raise ValueError("DETAYLI AÇIKLAMA sıra kapısı: unsurlar REFERANS NUMARALARI sırasını izlemelidir. Sıra dışı: " + "; ".join(out_of_order))
+
+    detail_text="\n".join(paras)
+    # Önceki teknik/problem paragrafı Detaylı Açıklamaya taşınamaz.
+    forbidden_starters=(
+        r"^Bu uygulamalar sonucunda\b", r"^Mevcut uygulamalarda\b", r"^Mevcut sistemlerde\b",
+        r"^Klasik,?\s+.*sistemlerde\b", r"^LED tabanlı mevcut çözümler\b",
+    )
+    bad_prior=[]
+    for para in paras:
+        if any(re.search(rx, para, flags=re.IGNORECASE) for rx in forbidden_starters):
+            bad_prior.append(para[:90])
+    if bad_prior:
+        raise ValueError("DETAYLI AÇIKLAMA bölüm yerleşim kapısı: önceki-teknik/problem paragrafı Detaylı Açıklamaya taşınmış: " + " | ".join(bad_prior[:5]))
+
+    # Türkçe gövde düzyazısında noktalı virgül ve hatalı özneler.
+    if re.search(r"\b(?:Buluş|Sistem|Yöntem|Düzenek)\s*;", detail_text):
+        raise ValueError("DETAYLI AÇIKLAMA dil kapısı: noktalı virgül ile `Buluş;`/`Sistem;`/`Yöntem;`/`Düzenek;` kullanılamaz; virgül veya yeni cümle kullanılmalıdır.")
+    if ";" in detail_text:
+        raise ValueError("DETAYLI AÇIKLAMA dil kapısı: düzyazıda noktalı virgül kullanılmamalıdır; uygun virgül veya nokta ile düzeltin.")
+    if re.search(r"\buygundur\b", detail_text, flags=re.IGNORECASE):
+        raise ValueError("DETAYLI AÇIKLAMA dil kapısı: `uygundur` değerlendirme ifadesi kullanılmamalı; nesnel kullanım/işlev dili kurulmalıdır.")
+    if re.search(r"(?:^|[.!?]\s+)(?:Sunulan çözüm|Bu çözüm|Çözüm)\b", detail_text, flags=re.IGNORECASE):
+        raise ValueError("DETAYLI AÇIKLAMA dil kapısı: buluşu kasteden `Sunulan çözüm/Bu çözüm/Çözüm` öznesi yerine `Buluş`, `Sistem` veya `Yöntem` kullanılmalıdır.")
+
+    # Problem/önceki teknik fact'leri Detaylı Açıklama evidence'ı olarak gösterilemez.
+    if extracted:
+        wrong_ids={str(f.get("id","") or "").strip() for f in (extracted.get("technical_facts") or [])
+                   if str(f.get("id","") or "").strip() and str(f.get("category","") or "").strip().casefold() in {"önceki_teknik","onceki_teknik","prior_art","prior art","problem","teknik_problem","technical_problem","technical problem"}}
+        rows={str(r.get("fact_id","") or "").strip():r for r in (draft.get("source_coverage_map") or [])}
+        misplaced=[]
+        for fid in wrong_ids:
+            row=rows.get(fid) or {}
+            secs=" ".join(map(str,row.get("sections") or [])).casefold()
+            if "detaylı açıklama" in secs or "detayli açiklama" in secs or "detailed description" in secs:
+                misplaced.append(fid)
+        if misplaced:
+            raise ValueError("DETAYLI AÇIKLAMA bölüm yerleşim kapısı: önceki_teknik/problem fact'i Detaylı Açıklamaya evidence olarak bağlanamaz: " + ", ".join(sorted(misplaced)))
+
 def _validate_realization_wording(draft: dict[str, Any], language: str = "Türkçe") -> None:
     if _english_spec(language):
         return
@@ -2910,6 +2977,7 @@ def validate_tarifname_draft(
     _validate_prior_art_bridge_and_depth(draft, extracted, language)
     _validate_unumbered_claim_mirror(draft, claim_mode, language)
     _validate_detailed_element_cohesion(draft, language)
+    _validate_detailed_section_order_routing_and_style(draft, extracted, language)
     _validate_realization_wording(draft, language)
     _validate_figure_description_style(draft, language)
     technical_field_raw = str(draft.get("technical_field", "") or "").strip()
@@ -3070,7 +3138,7 @@ def validate_tarifname_draft(
         if invalid_evidence:
             raise ValueError("BBF tamlık kapısı başarısız: source_coverage_map kanıtı nihai tarifname metninde birebir doğrulanamayan fact_id: " + ", ".join(invalid_evidence))
 
-    # v5.4.42: buluş-teknik fact'lerin özellikle Detaylı Açıklama içinde tam transfer kapısı.
+    # v5.4.43: buluş-teknik fact'lerin özellikle Detaylı Açıklama içinde tam transfer kapısı.
     if extracted is not None:
         validate_detailed_description_fact_coverage(
             extracted,
@@ -3463,6 +3531,33 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
                     bad_starts.append(word)
             if bad_starts:
                 raise ValueError("Word detaylı açıklama kapısı: cümle/paragraf başlangıcındaki ilk normal sözcük küçük harfle bırakılmış: " + "; ".join(sorted(set(bad_starts))))
+
+        # Bölüm sırası/dil Word kapısı: sabit girişten sonraki ilk teknik paragraf unsur paragrafıdır.
+        if 0 <= di < ci:
+            nonempty_after=[texts[j] for j in range(di+1,ci) if texts[j]]
+            # ilk nonempty sabit intro, ikinci nonempty ilk teknik paragraf
+            if len(nonempty_after) >= 2:
+                first_technical=nonempty_after[1]
+                last_pos=-1; missing=[]; out_of_order=[]
+                for e in draft.get("elements") or []:
+                    n=str(e.get("number","") or "").strip(); name=str(e.get("name","") or "").strip()
+                    if not n or not name: continue
+                    m=re.search(_reference_mention_pattern(name).pattern + r"\s*\(\s*" + re.escape(n) + r"\s*\)", first_technical, flags=re.IGNORECASE)
+                    if not m: missing.append(f"{name} ({n})")
+                    elif m.start() < last_pos: out_of_order.append(f"{name} ({n})")
+                    else: last_pos=m.start()
+                if missing or out_of_order:
+                    raise ValueError("Word detaylı açıklama sıra kapısı: sabit girişten sonraki ilk teknik paragraf bütün unsurları referans sırasıyla açıklamalıdır.")
+            body_detail="\n".join(nonempty_after[1:]) if len(nonempty_after)>1 else ""
+            if re.search(r"\b(?:Buluş|Sistem|Yöntem|Düzenek)\s*;", body_detail) or ";" in body_detail:
+                raise ValueError("Word detaylı açıklama dil kapısı: gövde düzyazısında noktalı virgül kullanılamaz.")
+            if re.search(r"\buygundur\b", body_detail, flags=re.IGNORECASE):
+                raise ValueError("Word detaylı açıklama dil kapısı: `uygundur` kullanılamaz.")
+            if re.search(r"(?:^|[.!?]\s+)(?:Sunulan çözüm|Bu çözüm|Çözüm)\b", body_detail, flags=re.IGNORECASE):
+                raise ValueError("Word detaylı açıklama dil kapısı: `Sunulan çözüm/Bu çözüm/Çözüm` öznesi kanonik buluş/sistem/yöntem öznesine çevrilmelidir.")
+            for para_text in nonempty_after[1:]:
+                if re.search(r"^(?:Bu uygulamalar sonucunda|Mevcut uygulamalarda|Mevcut sistemlerde|LED tabanlı mevcut çözümler)\b", para_text, flags=re.IGNORECASE):
+                    raise ValueError("Word detaylı açıklama bölüm kapısı: önceki-teknik/problem paragrafı Detaylı Açıklamaya taşınamaz.")
 
     # 4. kapının tam sürümü: bütün bölüm geçişleri, paragraf arketipleri, header/footer ve sayfa numarası konumu.
     validate_full_tarifname_template_fidelity(data, TARIFNAME_TEMPLATE, draft, language)

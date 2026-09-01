@@ -32,8 +32,8 @@ def _base_opinion():
 
 
 def test_version_and_ruleset_bumped_for_opinion_gate():
-    assert APP_VERSION == "v5.4.42"
-    assert RULESET_VERSION == "2026-09-01.v32"
+    assert APP_VERSION == "v5.4.43"
+    assert RULESET_VERSION == "2026-09-01.v33"
 
 
 def test_gorus_rules_include_language_physical_line_original_figures_and_full_output_gate():

@@ -506,7 +506,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - X gerçek teknik bağımlılık numarasıdır. Taslak istem kapısı ile nihai Word çıktı kapısı bu kuralı ayrı ayrı kontrol eder ve ihlalde indirmeyi bloke eder.
 
 
-## v5.4.42 / 2026-09-01.v32 — BBF teknik içeriğinin Detaylı Açıklamaya eksiksiz ve kaynak-sadık aktarımı
+## v5.4.43 / 2026-09-01.v33 — BBF teknik içeriğinin Detaylı Açıklamaya eksiksiz ve kaynak-sadık aktarımı
 
 - BBF/ek teknik kaynakta buluşun kendisini açıklayan her teknik passage/fact `BULUŞUN DETAYLI AÇIKLAMASI` içinde de kanıtlanır. Başka bölümde bulunması bu kapıyı geçirmez. Teknik alan/kullanım, problem, çözüm, unsur, unsur işlevi/ilişkisi, çalışma prensibi, teknik etki, alternatif, örnek, ölçü/değer/aralık, performans ve teknik görsel bilgisi kapsam içindedir; salt üçüncü kişi önceki-teknik/patent-literatürü hariçtir.
 - Kaynak cümle düzgünse kaynak yapısı korunur; özetleme/sadeleştirme yoluyla teknik ayrıntı düşürülemez. Yalnız dilbilgisi/noktalama, doğal paragraf geçişi ve kanonik unsur adı/referans normalizasyonu yapılır. `eleman (N)` / `birinci eleman (N)` gibi geçici adlar, aynı N için belirlenmiş gerçek unsur adıyla değiştirilir.
@@ -515,3 +515,12 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Modelin `covered=true/all_pass=true` beyanı tek başına hiçbir kapıyı geçirmez. Detay evidence, literal ve kaynak zinciri kod tarafından yeniden aranır.
 - Referans tablosunda açıkça tanımlanmış her sistem unsuru, `Yeni/Önceki` işaretinden bağımsız olarak istemlerin en az birinde bulunur; ana istemde zorunlu değilse anlamlı bağımlı istem olarak kullanılabilir. `Yeni` işaretli olmamak, unsurun istem setinden çıkarılması için gerekçe değildir.
 - Nihai altı ana Word kapısı: `source_completeness`, `detail_source_transfer`, `claims`, `references`, `template`, `element_step_language`.
+
+
+## v5.4.43 / 2026-09-01.v33 — Detaylı Açıklama bölüm yerleşimi, ilk-unsur paragrafı ve Türkçe gövde dili
+
+- `önceki_teknik` ve `problem` technical_facts yalnız ÖNCEKİ TEKNİK gövdesinde zorunlu evidence taşır; `Bu uygulamalar sonucunda...` gibi mevcut-teknik/problem paragrafları Detaylı Açıklamaya tekrar kopyalanmaz. Bağlaç aynı bölümde gerçek öncül olmadan bırakılamaz.
+- BULUŞUN DETAYLI AÇIKLAMASI sabit giriş paragrafından sonra ilk teknik paragraf mutlaka bütün referanslı unsurların REFERANS NUMARALARI sırasındaki tek sürekli tanım paragrafıdır. BBF referans tablosundaki düzgün unsur açıklamaları mümkün olduğunca doğrudan korunur; geçici `eleman (N)` adı kanonik unsur adı + `(N)` olarak normalize edilir. Kullanım, çözüm, teknik etki, işlev ilişkileri, çalışma prensibi, alternatif ve örnek paragrafları ancak bu unsur paragrafından sonra gelir.
+- Türkçe gövde düzyazısında `Buluş;`, `Sistem;`, `Yöntem;`, `Düzenek;` ve gereksiz noktalı virgül yasaktır. İstemlerdeki `olup, özelliği;` ve izinli ortak-taşıyıcı `ve;` istisnadır.
+- Detaylı Açıklamada `uygundur` yerine nesnel kullanım/işlev dili kullanılır. Buluşu kasteden `Sunulan çözüm/Bu çözüm/Çözüm` öznesi `Buluş`, `Sistem` veya `Yöntem` olarak normalize edilir.
+- Taslak ve nihai Word kapıları ilk-unsur sırasını, önceki-teknik paragrafının yanlış bölüme taşınmasını, noktalı virgülü, `uygundur` ifadesini ve çözüm-özne kullanımını deterministik olarak reddeder.

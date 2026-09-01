@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.42
+# Patent Atölyesi v5.4.43
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 01.09.2026 tarihli güncel tam sürümüdür.
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-09-01.v32`
+Kural sürümü: `2026-09-01.v33`
 
 ## Yerel çalıştırma
 
@@ -449,7 +449,7 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Taslak kalite kapısı ve nihai Word kalite kapısı bu başlangıçları ayrı ayrı doğrular. `İstem 1’e uygun ayarlanabilir ... sistemi olup, özelliği;` gibi uzatılmış giriş varsa çıktı kullanıcıya açılmaz.
 
 
-## v5.4.42 / 2026-09-01.v32 — Detaylı Açıklama tam kaynak aktarımı + gerçek BBF ikinci-okuma kapısı
+## v5.4.43 / 2026-09-01.v33 — Detaylı Açıklama tam kaynak aktarımı + gerçek BBF ikinci-okuma kapısı
 
 - BBF ve açık teknik müşteri kaynaklarında **buluşun kendisini açıklayan bütün teknik bilgi**, yalnız tarifnamenin herhangi bir bölümünde bulunmakla yetinemez; `BULUŞUN DETAYLI AÇIKLAMASI` içinde de eksiksiz bulunur. Teknik alan/kullanım, teknik problem, çözüm, bütün unsurlar ve işlevleri, unsur ilişkileri, çalışma prensibi, teknik etkiler/avantajlar, alternatifler, örnekler, ölçü/değer/aralıklar, performans bilgileri ve teknik görselden çıkarılabilen buluş bilgisi bu kapsamdadır. Salt üçüncü kişi önceki-teknik/patent-literatürü bu zorunlu tekrara dahil değildir.
 - Kaynak cümle teknik ve dilbilgisel olarak düzgünse **özetlenmez ve gereksiz yere yeniden yazılmaz**; mümkün olan en yüksek ölçüde kaynak cümle yapısı korunur. Yalnız dilbilgisi/noktalama, patent metni geçişi ve kanonik unsur adı/referans normalizasyonu yapılabilir. Kaynakta `eleman (1)` gibi geçici ifade varsa, nihai referans tablosundaki gerçek ad (ör. `solar spektrum kafası (1)`) kullanılır; bu normalizasyon yeni teknik bilgi ekleyemez.
@@ -458,3 +458,8 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 - Taslak sonrası bağımsız ham-BBF ikinci okuması önceki passage/fact/coverage kararlarını görmez. Buna rağmen ilk ve ikinci okuma teknik/teknik-dışı sınıflandırması çelişirse veya bir buluş-teknik pasaj ikinci okumada `detail_transfer_required=false` işaretlenirse çıktı **FAIL** olur ve kaynak çıkarımı yeniden yapılır. Nonce + kaynak SHA-256 + taslak SHA-256 bağlaması olmadan eski/uydurma audit kabul edilmez.
 - Referans tablosunda açıkça tanımlanmış her sistem unsuru, BBF'deki `Yeni/Önceki` işaretinden bağımsız olarak istem setinde en az bir kez bulunur. Ana istem için zorunlu/farklılaştırıcı değilse uygun bir bağımlı istemde geri çekilme pozisyonu olarak kullanılabilir; `Yeni` kutusunun işaretli olmaması unsurun istemlerden sessizce atılmasına gerekçe değildir.
 - Nihai çıktı kapıları artık altıdır: `source_completeness + detail_source_transfer + claims + references + template + element_step_language`. Bu altı kapı ve diğer ekstra kontroller gerçekten PASS olmadan `EKSTRA KONTROLLER YAPILDI` gösterilemez.
+
+
+## v5.4.43 — Detaylı Açıklama yerleşim ve dil kapısı
+
+Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasajları ÖNCEKİ TEKNİK bölümünde tutulur; Detaylı Açıklamaya zorla tekrar edilmez. Detaylı Açıklama sabit girişinden sonra ilk teknik paragraf bütün referanslı unsurları referans sırasıyla, kanonik unsur adı + numarası ve kaynak tanımıyla tek sürekli paragrafta açıklar. Sonraki paragraflarda kullanım, çözüm, teknik etkiler, unsur ilişkileri, çalışma prensibi, alternatifler, örnekler ve teknik değerler kaynak-sadık biçimde verilir. Gövde düzyazısında `Buluş;`/`Sistem;`/`Yöntem;`, gereksiz noktalı virgül ve Detaylı Açıklamada `uygundur` kullanımı çıktı kapısında reddedilir; buluşu kasteden `Sunulan çözüm/Bu çözüm` öznesi kanonik `Buluş/Sistem/Yöntem` diline çevrilir.

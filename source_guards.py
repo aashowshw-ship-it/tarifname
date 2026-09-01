@@ -205,6 +205,7 @@ def validate_final_source_coverage_chain(
 _DETAIL_PRIOR_ART_CATEGORIES = {
     "önceki_teknik", "onceki_teknik", "prior_art", "prior art",
     "literatür", "literatur", "literature", "patent_literature",
+    "problem", "teknik_problem", "technical_problem", "technical problem",
 }
 _DETAIL_SECTION_MARKERS = ("buluşun detaylı açıklaması", "buluşun detayli açiklamasi", "detailed description")
 _GENERIC_REF_PLACEHOLDER_RE = re.compile(
