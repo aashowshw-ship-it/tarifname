@@ -1573,7 +1573,7 @@ KRİTİK TALİMATLAR:
 - Patent literatürü yalnızca ÖNCEKİ TEKNİK bölümünde kullanılsın.
 - Kullanıcıya sunulan tarifname metninde “BBF”, “buluş bildirim formu” veya kaynak dokümana atıf yapan benzer ifadeler kesinlikle bulunmasın; teknik bilgi doğrudan buluş anlatımı olarak yazılsın.
 - YAPILANDIRILMIŞ ENVANTER içindeki `technical_facts` listesinin HER maddesi nihai tarifnamede doğru bölümde korunmalıdır. Teknik olarak sınıflandırılmış bir fact için `mandatory=false` kullanılamaz. `önceki_teknik` ve `problem` kategorisindeki fact'ler özellikle ÖNCEKİ TEKNİK bölümünde gerçek evidence ile bulunmalı ve Detaylı Açıklamaya zorla tekrar edilmemelidir. Buluşun kendisini açıklayan diğer technical_fact'ler (alan/kullanım, çözüm, unsur, işlev, ilişki, akış/çalışma prensibi, avantaj/teknik etki, alternatif, örnek, ölçü-değer-aralık, performans ve görsel teknik bilgi) BULUŞUN DETAYLI AÇIKLAMASI içinde de açıkça bulunmalıdır. `source_coverage_map` evidence alanını fact'in doğru bölümünden seç.
-- BBF kaynak cümlesi teknik ve dilbilgisel olarak düzgünse uygun bölümde mümkün olan en yüksek ölçüde aynı cümle yapısını koru; sırf üslup için özetleme veya yeniden icat etme. Yalnız dilbilgisi/noktalama, doğal paragraf geçişi ve referans tablosuna uygun unsur adı/referans normalizasyonu yap. `önceki_teknik` ve `problem` fact'lerini ÖNCEKİ TEKNİK'te tut; bunları Detaylı Açıklamaya kopyalama. Detaylı Açıklamada sabit girişten sonraki İLK teknik paragraf bütün referanslı unsurların kanonik ad+referansla, kaynak sırasına göre tek sürekli tanım paragrafı olmalıdır. Kaynakta `eleman (1)`, `birinci eleman (1)` veya `unsur (1)` gibi geçici ad varsa ve 1 numaralı gerçek unsur adı belirlenmişse gerçek unsur adını `(1)` ile kullan. Kaynaktaki `AM1.5G`, `365–1000 nm`, `850 nm`, `PWM` gibi buluşa ait teknik literal/değer/kısaltmaları atlama veya genel ifadeyle ikame etme. Gövde düzyazısında `Buluş;`/`Sistem;`/`Yöntem;` kullanma; virgül veya yeni cümle kullan. Detaylı Açıklamada `uygundur` kullanma; nesnel kullanım dili kur. `Sunulan çözüm`/`Bu çözüm` öznesi buluşu kastediyorsa `Buluş`/`Sistem`/`Yöntem` olarak normalize et.
+- BBF kaynak cümlesi teknik ve dilbilgisel olarak düzgünse teknik içeriğini ve mümkün olan ölçüde doğal cümle yapısını koru; fakat bunu ardışık BBF kopyasına dönüştürme. Önce teknik fact'leri kayıpsız koru, sonra önceki patent yazım katmanını uygula: ilk unsur-tanım paragrafından sonra unsurlar arası teknik ilişkiyi ve çalışma prensibini akıcı patent paragraflarıyla anlat; kaynak alternatif/örnek/seçilebilir mod içeriyorsa uygun yerde `Buluşun bir yapılanmasında, ...` veya gerçekten tercih bildiren durumda `Buluşun tercih edilen bir yapılanmasında, ...` kullan. `working_principle` alanı boş olamaz ve en az üç farklı referanslı unsurun birlikte nasıl çalıştığını açıklamalıdır. Yalnız dilbilgisi/noktalama, doğal paragraf geçişi ve referans tablosuna uygun unsur adı/referans normalizasyonu yap; teknik anlamı yeniden icat etme. `önceki_teknik` ve `problem` fact'lerini ÖNCEKİ TEKNİK'te tut; bunları Detaylı Açıklamaya kopyalama. Detaylı Açıklamada sabit girişten sonraki İLK teknik paragraf bütün referanslı unsurların kanonik ad+referansla, kaynak sırasına göre tek sürekli tanım paragrafı olmalıdır. Kaynakta `eleman (1)`, `birinci eleman (1)` veya `unsur (1)` gibi geçici ad varsa ve 1 numaralı gerçek unsur adı belirlenmişse gerçek unsur adını `(1)` ile kullan. Kaynaktaki `AM1.5G`, `365–1000 nm`, `850 nm`, `PWM` gibi buluşa ait teknik literal/değer/kısaltmaları atlama veya genel ifadeyle ikame etme. Gövde düzyazısında `Buluş;`/`Sistem;`/`Yöntem;` kullanma; virgül veya yeni cümle kullan. Detaylı Açıklamada `uygundur` kullanma; nesnel kullanım dili kur. `Sunulan çözüm`/`Bu çözüm` öznesi buluşu kastediyorsa `Buluş`/`Sistem`/`Yöntem` olarak normalize et.
 - Sistem ve yöntem istemleri birlikte oluşturuluyorsa başlık seçilen dile uygun olarak “... Sistemi ve Yöntemi” veya “... System and Method” yapısını taşısın.
 - REFERANS NUMARALARI bölümünde unsur adlarında yalnızca ilk normal kelimenin ilk harfi büyük olsun; standart teknik kısaltmaları koru. `Ev içi dijital ikiz simülatörü` doğru, `Ev İçi Dijital İkiz Simülatörü` yanlıştır. Unsur adları cümle içinde geçtiğinde Title Case kullanma; cümle başında yalnız ilk kelime doğal olarak büyük olabilir.
 - Türkçe buluş başlığında parantez içi İngilizce karşılık/kısaltma kullanma. Kaynak destekliyorsa uygulama kısaltması yerine daha genel teknik kavramı seç.
@@ -1652,7 +1652,7 @@ def tarifname_quality_prompt(
     return f"""{TARIFNAME_RULES}
 {language_instruction}
 Aşağıdaki tarifname taslağını kaynaklarla SATIR SATIR ve `technical_facts` bazında karşılaştır ve eksik/yanlış hususları düzelterek tam JSON'u yeniden üret.
-Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi doğru bölüme geri eklenmelidir. `technical_facts` içindeki HER madde zorunludur. `önceki_teknik` ve `problem` fact'leri ÖNCEKİ TEKNİK'te kalır; bunları Detaylı Açıklamaya tekrar kopyalama. Buluşun kendisini açıklayan diğer fact'lerin tamamı BULUŞUN DETAYLI AÇIKLAMASI içinde de bulunmalıdır. Detaylı Açıklamada sabit girişten sonra ilk teknik paragraf mutlaka bütün referanslı unsurların kaynak sırasındaki tek sürekli tanım paragrafıdır; kullanım/çözüm/avantaj/çalışma prensibi ancak bunun ardından gelir. Kaynak cümle düzgünse onu gereksiz yere yeniden yazma/özetleme; yalnız dilbilgisi, noktalama, bağlam ve unsur/referans normalizasyonu yap. `AM1.5G`, sayısal aralık/değer, standart/kısaltma ve örnekler kaynakta buluşa ait teknik bilgi olarak varsa detaylı açıklamadan düşemez. Gövde düzyazısında `Buluş;`, `Sistem;`, `Yöntem;` kullanma; Detaylı Açıklamada `uygundur` kullanma; `Sunulan çözüm/Bu çözüm` öznesini gerektiğinde `Buluş/Sistem/Yöntem` olarak düzelt. Her fact için `source_coverage_map` kaydı oluştur; bölüm ve kanıt metni boş bırakılamaz; evidence alanı tarifname taslağında birebir geçen en az 20 karakterlik bir alıntı olmalıdır. Genel “tam” beyanı yeterli değildir.
+Bu bir özetleme görevi değildir. Kaynakta olup taslakta bulunmayan her teknik bilgi doğru bölüme geri eklenmelidir. `technical_facts` içindeki HER madde zorunludur. `önceki_teknik` ve `problem` fact'leri ÖNCEKİ TEKNİK'te kalır; bunları Detaylı Açıklamaya tekrar kopyalama. Buluşun kendisini açıklayan diğer fact'lerin tamamı BULUŞUN DETAYLI AÇIKLAMASI içinde de bulunmalıdır. Detaylı Açıklamada sabit girişten sonra ilk teknik paragraf mutlaka bütün referanslı unsurların kaynak sırasındaki tek sürekli tanım paragrafıdır. Bu paragraftan sonra eski patent yazım katmanını koru: unsurlar arası teknik ilişkiler ve çalışma prensibi bütünsel biçimde yazılmalı, kaynakta alternatif/örnek/seçilebilir mod varsa uygun `Buluşun bir yapılanmasında, ...` / `Buluşun tercih edilen bir yapılanmasında, ...` dili kullanılmalı ve `working_principle` alanı salt unsur sözlüğü tekrarı olmamalıdır. Kaynak cümle düzgünse teknik içeriğini kaybetmeden patent diline bağla; ardışık BBF kopyası üretme. `AM1.5G`, sayısal aralık/değer, standart/kısaltma ve örnekler kaynakta buluşa ait teknik bilgi olarak varsa detaylı açıklamadan düşemez; ham passage literal kapısı bunları fact statement'tan bağımsız da kontrol eder. Gövde düzyazısında `Buluş;`, `Sistem;`, `Yöntem;` kullanma; Detaylı Açıklamada `uygundur` kullanma; `Sunulan çözüm/Bu çözüm` öznesini gerektiğinde `Buluş/Sistem/Yöntem` olarak düzelt. Her fact için `source_coverage_map` kaydı oluştur; bölüm ve kanıt metni boş bırakılamaz; evidence alanı tarifname taslağında birebir geçen en az 20 karakterlik bir alıntı olmalıdır. Genel “tam” beyanı yeterli değildir.
 
 ÖNCEKİ OTOMATİK DOĞRULAMA GERİ BİLDİRİMİ (varsa):
 {validation_feedback or "Yok"}
@@ -2921,6 +2921,52 @@ def _validate_detailed_section_order_routing_and_style(draft: dict[str, Any], ex
         if misplaced:
             raise ValueError("DETAYLI AÇIKLAMA bölüm yerleşim kapısı: önceki_teknik/problem fact'i Detaylı Açıklamaya evidence olarak bağlanamaz: " + ", ".join(sorted(misplaced)))
 
+
+def _source_requires_patent_embodiment_layer(extracted: dict[str, Any] | None) -> bool:
+    if not extracted:
+        return False
+    for fact in extracted.get("technical_facts") or []:
+        category = re.sub(r"\s+", "_", str(fact.get("category", "") or "").strip().casefold())
+        statement = str(fact.get("statement", "") or "")
+        if category in {"alternatif", "alternative", "örnek", "ornek", "example", "tercihli", "preferred", "kullanım_senaryosu", "kullanim_senaryosu"}:
+            return True
+        if re.search(r"\b(?:örneğin|ornegin|alternatif|isteğe bağlı|istege bagli|seçilebilir|secilebilir|tercih(?:li|en)?)\b", statement, flags=re.IGNORECASE):
+            return True
+    return False
+
+
+def _validate_detailed_patent_drafting_layer(draft: dict[str, Any], extracted: dict[str, Any] | None, language: str = "Türkçe") -> None:
+    """Kayıpsız kaynak aktarımının eski patent yazım/çalışma-prensibi katmanını ezmesini engeller."""
+    if _english_spec(language):
+        return
+    elements = [e for e in (draft.get("elements") or []) if str(e.get("number", "") or "").strip()]
+    if not elements:
+        return
+    paras = [str(x or "").strip() for x in (draft.get("detailed_paragraphs") or []) if str(x or "").strip()]
+    working = str(draft.get("working_principle", "") or "").strip()
+    if len(working) < 80:
+        raise ValueError("DETAYLI AÇIKLAMA patent-yazım kapısı: working_principle boş veya yetersiz; unsur sözlüğünden sonra sistemin çalışma prensibi bütünsel olarak açıklanmalıdır.")
+
+    relation_text = "\n".join([*paras[1:], working])
+    mentioned = set()
+    for e in elements:
+        n = str(e.get("number", "") or "").strip()
+        if n and re.search(r"\(\s*" + re.escape(n) + r"\s*\)", relation_text):
+            mentioned.add(n)
+    required = min(3, len(elements))
+    if len(mentioned) < required:
+        raise ValueError(
+            "DETAYLI AÇIKLAMA patent-yazım kapısı: ilk unsur paragrafından sonra en az "
+            f"{required} farklı referanslı unsurun birlikte çalışma/teknik ilişkisi açıklanmalıdır."
+        )
+
+    if _source_requires_patent_embodiment_layer(extracted):
+        visible = "\n".join([*paras[1:], working, *map(str, draft.get("alternatives") or [])])
+        if not re.search(r"\bBuluşun (?:tercih edilen )?bir yapılanmasında\b", visible, flags=re.IGNORECASE):
+            raise ValueError(
+                "DETAYLI AÇIKLAMA patent-yazım kapısı: kaynak alternatif/örnek/seçilebilir mod içeriyor; uygun yerde `Buluşun bir yapılanmasında` veya `Buluşun tercih edilen bir yapılanmasında` dili kullanılmalıdır."
+            )
+
 def _validate_realization_wording(draft: dict[str, Any], language: str = "Türkçe") -> None:
     if _english_spec(language):
         return
@@ -3016,6 +3062,7 @@ def validate_tarifname_draft(
     _validate_unumbered_claim_mirror(draft, claim_mode, language)
     _validate_detailed_element_cohesion(draft, language)
     _validate_detailed_section_order_routing_and_style(draft, extracted, language)
+    _validate_detailed_patent_drafting_layer(draft, extracted, language)
     _validate_realization_wording(draft, language)
     _validate_figure_description_style(draft, language)
     technical_field_raw = str(draft.get("technical_field", "") or "").strip()
@@ -3174,7 +3221,7 @@ def validate_tarifname_draft(
         if invalid_evidence:
             raise ValueError("BBF tamlık kapısı başarısız: source_coverage_map kanıtı nihai tarifname metninde birebir doğrulanamayan fact_id: " + ", ".join(invalid_evidence))
 
-    # v5.4.43: buluş-teknik fact'lerin özellikle Detaylı Açıklama içinde tam transfer kapısı.
+    # v5.4.44: buluş-teknik fact'lerin özellikle Detaylı Açıklama içinde tam transfer kapısı.
     if extracted is not None:
         validate_detailed_description_fact_coverage(
             extracted,
@@ -3673,6 +3720,17 @@ def validate_tarifname_post_generation_quality(
         segment,
         draft.get("elements") or [],
     )
+    # v5.4.44: Nihai Word de eski patent-yazım katmanını korumalıdır.
+    if not _english_spec(language):
+        if _source_requires_patent_embodiment_layer(extracted) and not re.search(r"\bBuluşun (?:tercih edilen )?bir yapılanmasında\b", segment, flags=re.IGNORECASE):
+            raise ValueError("ÇIKTI SONRASI KAPI 2/6 — kaynak alternatif/örnek içeriyor ancak nihai Word Detaylı Açıklamada `Buluşun bir yapılanmasında` dili bulunmuyor.")
+        post_refs={}
+        for e in draft.get("elements") or []:
+            n=str(e.get("number", "") or "").strip()
+            if n and re.search(r"\(\s*"+re.escape(n)+r"\s*\)", segment):
+                post_refs[n]=True
+        if len(draft.get("elements") or []) >= 3 and len(post_refs) < 3:
+            raise ValueError("ÇIKTI SONRASI KAPI 2/6 — Detaylı Açıklama çalışma-prensibi/teknik-ilişki katmanı en az üç referanslı unsur ilişkisini taşımıyor.")
     for element in (draft.get("elements") or []):
         number = str(element.get("number", "") or "").strip()
         name = str(element.get("name", "") or "").strip()

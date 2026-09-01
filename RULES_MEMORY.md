@@ -508,7 +508,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 
 ## v5.4.43 / 2026-09-01.v33 — BBF teknik içeriğinin Detaylı Açıklamaya eksiksiz ve kaynak-sadık aktarımı
 
-- BBF/ek teknik kaynakta buluşun kendisini açıklayan her teknik passage/fact `BULUŞUN DETAYLI AÇIKLAMASI` içinde de kanıtlanır. Başka bölümde bulunması bu kapıyı geçirmez. Teknik alan/kullanım, problem, çözüm, unsur, unsur işlevi/ilişkisi, çalışma prensibi, teknik etki, alternatif, örnek, ölçü/değer/aralık, performans ve teknik görsel bilgisi kapsam içindedir; salt üçüncü kişi önceki-teknik/patent-literatürü hariçtir.
+- BBF/ek teknik kaynakta buluşun kendisini açıklayan her teknik passage/fact `BULUŞUN DETAYLI AÇIKLAMASI` içinde de kanıtlanır. Başka bölümde bulunması bu kapıyı geçirmez. Teknik alan/kullanım, çözüm, unsur, unsur işlevi/ilişkisi, çalışma prensibi, teknik etki, alternatif, örnek, ölçü/değer/aralık, performans ve teknik görsel bilgisi Detaylı Açıklama kapsamındadır; mevcut uygulama/önceki teknik ve bunlardan doğan problem anlatımı ÖNCEKİ TEKNİK bölümünde kalır.
 - Kaynak cümle düzgünse kaynak yapısı korunur; özetleme/sadeleştirme yoluyla teknik ayrıntı düşürülemez. Yalnız dilbilgisi/noktalama, doğal paragraf geçişi ve kanonik unsur adı/referans normalizasyonu yapılır. `eleman (N)` / `birinci eleman (N)` gibi geçici adlar, aynı N için belirlenmiş gerçek unsur adıyla değiştirilir.
 - Kaynaktaki ayırt edici teknik literal/değer/kısaltmalar (`AM1.5G`, `365–1000 nm`, `850 nm`, `PWM` vb.) Detaylı Açıklama içinde deterministik aranır; eksik literal doğrudan FAIL'dir.
 - Bağımsız ham-BBF ikinci okuması önceki passage/fact/coverage sınıflandırmasını görmez; her passage_id'yi sıfırdan sınıflandırır, gerçek `source_quote` ve gerçek nihai evidence verir. İlk/ikinci okuma sınıflandırması çelişirse audit geçmez. İlk okumada buluş-teknik fact'e bağlı bir passage ikinci okumada `detail_transfer_required=false` olamaz. Nonce + kaynak SHA-256 + taslak SHA-256 eşleşmeden audit geçmez.
@@ -524,3 +524,13 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Türkçe gövde düzyazısında `Buluş;`, `Sistem;`, `Yöntem;`, `Düzenek;` ve gereksiz noktalı virgül yasaktır. İstemlerdeki `olup, özelliği;` ve izinli ortak-taşıyıcı `ve;` istisnadır.
 - Detaylı Açıklamada `uygundur` yerine nesnel kullanım/işlev dili kullanılır. Buluşu kasteden `Sunulan çözüm/Bu çözüm/Çözüm` öznesi `Buluş`, `Sistem` veya `Yöntem` olarak normalize edilir.
 - Taslak ve nihai Word kapıları ilk-unsur sırasını, önceki-teknik paragrafının yanlış bölüme taşınmasını, noktalı virgülü, `uygundur` ifadesini ve çözüm-özne kullanımını deterministik olarak reddeder.
+
+
+## v5.4.44 / 2026-09-01.v34 — Kayıpsız teknik aktarım + eski patent yazım katmanının birlikte zorunlu olması
+
+- v5.4.42-v5.4.43 teknik tamlık kuralları, BBF metninin peş peşe kopyalanması anlamına gelmez ve eski Detaylı Açıklama yazım kurallarını yürürlükten kaldırmaz. Doğru sıra: **ham kaynak -> atomik teknik envanter -> kayıpsız patent yeniden yazımı -> deterministik kayıp kontrolü**.
+- Sabit Detaylı Açıklama girişinden sonraki ilk teknik paragraf yine bütün referanslı unsurların tek sürekli tanım paragrafıdır. Bundan sonra unsurların birlikte çalışma ilişkileri ve buluşun çalışma prensibi akıcı patent diliyle açıklanır; salt BBF cümlelerinin arka arkaya dizilmesi yeterli değildir.
+- Kaynakta alternatif, örnek, seçilebilir mod, isteğe bağlı yapı veya tercihli konfigürasyon varsa uygun yerde `Buluşun bir yapılanmasında, ...`; kaynak gerçekten tercih bildiriyorsa `Buluşun tercih edilen bir yapılanmasında, ...` kullanılır. Bu kalıp her paragrafa mekanik olarak eklenmez.
+- `working_principle` boş bırakılamaz. Referanslı sistem/cihaz buluşlarında ilk unsur paragrafından sonra en az üç farklı referanslı unsurun birbirleriyle nasıl çalıştığını açıklayan gerçek teknik ilişki/çalışma-prensibi anlatımı bulunmalıdır. Taslak ve nihai Word kapıları bunu ayrı ayrı kontrol eder.
+- Kaynaktaki teknik literal/değer/kısaltma kayıp kontrolü ham passage üzerinden çalışır. `AM1.5G`, `365–1000 nm`, `850 nm`, `PWM` gibi literal fact statement içine eksik çıkarılmış olsa dahi ham teknik passage içinde bulunuyorsa Detaylı Açıklamada zorunlu olarak aranır; eksiklik doğrudan FAIL'dir.
+- Bu sürümde amaç, v5.4.43'ün tamlık kazanımını korurken önceki patent dili, yapılanma, unsur-ilişkisi ve çalışma-prensibi kurallarını yeniden birincil yazım katmanı olarak bağlamaktır.

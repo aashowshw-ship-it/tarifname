@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.43
+# Patent Atölyesi v5.4.44
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 01.09.2026 tarihli güncel tam sürümüdür.
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-09-01.v33`
+Kural sürümü: `2026-09-01.v34`
 
 ## Yerel çalıştırma
 
@@ -463,3 +463,12 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 ## v5.4.43 — Detaylı Açıklama yerleşim ve dil kapısı
 
 Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasajları ÖNCEKİ TEKNİK bölümünde tutulur; Detaylı Açıklamaya zorla tekrar edilmez. Detaylı Açıklama sabit girişinden sonra ilk teknik paragraf bütün referanslı unsurları referans sırasıyla, kanonik unsur adı + numarası ve kaynak tanımıyla tek sürekli paragrafta açıklar. Sonraki paragraflarda kullanım, çözüm, teknik etkiler, unsur ilişkileri, çalışma prensibi, alternatifler, örnekler ve teknik değerler kaynak-sadık biçimde verilir. Gövde düzyazısında `Buluş;`/`Sistem;`/`Yöntem;`, gereksiz noktalı virgül ve Detaylı Açıklamada `uygundur` kullanımı çıktı kapısında reddedilir; buluşu kasteden `Sunulan çözüm/Bu çözüm` öznesi kanonik `Buluş/Sistem/Yöntem` diline çevrilir.
+
+
+## v5.4.44 / 2026-09-01.v34 — Kayıpsız patent yeniden yazımı ve literal kayıp kapısı
+
+- Detaylı Açıklama artık iki kuralı birlikte uygular: kaynak teknik bilgisinin **eksiksiz korunması** ve eski **patent yazım/çalışma-prensibi katmanının** korunması. Kaynak cümleleri sırayla kopyalamak yeterli değildir.
+- İlk teknik paragraf bütün referanslı unsurların tanım paragrafıdır. Devamında unsurların teknik ilişkileri ve çalışma prensibi akıcı patent diliyle açıklanır. Kaynak alternatif/örnek/seçilebilir mod içeriyorsa uygun `Buluşun bir yapılanmasında, ...` dili zorunludur.
+- `working_principle` boş/yetersiz olamaz; en az üç referanslı unsurun birlikte çalışma ilişkisi taslakta ve nihai Word'de doğrulanır.
+- `AM1.5G`, `365–1000 nm`, `850 nm`, `PWM` gibi standart/kısaltma/değerler yalnız `technical_facts.statement` üzerinden değil doğrudan ham teknik passage üzerinden de çıkarılır. Detaylı Açıklamada bulunmayan literal, coverage beyanından bağımsız olarak indirmeyi bloke eder.
+- Böylece BBF'deki teknik ayrıntılar kaybolmadan önceki patent dili, yapılanma ve çalışma-prensibi düzeni korunur.

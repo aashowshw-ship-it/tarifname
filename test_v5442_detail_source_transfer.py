@@ -29,8 +29,8 @@ def _state():
 
 
 def test_version_and_binding_rule():
-    assert APP_VERSION == "v5.4.43"
-    assert RULESET_VERSION == "2026-09-01.v33"
+    assert APP_VERSION == "v5.4.44"
+    assert RULESET_VERSION == "2026-09-01.v34"
     assert "BULUŞUN DETAYLI AÇIKLAMASI bölümünde de eksiksiz" in TARIFNAME_RULES
     assert "AM1.5G" in TARIFNAME_RULES
     assert "detail_source_transfer" in EXTRA_CONTROL_GATE_KEYS

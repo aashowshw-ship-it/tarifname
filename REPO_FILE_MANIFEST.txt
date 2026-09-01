@@ -50,5 +50,6 @@ test_v5440_real_raw_second_read_sentence_case.py
 test_v5441_dependent_claim_short_preamble.py
 test_v5442_detail_source_transfer.py
 test_v5443_detail_routing_order_style.py
+test_v5444_lossless_patent_redrafting.py
 validators.py
 word_math.py
