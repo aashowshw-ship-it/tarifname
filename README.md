@@ -1,4 +1,14 @@
-# Patent Atölyesi v5.4.44
+# Patent Atölyesi v5.4.45
+
+## v5.4.45 / 2026-09-01 — Süreçler / Patent-Faydalı Model Başvurusu MVP
+
+- Mevcut üretim seçenekleri korunarak üst çalışma seçimine **Süreçler** bölümü eklendi.
+- İlk süreç olarak **Patent / Faydalı Model Başvurusu** veri giriş ekranı eklendi.
+- Hak sahibi, buluş sahibi, rüçhan ve başvuru bilgileri yapılandırılmış olarak tutulur.
+- Oluşturulan tarifname DOCX dosyası `İSTEMLER` ve `ÖZET` başlıklarına göre ayrılarak EPATS için Tarifname / İstemler / Özet PDF seti hazırlanır.
+- Şekiller DOCX/PDF ise EPATS paketine dahil edilir.
+- EPATS otomatik tarayıcı aktarımı sonraki aşama için ayrılmıştır; bu sürüm başvuru verisi ve belge paketleme altyapısını hazırlar.
+
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 01.09.2026 tarihli güncel tam sürümüdür.
 

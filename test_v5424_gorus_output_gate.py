@@ -32,7 +32,7 @@ def _base_opinion():
 
 
 def test_version_and_ruleset_bumped_for_opinion_gate():
-    assert APP_VERSION == "v5.4.44"
+    assert APP_VERSION == "v5.4.45"
     assert RULESET_VERSION == "2026-09-01.v34"
 
 

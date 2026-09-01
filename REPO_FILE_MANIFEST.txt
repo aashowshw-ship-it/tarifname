@@ -10,6 +10,7 @@ Gorus_metni_696809_template.docx
 On_Arastirma_Raporu_181612_template.docx
 packages.txt
 parsers.py
+processes.py
 prompts.py
 README.md
 render.yaml

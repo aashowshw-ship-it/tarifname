@@ -10,7 +10,7 @@ from tarifname_figure_generation import protect_turkish_claim_transition, protec
 
 
 def test_versions_and_v5437_rules():
-    assert APP_VERSION == "v5.4.44"
+    assert APP_VERSION == "v5.4.45"
     assert RULESET_VERSION == "2026-09-01.v34"
     low = TARIFNAME_RULES.casefold()
     assert "ascii" in low and "hansi" in low and "eastasia" in low and "cs" in low
