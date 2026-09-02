@@ -33,7 +33,7 @@ def _mail_questions():
 
 
 def test_v5450_person_fields_and_mail_options_are_bound_correctly():
-    assert APP_VERSION == "v5.4.50"
+    assert APP_VERSION == "v5.4.51"
     data = extract_application_information_rule_based(
         [("beyan.png", _source_text()), ("mail.msg", _mail_questions() + "\nBaşvuru türü: Patent\nRüçhan: Yok")],
         specification_text="TARİFNAME\nHologramlı görüşme yöntemi\nTEKNİK ALAN\n...",

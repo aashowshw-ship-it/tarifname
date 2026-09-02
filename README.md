@@ -1,4 +1,14 @@
-# Patent Atölyesi v5.4.50
+# Patent Atölyesi v5.4.51
+
+## v5.4.51 / 2026-09-02 — Süreçler / Kredisiz Yerel AI Hibrit Çıkarım
+
+- `Süreçler → Patent / Faydalı Model Başvurusu` artık **kurallı parser + yerel küçük Qwen modeli** ile hibrit çalışır. OpenAI/API çağrısı ve token kredisi kullanılmaz.
+- Yerel model: Apache-2.0 lisanslı Qwen2.5-0.5B-Instruct tabanlı IQ2_XS GGUF; `llama.cpp` ile yalnız analiz düğmesine basıldığında tek seferlik çalıştırılır.
+- Yerel AI; OCR/tablo/mail düzeni bozulduğunda şirket unvanı, buluşçu adı, e-posta, telefon, kimlik, adres vb. alanları yeniden yapılandırır. Modelin ürettiği değer kaynakta tekrar doğrulanamazsa kabul edilmez.
+- Buluş başlığı daima Tarifname'den, DP referansı daima Tarifname dosya adından alınmaya devam eder; yerel AI bunları değiştiremez.
+- `İmza ... e-posta ... İmza` gibi kirli alanlar ayrıca temizlenir. Yerel AI çalışamazsa ekran bunu görünür biçimde bildirir ve kurallı çıkarımla devam eder.
+- Docker imajı `llama.cpp` çalıştırıcısını ve yaklaşık 325 MB'lık Qwen IQ2_XS modelini build sırasında indirir; ilk kullanımda ayrıca model indirilmez.
+
 
 ## v5.4.50 / 2026-09-02 — Süreçler / Koordinatlı OCR + Mail Başvuru Tercihleri
 

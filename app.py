@@ -81,6 +81,7 @@ from processes import (
     extract_specification_text,
     normalize_application_information,
     extract_application_information_rule_based,
+    extract_application_information_hybrid,
 )
 
 from gorus_audit import (
@@ -7314,10 +7315,10 @@ elif work_type == "Süreçler":
     if process_type == "Patent / Faydalı Model Başvurusu":
         st.markdown("### Patent / Faydalı Model Başvurusu")
         st.caption(
-            "Beyan formu, yazı veya e-posta gibi kaynakları yükleyin; başvuru bilgileri yapay zekâ/API kullanılmadan otomatik çıkarılsın. "
+            "Beyan formu, yazı veya e-posta gibi kaynakları yükleyin; başvuru bilgileri önce yerel kurallarla, ardından ücretsiz yerel AI ile çapraz okunup yapılandırılsın. "
             "Tarifname DOC/DOCX/PDF kaynağı EPATS belgelerine ayrılsın, gerekli şablon/satır numarası temizliği yapılsın ve zorunlu ön kontrol uygulansın."
         )
-        st.success("Bu başvuru hazırlama ekranı OpenAI/API kredisi kullanmaz; belge okuma ve ön kontrol yerel yazılım kurallarıyla çalışır.")
+        st.success("Bu başvuru hazırlama ekranı OpenAI/API kredisi kullanmaz. Kurallı parser + sunucuda çalışan ücretsiz yerel Qwen modeli hibrit çalışır; model devreye giremezse sistem bunu açıkça bildirip kurallı sonuçla devam eder.")
 
         st.markdown("#### 1. Buluş / başvuru bilgisi kaynakları")
         info_sources = st.file_uploader(
@@ -7372,12 +7373,12 @@ elif work_type == "Süreçler":
 
                     specification_data = specification_upload.getvalue()
                     specification_text = extract_specification_text(specification_upload.name, specification_data)
-                    progress.progress(25, text="Hak sahibi, buluş sahibi ve diğer başvuru bilgileri yerel kurallarla çıkarılıyor...")
+                    progress.progress(25, text="Hak sahibi, buluş sahibi ve diğer başvuru bilgileri kurallı parser + ücretsiz yerel AI ile çıkarılıyor...")
 
-                    # Süreçler modülü OpenAI/API kullanmaz. Tüm başvuru bilgileri
-                    # yalnız açık etiketler, belge tabloları ve güvenli metin kurallarıyla çıkarılır.
-                    # Bulunamayan bilgi tahmin edilmez; zorunlu ön kontrol geçişi bloke eder.
-                    extracted = extract_application_information_rule_based(
+                    # Süreçler modülü OpenAI/API kredisi kullanmaz. Önce deterministik parser,
+                    # ardından küçük yerel Qwen modeli çalışır. AI yalnız kaynak metinde tekrar
+                    # doğrulanabilen değerleri doldurabilir; başlık/ref Tarifname otoritesindedir.
+                    extracted = extract_application_information_hybrid(
                         source_blocks,
                         specification_text=specification_text,
                         specification_filename=specification_upload.name,
@@ -7434,6 +7435,11 @@ elif work_type == "Süreçler":
 
             st.markdown("---")
             st.markdown("### Zorunlu Ön Kontrol")
+            local_ai = metadata.get("local_ai") or {}
+            if local_ai.get("used"):
+                st.success(f"Yerel AI doğrulaması çalıştı: {local_ai.get('model') or 'yerel model'} — OpenAI/API kredisi kullanılmadı.")
+            elif local_ai.get("warning"):
+                st.warning(str(local_ai.get("warning")))
             if blocking_issues:
                 st.error("Eksik veya çelişkili bilgi bulundu. Bu bilgiler tamamlanmadan EPATS aşamasına geçilemez.")
             else:

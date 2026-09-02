@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -1528,6 +1529,478 @@ def extract_application_information_rule_based(
     _apply_filing_option_defaults(result)
     result["conflicts"] = list(dict.fromkeys(x for x in result["conflicts"] if x))
     return normalize_application_information(result)
+
+
+# -----------------------------------------------------------------------------
+# HİBRİT / YEREL AI DESTEKLİ BAŞVURU BİLGİSİ ÇIKARIMI
+# -----------------------------------------------------------------------------
+
+_LOCAL_AI_DEFAULT_MODEL = "/opt/models/Qwen2.5-0.5B-Instruct-IQ2_XS.gguf"
+_LOCAL_AI_EMAIL_RE = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
+
+
+def _local_ai_schema() -> dict[str, Any]:
+    person_properties = {
+        "identity": {"type": "string"},
+        "name": {"type": "string"},
+        "country": {"type": "string"},
+        "city": {"type": "string"},
+        "district": {"type": "string"},
+        "address": {"type": "string"},
+        "email": {"type": "string"},
+        "phone": {"type": "string"},
+        "birth_date": {"type": "string"},
+        "source": {"type": "string"},
+    }
+    applicant_properties = dict(person_properties)
+    applicant_properties["entity_type"] = {"type": "string"}
+    option_properties = {
+        "status": {"type": "string"},
+        "source": {"type": "string"},
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "applicants": {
+                "type": "array",
+                "items": {"type": "object", "properties": applicant_properties, "additionalProperties": False},
+                "maxItems": 6,
+            },
+            "inventors": {
+                "type": "array",
+                "items": {"type": "object", "properties": person_properties, "additionalProperties": False},
+                "maxItems": 12,
+            },
+            "filing_options": {
+                "type": "object",
+                "properties": {
+                    "inventor_hidden": {"type": "object", "properties": option_properties, "additionalProperties": False},
+                    "public_project": {
+                        "type": "object",
+                        "properties": {
+                            **option_properties,
+                            "institution": {"type": "string"},
+                            "project_number": {"type": "string"},
+                        },
+                        "additionalProperties": False,
+                    },
+                    "early_publication": {"type": "object", "properties": option_properties, "additionalProperties": False},
+                },
+                "additionalProperties": False,
+            },
+        },
+        "required": ["applicants", "inventors", "filing_options"],
+        "additionalProperties": False,
+    }
+
+
+def _local_ai_excerpt(source_blocks: list[tuple[str, str]], *, max_chars: int = 7500) -> str:
+    """Yerel modele yalnız başvuru kişileri/tercihleriyle ilgili yoğunlaştırılmış metni verir.
+
+    Küçük modelin bağlamını form açıklamalarıyla doldurmamak için ilgili satırların
+    çevresi seçilir. Kaynak adı her blokta korunur.
+    """
+    needles = (
+        "hak sahibi", "başvuru sahibi", "başvuru sahib", "buluş sahibi", "buluşçu", "mucit", "buluşu yapan",
+        "unvan", "ad soyad", "adı soyadı", "adı/unvan", "tckn", "tc kimlik", "vkn", "vergi",
+        "adres", "uyruk", "ülke", "ilçe", "telefon", "e-posta", "eposta", "email", "doğum",
+        "gizlensin", "erken yayın", "erken yayım", "tübitak", "kosgeb", "kamu kurum", "proje",
+        "@",
+    )
+    chunks: list[str] = []
+    remaining = max_chars
+    for source, text in source_blocks:
+        if remaining <= 0:
+            break
+        lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+        selected: set[int] = set()
+        for i, line in enumerate(lines):
+            n = _plain_norm(line)
+            if any(_plain_norm(x) in n for x in needles) or "@" in line:
+                for j in range(max(0, i - 2), min(len(lines), i + 4)):
+                    selected.add(j)
+        if not selected:
+            # Yapısı bozulmuş OCR'da anahtar kelimeler kaybolmuş olabilir; küçük
+            # bir başlangıç bölümü yine modele verilir.
+            selected.update(range(min(len(lines), 35)))
+        body = "\n".join(lines[i] for i in sorted(selected))
+        block = f"--- KAYNAK: {source} ---\n{body}\n"
+        block = block[:remaining]
+        if block.strip():
+            chunks.append(block)
+            remaining -= len(block)
+    return "\n".join(chunks).strip()
+
+
+def build_local_ai_application_prompt(source_blocks: list[tuple[str, str]]) -> str:
+    excerpt = _local_ai_excerpt(source_blocks)
+    return f"""Patent/faydalı model başvurusu için aşağıdaki kaynaklardan yapılandırılmış bilgi çıkar.
+
+KURALLAR:
+- Yalnız kaynakta AÇIKÇA yazan bilgileri kullan. Tahmin etme, tamamlamaya çalışma.
+- Form başlıklarını, açıklama/not metnini, 'İmza', 'Yetkili', 'Cinsiyet', 'Doğum Tarihi' gibi ETİKETLERİ kişi adı veya şirket unvanı sanma.
+- Hak/başvuru sahibi şirketse TAM ticaret unvanını al (örn. 'TT MOBİL İLETİŞİM HİZMETLERİ ANONİM ŞİRKETİ').
+- Buluş sahibinde gerçek kişinin gerçek AD SOYAD bilgisini al. E-posta imza bloğundaki ad ancak kaynakta buluş sahibi/buluşçu olarak açıkça ilişkilendirilmişse kullanılabilir.
+- E-posta alanına yalnız gerçek e-posta adresini yaz; 'İmza' veya başka metin ekleme.
+- Telefon alanına yalnız telefon numarasını yaz.
+- TCKN/VKN alanına yalnız kimlik/vergi numarasını yaz.
+- Aynı kişiye ait adres, il, ilçe, ülke, telefon, e-posta ve doğum tarihini aynı kayıtta birleştir.
+- source alanına bilginin geldiği KAYNAK adını aynen yaz.
+- filing_options için yalnız açık EVET/HAYIR cevaplarını al. Cevap yoksa status boş string olsun.
+- Çıktıda yalnız istenen JSON olsun.
+
+KAYNAKLAR:
+{excerpt}
+""".strip()
+
+
+def _parse_first_json_object(text: str) -> dict[str, Any]:
+    raw = (text or "").strip()
+    if not raw:
+        return {}
+    try:
+        obj = json.loads(raw)
+        return obj if isinstance(obj, dict) else {}
+    except Exception:
+        pass
+    start = raw.find("{")
+    if start < 0:
+        return {}
+    depth = 0
+    in_string = False
+    escaped = False
+    for idx in range(start, len(raw)):
+        ch = raw[idx]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    obj = json.loads(raw[start: idx + 1])
+                    return obj if isinstance(obj, dict) else {}
+                except Exception:
+                    return {}
+    return {}
+
+
+def _run_local_ai_cli(prompt: str, schema: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Kredisiz yerel GGUF modeli llama.cpp ile tek seferlik çalıştırır."""
+    if str(os.getenv("LOCAL_AI_DISABLED", "")).strip().lower() in {"1", "true", "yes", "on"}:
+        return {}, {"used": False, "available": False, "warning": "Yerel AI ortam değişkeni ile kapalı."}
+    binary = shutil.which(os.getenv("LOCAL_AI_COMMAND", "llama"))
+    model_path = os.getenv("LOCAL_AI_MODEL_PATH", _LOCAL_AI_DEFAULT_MODEL)
+    if not binary:
+        return {}, {"used": False, "available": False, "warning": "Yerel AI çalıştırıcısı (llama.cpp) bulunamadı; kurallı çıkarımla devam edildi."}
+    if not Path(model_path).is_file():
+        return {}, {"used": False, "available": False, "warning": f"Yerel AI modeli bulunamadı: {model_path}; kurallı çıkarımla devam edildi."}
+
+    # Qwen2.5 ChatML. Küçük modelde düşünme/serbest sohbet yerine doğrudan JSON çıkarımı.
+    chat_prompt = (
+        "<|im_start|>system\n"
+        "Sen patent başvuru belgelerinden veri çıkaran dikkatli bir bilgi çıkarım motorusun. "
+        "Kaynakta olmayan hiçbir bilgiyi üretme. Yalnız JSON üret.<|im_end|>\n"
+        "<|im_start|>user\n" + prompt + "<|im_end|>\n"
+        "<|im_start|>assistant\n"
+    )
+    command = [
+        binary, "cli", "-m", model_path,
+        "-c", str(int(os.getenv("LOCAL_AI_CONTEXT", "3072"))),
+        "-n", str(int(os.getenv("LOCAL_AI_MAX_TOKENS", "1100"))),
+        "--temp", "0",
+        "--no-display-prompt",
+        "--simple-io",
+        "-j", json.dumps(schema, ensure_ascii=False, separators=(",", ":")),
+        "-p", chat_prompt,
+    ]
+    try:
+        proc = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=int(os.getenv("LOCAL_AI_TIMEOUT_SECONDS", "180")),
+            check=False,
+        )
+    except Exception as exc:
+        return {}, {"used": False, "available": True, "warning": f"Yerel AI çalıştırılamadı: {exc}"}
+    if proc.returncode != 0:
+        err = proc.stderr.decode("utf-8", errors="replace").strip()
+        return {}, {"used": False, "available": True, "warning": "Yerel AI hata verdi; kurallı çıkarımla devam edildi." + (f" ({err[-240:]})" if err else "")}
+    output = proc.stdout.decode("utf-8", errors="replace")
+    parsed = _parse_first_json_object(output)
+    if not parsed:
+        return {}, {"used": False, "available": True, "warning": "Yerel AI geçerli JSON üretemedi; kurallı çıkarımla devam edildi."}
+    return parsed, {
+        "used": True,
+        "available": True,
+        "model": Path(model_path).name,
+        "warning": "",
+    }
+
+
+def _norm_evidence(text: str) -> str:
+    return _plain_norm(re.sub(r"\s+", " ", text or ""))
+
+
+def _find_value_source(value: str, source_blocks: list[tuple[str, str]]) -> str:
+    nv = _norm_evidence(value)
+    if not nv:
+        return ""
+    # Çok kısa EVET/HAYIR gibi değerlerde tek başına kaynak aramak anlamsızdır.
+    if len(nv) < 4:
+        return ""
+    for source, text in source_blocks:
+        nt = _norm_evidence(text)
+        if nv in nt:
+            return source
+    return ""
+
+
+def _verified_ai_value(field: str, value: Any, source_blocks: list[tuple[str, str]]) -> tuple[str, str]:
+    value = _clean_value(str(value or ""))
+    if not value:
+        return "", ""
+    if field == "identity":
+        clean = _valid_identity(value)
+        return (clean, _find_value_source(clean, source_blocks)) if clean else ("", "")
+    if field == "email":
+        m = _LOCAL_AI_EMAIL_RE.search(value)
+        if not m:
+            return "", ""
+        clean = m.group(0)
+        return clean, _find_value_source(clean, source_blocks)
+    if field == "phone":
+        # Kaynaktaki numarayı biçimini değiştirmeden yakala; en az 7 rakam.
+        digits = re.sub(r"\D", "", value)
+        if len(digits) < 7:
+            return "", ""
+        for source, text in source_blocks:
+            compact = re.sub(r"\D", "", text or "")
+            if digits in compact:
+                return value, source
+        return "", ""
+    source = _find_value_source(value, source_blocks)
+    if not source:
+        return "", ""
+    if field == "name" and _is_instruction_text(value):
+        return "", ""
+    return value, source
+
+
+def _sanitize_person_row(row: dict[str, str], *, applicant: bool) -> None:
+    if row.get("email"):
+        m = _LOCAL_AI_EMAIL_RE.search(row.get("email", ""))
+        row["email"] = m.group(0) if m else ""
+    if row.get("phone"):
+        # Başka metin telefon alanına taşmışsa yalnız telefon benzeri parçayı koru.
+        matches = re.findall(r"(?<!\d)(?:\+?90\s*)?(?:\(?0?\d{3}\)?[ .-]*)?\d{3}[ .-]*\d{2}[ .-]*\d{2}(?!\d)", row.get("phone", ""))
+        if matches:
+            row["phone"] = _clean_value(matches[0])
+        elif len(re.sub(r"\D", "", row.get("phone", ""))) < 7:
+            row["phone"] = ""
+    if row.get("name") and _is_bad_person_value("name", row["name"], applicant=applicant):
+        row["name"] = ""
+    _fill_country_from_explicit_location(row)
+
+
+def _ai_person_rows(raw: Any, *, applicant: bool, source_blocks: list[tuple[str, str]]) -> list[dict[str, str]]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        row = _new_person("", "", applicant=applicant)
+        detected_sources: list[str] = []
+        for field in ("identity", "name", "country", "city", "district", "address", "email", "phone", "birth_date"):
+            value, src = _verified_ai_value(field, item.get(field), source_blocks)
+            if value:
+                row[field] = value
+                if src and src not in detected_sources:
+                    detected_sources.append(src)
+        if applicant:
+            # Tüzel/gerçek kişi türü tam unvandan güvenli biçimde hesaplanabilir.
+            explicit_type = str(item.get("entity_type") or "")
+            row["entity_type"] = _entity_type(row.get("name", ""), explicit_type)
+        requested_source = str(item.get("source") or "").strip()
+        known_names = {name for name, _ in source_blocks}
+        if requested_source in known_names and requested_source not in detected_sources:
+            detected_sources.append(requested_source)
+        row["source"] = "; ".join(detected_sources)
+        _sanitize_person_row(row, applicant=applicant)
+        if row.get("name") or row.get("identity") or row.get("email"):
+            out.append(row)
+    return out
+
+
+def _person_match_score(existing: dict[str, str], candidate: dict[str, str]) -> int:
+    score = 0
+    e_id = re.sub(r"\D", "", existing.get("identity", ""))
+    c_id = re.sub(r"\D", "", candidate.get("identity", ""))
+    if e_id and c_id and e_id == c_id:
+        score += 100
+    if existing.get("email") and candidate.get("email") and _plain_norm(existing["email"]) == _plain_norm(candidate["email"]):
+        score += 80
+    if existing.get("name") and candidate.get("name") and _plain_norm(existing["name"]) == _plain_norm(candidate["name"]):
+        score += 70
+    es = {x for x in (existing.get("source") or "").split("; ") if x}
+    cs = {x for x in (candidate.get("source") or "").split("; ") if x}
+    if es & cs:
+        score += 15
+    return score
+
+
+def _merge_ai_people(existing_rows: list[dict[str, str]], ai_rows: list[dict[str, str]], *, applicant: bool) -> list[dict[str, str]]:
+    rows = [dict(x) for x in existing_rows]
+    for row in rows:
+        _sanitize_person_row(row, applicant=applicant)
+    for ai_row in ai_rows:
+        best: dict[str, str] | None = None
+        best_score = -1
+        for current in rows:
+            score = _person_match_score(current, ai_row)
+            if score > best_score:
+                best, best_score = current, score
+        # Aynı kaynakta tek kayıt varsa AI'nın rol ayrımı, bozuk tablo parser'ından
+        # daha değerlidir. Bu yalnız kaynakta doğrulanmış AI değerleri için geçerlidir.
+        if best_score < 15 and len(rows) == 1 and len(ai_rows) == 1:
+            best = rows[0]
+            best_score = 10
+        if best is None or best_score < 10:
+            rows.append(dict(ai_row))
+            continue
+        # AI yalnız kaynakta doğrulanan değerleri taşıdığı için boş/bozuk alanı düzeltmesine izin ver.
+        if ai_row.get("name"):
+            current_name = best.get("name", "")
+            should_replace_name = (
+                not current_name
+                or _is_bad_person_value("name", current_name, applicant=applicant)
+                or (
+                    applicant
+                    and _looks_like_company(ai_row["name"])
+                    and _plain_norm(ai_row["name"]) != _plain_norm(current_name)
+                    and len(ai_row["name"]) > len(current_name)
+                    and bool(set((best.get("source") or "").split("; ")) & set((ai_row.get("source") or "").split("; ")))
+                )
+            )
+            if should_replace_name:
+                best["name"] = ai_row["name"]
+        for field in ("identity", "country", "city", "district", "address", "email", "phone", "birth_date"):
+            if ai_row.get(field) and (not best.get(field) or field in {"email", "phone"}):
+                best[field] = ai_row[field]
+        if applicant and ai_row.get("entity_type"):
+            best["entity_type"] = ai_row["entity_type"]
+        sources = [x for x in (best.get("source") or "").split("; ") if x]
+        for src in (ai_row.get("source") or "").split("; "):
+            if src and src not in sources:
+                sources.append(src)
+        best["source"] = "; ".join(sources)
+        _sanitize_person_row(best, applicant=applicant)
+
+    # Salt açıklama/form başlığı olan ve hiçbir güvenilir kimlik/e-posta taşımayan hayalet satırları temizle.
+    cleaned: list[dict[str, str]] = []
+    for row in rows:
+        _sanitize_person_row(row, applicant=applicant)
+        if row.get("name") or row.get("identity") or row.get("email") or row.get("address"):
+            cleaned.append(row)
+    return cleaned
+
+
+def _merge_local_ai_information(rule_data: dict[str, Any], ai_data: dict[str, Any], source_blocks: list[tuple[str, str]]) -> dict[str, Any]:
+    merged = normalize_application_information(rule_data)
+    ai_applicants = _ai_person_rows(ai_data.get("applicants"), applicant=True, source_blocks=source_blocks)
+    ai_inventors = _ai_person_rows(ai_data.get("inventors"), applicant=False, source_blocks=source_blocks)
+    merged["applicants"] = _merge_ai_people(merged.get("applicants") or [], ai_applicants, applicant=True)
+    merged["inventors"] = _merge_ai_people(merged.get("inventors") or [], ai_inventors, applicant=False)
+
+    # Başvuru tercihlerini de hibrit olarak tamamla; ancak yalnız kaynakta soru ile
+    # birlikte açık cevap varsa yerel AI sonucunu kabul et. Kurallı parser'ın açık
+    # cevabı her zaman korunur.
+    raw_opts = ai_data.get("filing_options") if isinstance(ai_data.get("filing_options"), dict) else {}
+    options = merged.get("filing_options") or {}
+    question_needles = {
+        "inventor_hidden": ["gizlensin", "gizlen"],
+        "public_project": ["tubitak", "tübitak", "kosgeb", "kamu kurum", "proje kapsam"],
+        "early_publication": ["erken yayin", "erken yayın", "erken yayim", "erken yayım"],
+    }
+    all_text = "\n".join(text for _, text in source_blocks)
+    all_norm = _plain_norm(all_text)
+    for key, needles in question_needles.items():
+        current = options.get(key) or {}
+        ai_opt = raw_opts.get(key) if isinstance(raw_opts.get(key), dict) else {}
+        status = str(ai_opt.get("status") or "").strip().casefold()
+        status_norm = _plain_norm(status)
+        mapped = "Evet" if status_norm == "evet" else "Hayır" if status_norm in {"hayir", "hayır"} else ""
+        has_question = any(_plain_norm(x) in all_norm for x in needles)
+        # current explicit ise değiştirme; AI sadece varsayılanı açık cevaba yükseltebilir.
+        if mapped and has_question and not current.get("explicit"):
+            src = str(ai_opt.get("source") or "").strip()
+            known = {name for name, _ in source_blocks}
+            if src not in known:
+                # Soruyu içeren ilk kaynağı bul.
+                src = next((name for name, text in source_blocks if any(_plain_norm(x) in _plain_norm(text) for x in needles)), "")
+            current["status"] = mapped
+            current["source"] = src or current.get("source") or "Yerel AI (kaynak doğrulandı)"
+            current["explicit"] = True
+            if key == "public_project" and mapped == "Evet":
+                for f in ("institution", "project_number"):
+                    val, _ = _verified_ai_value(f, ai_opt.get(f), source_blocks)
+                    if val:
+                        current[f] = val
+        options[key] = current
+    merged["filing_options"] = options
+    return normalize_application_information(merged)
+
+
+def extract_application_information_hybrid(
+    source_blocks: list[tuple[str, str]], *, specification_text: str = "", specification_filename: str = "",
+    local_ai_runner: Any | None = None,
+) -> dict[str, Any]:
+    """Kurallı parser + kredisiz yerel küçük LLM ile güvenli hibrit çıkarım.
+
+    Yerel AI yalnız kaynakta tekrar doğrulanabilen değerleri doldurabilir. Buluş
+    başlığı ve DP referansı yine Tarifname'den/isimden deterministik olarak gelir.
+    Yerel model çalışmazsa süreç durmaz; kurallı sonuç ve görünür uyarı döner.
+    """
+    rule_data = extract_application_information_rule_based(
+        source_blocks,
+        specification_text=specification_text,
+        specification_filename=specification_filename,
+    )
+    runner = local_ai_runner or _run_local_ai_cli
+    prompt = build_local_ai_application_prompt(source_blocks)
+    try:
+        ai_data, status = runner(prompt, _local_ai_schema())
+    except Exception as exc:
+        ai_data, status = {}, {"used": False, "available": False, "warning": f"Yerel AI devreye alınamadı: {exc}"}
+    result = _merge_local_ai_information(rule_data, ai_data, source_blocks) if ai_data else normalize_application_information(rule_data)
+    # AI devreye girmese bile parser'ın e-posta/telefon alanına taşıdığı "İmza" vb.
+    # artıklar ön kontrolde görünmesin.
+    for row in result.get("applicants") or []:
+        _sanitize_person_row(row, applicant=True)
+    for row in result.get("inventors") or []:
+        _sanitize_person_row(row, applicant=False)
+    # Tarifname başlığı ve dosya referansı hibrit birleştirme sonrasında da tek otorite olarak korunur.
+    spec_title = _specification_title(specification_text)
+    if spec_title:
+        result["invention_title"] = spec_title
+        result.setdefault("field_sources", {})["invention_title"] = "Tarifname"
+    file_ref = reference_from_filename(specification_filename)
+    if file_ref:
+        result["reference"] = file_ref
+        result.setdefault("field_sources", {})["reference"] = "Tarifname dosya adı"
+    result["local_ai"] = status
+    return result
 
 def build_application_information_prompt(source_blocks: list[tuple[str, str]], *, specification_text: str = "") -> str:
     blocks = []
