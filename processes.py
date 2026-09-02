@@ -371,52 +371,106 @@ def _attachment_text(filename: str, data: bytes) -> str:
     return ""
 
 
+
+def _strip_quoted_email_html(value: str) -> str:
+    """Yalnız güncel e-posta gövdesini bırak; reply/forward zincirini HTML aşamasında kes."""
+    html = value or ""
+    # Yaygın istemcilerin alıntı blokları. İlk alıntıdan sonrası önceki yazışmadır.
+    patterns = (
+        r"(?is)<blockquote\b[^>]*>.*$",
+        r"(?is)<div\b[^>]*class=[\"'][^\"']*(?:gmail_quote|moz-cite-prefix|yahoo_quoted)[^\"']*[\"'][^>]*>.*$",
+        r"(?is)<div\b[^>]*id=[\"'](?:divRplyFwdMsg|appendonsend)[\"'][^>]*>.*$",
+    )
+    for pat in patterns:
+        html = re.sub(pat, "", html, count=1)
+    return html
+
+
+def _current_email_body(value: str) -> str:
+    """E-posta gövdesinden yalnız en üstteki/güncel mesajı döndür.
+
+    Outlook/Gmail'in alta eklediği önceki yazışmalar, forwarded/original message
+    blokları ve imza bloğu başvuru verisi olarak değerlendirilmez.
+    """
+    text = (value or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = text.splitlines()
+    cut = len(lines)
+    strong_markers = (
+        re.compile(r"^\s*-{2,}\s*(?:original message|özgün ileti|iletilen ileti|forwarded message)\s*-{2,}\s*$", re.I),
+        re.compile(r"^\s*(?:begin forwarded message|iletinin başlangıcı)\s*:?\s*$", re.I),
+        re.compile(r"^\s*on\s+.+\s+wrote\s*:\s*$", re.I),
+        re.compile(r"^\s*.+\s+tarihinde\s+.+\s+şunu yazdı\s*:\s*$", re.I),
+    )
+    header_re = re.compile(r"^\s*(?:from|kimden|gönderen|sent|gönderildi|to|kime|cc|subject|konu)\s*:\s*", re.I)
+    for i, raw in enumerate(lines):
+        line = raw.strip()
+        if not line:
+            continue
+        if any(p.search(line) for p in strong_markers):
+            cut = i
+            break
+        # Outlook reply zinciri çoğunlukla art arda From/Sent/To/Subject başlıklarıyla başlar.
+        if header_re.search(line):
+            window = [x.strip() for x in lines[i:i+7] if x.strip()]
+            header_hits = sum(1 for x in window if header_re.search(x))
+            if header_hits >= 2:
+                cut = i
+                break
+    current = "\n".join(lines[:cut]).strip()
+
+    # İmza bloğu başvuru cevabının parçası değildir; yaygın kapanışlardan sonrasını at.
+    sig_patterns = (
+        r"(?im)^\s*--\s*$",
+        r"(?im)^\s*(?:saygılarımla|saygılarımızla|iyi çalışmalar|best regards|kind regards|regards|sincerely)[,!. ]*\s*$",
+    )
+    sig_cut = len(current)
+    for pat in sig_patterns:
+        m = re.search(pat, current)
+        if m:
+            sig_cut = min(sig_cut, m.start())
+    current = current[:sig_cut].strip()
+    current = re.sub(r"\n\s*\n{2,}", "\n\n", current)
+    return current
+
+
 def _eml_text(data: bytes) -> str:
+    """EML'de yalnız güncel mesaj gövdesini oku; eski reply/forward zincirini alma."""
     msg = BytesParser(policy=policy.default).parsebytes(data)
-    head = [
-        f"Konu: {msg.get('subject', '')}",
-        f"Kimden: {msg.get('from', '')}",
-        f"Kime: {msg.get('to', '')}",
-        f"Cc: {msg.get('cc', '')}",
-        f"Tarih: {msg.get('date', '')}",
-    ]
     plain_parts: list[str] = []
     html_parts: list[str] = []
-    attachment_parts: list[str] = []
     if msg.is_multipart():
         for part in msg.walk():
             disposition = part.get_content_disposition()
             filename = part.get_filename() or ""
             if disposition == "attachment" or filename:
-                payload = part.get_payload(decode=True) or b""
-                att = _attachment_text(filename, payload)
-                if att:
-                    attachment_parts.append(f"[[E-POSTA EKI: {filename}]]\n{att}")
+                # E-posta eki başvuru kaynağı olacaksa kullanıcı ayrıca yükler.
                 continue
             ctype = part.get_content_type()
             if ctype == "text/plain":
                 try:
-                    plain_parts.append(str(part.get_content()))
+                    plain_parts.append(_current_email_body(str(part.get_content())))
                 except Exception:
                     payload = part.get_payload(decode=True) or b""
-                    plain_parts.append(payload.decode(part.get_content_charset() or "utf-8", errors="replace"))
+                    plain_parts.append(_current_email_body(payload.decode(part.get_content_charset() or "utf-8", errors="replace")))
             elif ctype == "text/html":
                 try:
-                    html_parts.append(_html_to_text(str(part.get_content())))
+                    html = _strip_quoted_email_html(str(part.get_content()))
+                    html_parts.append(_current_email_body(_html_to_text(html)))
                 except Exception:
                     pass
     else:
         try:
             content = msg.get_content()
-            (html_parts if msg.get_content_type() == "text/html" else plain_parts).append(
-                _html_to_text(str(content)) if msg.get_content_type() == "text/html" else str(content)
-            )
+            if msg.get_content_type() == "text/html":
+                body = _html_to_text(_strip_quoted_email_html(str(content)))
+            else:
+                body = str(content)
+            (html_parts if msg.get_content_type() == "text/html" else plain_parts).append(_current_email_body(body))
         except Exception:
             pass
     structured_html = [x for x in html_parts if "\t" in x]
     body_parts = structured_html or plain_parts or html_parts
-    return "\n".join([x for x in head + body_parts + attachment_parts if x and x.strip()]).strip()
-
+    return "\n".join(x for x in body_parts if x and x.strip()).strip()
 
 
 def _ocr_image_source_text(data: bytes) -> str:
@@ -533,27 +587,10 @@ def extract_application_source_text(filename: str, data: bytes) -> str:
             html_body = getattr(msg, "htmlBody", None)
             if isinstance(html_body, (bytes, bytearray)):
                 html_body = bytes(html_body).decode("utf-8", errors="replace")
-            structured_body = _html_to_text(str(html_body)) if html_body else ""
-            plain_body = getattr(msg, "body", "") or ""
-            # HTML tablo varsa hücre sınırları daha değerlidir; yoksa düz gövdeyi kullan.
-            preferred_body = structured_body if "\t" in structured_body else (plain_body or structured_body)
-            parts = [
-                f"Konu: {getattr(msg, 'subject', '') or ''}",
-                f"Kimden: {getattr(msg, 'sender', '') or ''}",
-                f"Kime: {getattr(msg, 'to', '') or ''}",
-                f"Cc: {getattr(msg, 'cc', '') or ''}",
-                f"Tarih: {getattr(msg, 'date', '') or ''}",
-                preferred_body,
-            ]
-            # Outlook mesajının içindeki Word/PDF/TXT ve görsel ekleri de bilgi kaynağına kat.
-            for att in getattr(msg, "attachments", []) or []:
-                att_name = str(getattr(att, "longFilename", None) or getattr(att, "shortFilename", None) or "")
-                att_data = getattr(att, "data", None)
-                if att_name and isinstance(att_data, (bytes, bytearray)):
-                    att_text = _attachment_text(att_name, bytes(att_data))
-                    if att_text:
-                        parts.append(f"[[E-POSTA EKI: {att_name}]]\n{att_text}")
-            text = "\n".join(x for x in parts if x and str(x).strip())
+            structured_body = _current_email_body(_html_to_text(_strip_quoted_email_html(str(html_body)))) if html_body else ""
+            plain_body = _current_email_body(getattr(msg, "body", "") or "")
+            # Yalnız mevcut mesaj gövdesi kullanılır. Başlıklar, eski yazışmalar ve ekler dahil edilmez.
+            text = structured_body if "\t" in structured_body else (plain_body or structured_body)
             try:
                 msg.close()
             except Exception:
@@ -1594,7 +1631,7 @@ def _local_ai_schema() -> dict[str, Any]:
     }
 
 
-def _local_ai_excerpt(source_blocks: list[tuple[str, str]], *, max_chars: int = 7500) -> str:
+def _local_ai_excerpt(source_blocks: list[tuple[str, str]], *, max_chars: int = 3200) -> str:
     """Yerel modele yalnız başvuru kişileri/tercihleriyle ilgili yoğunlaştırılmış metni verir.
 
     Küçük modelin bağlamını form açıklamalarıyla doldurmamak için ilgili satırların
@@ -1647,7 +1684,8 @@ KURALLAR:
 - Aynı kişiye ait adres, il, ilçe, ülke, telefon, e-posta ve doğum tarihini aynı kayıtta birleştir.
 - source alanına bilginin geldiği KAYNAK adını aynen yaz.
 - filing_options için yalnız açık EVET/HAYIR cevaplarını al. Cevap yoksa status boş string olsun.
-- Çıktıda yalnız istenen JSON olsun.
+- Çıktıda yalnız aşağıdaki yapıda JSON olsun; bulunmayan alanı boş bırak:
+{{"applicants":[{{"entity_type":"","identity":"","name":"","country":"","city":"","district":"","address":"","email":"","phone":"","source":""}}],"inventors":[{{"identity":"","name":"","country":"","city":"","district":"","address":"","email":"","phone":"","birth_date":"","source":""}}],"filing_options":{{"inventor_hidden":{{"status":"","source":""}},"public_project":{{"status":"","institution":"","project_number":"","source":""}},"early_publication":{{"status":"","source":""}}}}}}
 
 KAYNAKLAR:
 {excerpt}

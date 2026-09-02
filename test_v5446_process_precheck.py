@@ -43,10 +43,11 @@ def test_document_metrics_use_pages_and_claim_count():
     assert metrics["codes"]["abstract"] == "Ö"
 
 
-def test_eml_source_text_reads_headers_and_body():
+def test_eml_source_text_reads_only_current_body():
     eml = b"From: client@example.com\nTo: patent@example.com\nSubject: Patent basvurusu\nContent-Type: text/plain; charset=utf-8\n\nHak sahibi: ABC A.S.\nBulus sahibi: Ali Veli"
     text = extract_application_source_text("mail.eml", eml)
-    assert "Patent basvurusu" in text
+    assert "Patent basvurusu" not in text
+    assert "client@example.com" not in text
     assert "ABC A.S." in text
     assert "Ali Veli" in text
 

@@ -1,4 +1,13 @@
-# Patent Atölyesi v5.4.53
+# Patent Atölyesi v5.4.54
+
+## v5.4.54 / 2026-09-02 — Süreçler / yalnız güncel mail gövdesi + hafif tarayıcı AI
+
+- `.msg` ve `.eml` bilgi kaynaklarında yalnız en üstteki güncel e-posta gövdesi analiz edilir. Konu/Kimden/Kime/Cc/Tarih başlıkları, ek dosyalar ve reply/forward zincirindeki eski mailler başvuru bilgisi olarak modele gönderilmez.
+- `From/Kimden/Gönderen`, `Sent/Gönderildi`, `Original Message/Forwarded Message`, `On ... wrote` gibi zincir başlangıçları otomatik kesilir; yaygın imza kapanışlarından sonraki imza bloğu da çıkarılır.
+- Tarayıcı AI girdisi yaklaşık 3.200 karakterle sınırlandırıldı; yalnız hak sahibi, buluş sahibi ve üç başvuru tercihiyle ilgili yakın satırlar gönderilir.
+- Tarayıcı AI çıktısı 320 tokenla sınırlandırıldı. Model hazırlama için 3 dakika, cevap üretme için 60 saniye timeout eklendi; sonsuz bekleme yoktur.
+- İlk model indirmesi tarayıcı önbelleği boşsa yine zaman alabilir; sonraki analizlerde aynı model önbellekten kullanılır.
+
 
 ## v5.4.53 / 2026-09-02 — Süreçler / Tarayıcı AI bileşeni self-contained düzeltmesi
 

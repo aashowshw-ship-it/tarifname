@@ -21,13 +21,23 @@ function extractJson(text) {
   for(let i=start;i<raw.length;i++) { const ch=raw[i]; if(inString){if(escaped)escaped=false;else if(ch==="\\")escaped=true;else if(ch==='"')inString=false;continue;} if(ch==='"')inString=true; else if(ch==="{")depth++; else if(ch==="}"){depth--;if(depth===0)return JSON.parse(raw.slice(start,i+1));} }
   throw new Error("Model yanıtındaki JSON tamamlanamadı.");
 }
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function ensureGenerator(modelId) {
   if (generator) return generator;
   if (!("gpu" in navigator)) throw new Error("WebGPU bulunamadı. Güncel Chrome/Edge ve donanım hızlandırmayı kullanın.");
   paint("Tarayıcı AI hazırlanıyor", "Model ilk kullanımda indirilir; sonra tarayıcı önbelleğinden açılır.", 8);
   const mod = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/+esm");
   mod.env.allowLocalModels = false;
-  generator = await mod.pipeline("text-generation", modelId, {dtype:"q4",device:"webgpu",progress_callback:(p)=>{const v=typeof p?.progress==="number"?Math.round(p.progress):18;paint("Tarayıcı AI hazırlanıyor",p?.file?`Model dosyası: ${p.file}`:"Model yükleniyor...",Math.max(8,Math.min(70,v*.7)));}});
+  generator = await withTimeout(
+    mod.pipeline("text-generation", modelId, {dtype:"q4",device:"webgpu",progress_callback:(p)=>{const v=typeof p?.progress==="number"?Math.round(p.progress):18;paint("Tarayıcı AI hazırlanıyor",p?.file?`Model dosyası: ${p.file}`:"Model yükleniyor...",Math.max(8,Math.min(70,v*.7)));}}),
+    180000,
+    "Model 3 dakika içinde hazırlanamadı. Sayfayı yenileyip tekrar deneyin."
+  );
   return generator;
 }
 async function run(args) {
@@ -35,9 +45,13 @@ async function run(args) {
   try {
     const modelId=args.model_id||"onnx-community/Qwen2.5-0.5B-Instruct";
     const gen=await ensureGenerator(modelId);
-    paint("Belge bilgileri AI ile doğrulanıyor","İşlem bu cihazın tarayıcısında yapılıyor; belge metni harici AI API'sine gönderilmiyor.",78);
-    const messages=[{role:"system",content:"You are a precise data extraction engine. Read Turkish patent application source text. Never invent data. Return only valid JSON."},{role:"user",content:args.prompt||""}];
-    const output=await gen(messages,{max_new_tokens:Number(args.max_new_tokens||650),do_sample:false,repetition_penalty:1.02,return_full_text:true});
+    paint("Belge bilgileri AI ile doğrulanıyor","Yalnız güncel mail gövdesi ve ilgili kısa alanlar işleniyor.",82);
+    const messages=[{role:"system",content:"You extract explicit Turkish patent application data. Never infer or invent. Return only compact valid JSON."},{role:"user",content:args.prompt||""}];
+    const output=await withTimeout(
+      gen(messages,{max_new_tokens:Number(args.max_new_tokens||320),do_sample:false,repetition_penalty:1.02,return_full_text:true}),
+      Number(args.generation_timeout_ms||60000),
+      "AI doğrulaması 60 saniyeyi aştı. Kurallı sonuç kullanılacak."
+    );
     let content=output?.[0]?.generated_text;
     if(Array.isArray(content)) content=content.at(-1)?.content||"";
     else if(typeof content!=="string") content="";
