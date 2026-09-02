@@ -1,23 +1,23 @@
-# Patent Atölyesi v5.4.49
+# Patent Atölyesi v5.4.50
 
+## v5.4.50 / 2026-09-02 — Süreçler / Koordinatlı OCR + Mail Başvuru Tercihleri
+
+- Resim bilgi kaynaklarında düz OCR yerine Tesseract kelime koordinatlarından satır/sütun ilişkisi yeniden kurulur; büyük yatay boşluklar TAB olarak korunur.
+- Form başlıkları ve açıklama cümleleri artık hak sahibi/buluş sahibi adı, TCKN/VKN veya adres gibi alanlara yanlış atanmaz; `Cinsiyet`, `Doğum Tarihi`, `Sahip Türü` gibi başlıklar veri sanılmaz.
+- EML/MSG içindeki HTML tablo hücreleri korunur; Outlook mesajında yapılandırılmış HTML gövde varsa düz metin yerine bu yapı tercih edilir.
+- Mail/yazı içinden `Buluşçu bilgileri gizlensin mi?`, `Kamu destekli proje kapsamında mı?` ve `Erken yayın talep ediliyor mu?` cevapları AI kullanmadan çıkarılır ve ön kontrolde ayrı gösterilir.
+- Kamu destekli proje cevabı EVET ise kurum ve proje numarası zorunlu ön kontrole girer.
+- Cevap bulunmazsa beyan formundaki belirtilen varsayım uygulanır: üç tercih için HAYIR; ön kontrolde `varsayılan` olarak açıkça gösterilir.
+- Buluş başlığının tek otoritesi her zaman yüklenen Tarifname'dir; beyan/mail başlığı EPATS başlığını değiştirmez.
 
 ## v5.4.49 / 2026-09-02 — Süreçler / Gerçek Beyan Formu + Çoklu Dosya Desteği
 
-- Başlık artık daima yüklenen Tarifname kaynağından alınır; beyan formu/e-posta başlığı çatışma oluşturmaz.
+- Başlık daima yüklenen Tarifname kaynağından alınır; beyan formu/e-posta başlığı çatışma oluşturmaz.
 - Beyan formu tablo parser'ı rol bazlı çalışır; açıklama/not satırları kişi adı kabul edilmez, TCKN/VKN/adres/il-ilçe/telefon/e-posta aynı kişiye bağlanır.
 - Bilgi kaynağı olarak PNG/JPG/JPEG/WEBP/TIF/TIFF/BMP yerel Tesseract OCR ile desteklenir; OpenAI/API kullanılmaz.
 - Tarifname ve Şekiller alanları DOC/DOCX/PDF kabul eder.
 - EPATS PDF üretiminde Word otomatik satır numaraları kaldırılır; font/stil/kenar boşluğu/header-footer ve teknik içerik korunur.
 - İstem sayımı farklı Word numId'lerinin aynı abstract numbering şemasına bağlı olduğu dosyalarda da doğru sayım yapar.
-
-
-- Süreçler bölümü AI/API kullanmadan çalışmaya devam eder.
-- Beyan formu tablolarında birleşik hücreler, çok hücreli satırlar ve `Adı Soyadı/Unvanı`, `Başvuru Sahibinin`, `Buluşu Yapan`, `Mucit` gibi gerçek form varyasyonları desteklenir.
-- EML/MSG gövdesine ek olarak desteklenen Word/PDF/TXT e-posta ekleri de okunur.
-- Tarifname dosya adındaki DP/ofis referansı (örn. `Tarifname_181176...docx`) otomatik DP ref olarak alınır.
-- Bulunan iletişim ve diğer etiketli bilgiler ön kontrolde kaynaklarıyla korunur; belirsiz bilgi tahmin edilmez.
-- PDF dönüşüm sunucusuna Arial/Times New Roman Microsoft Core Fonts eklenir; LibreOffice'in sessiz font ikamesi nedeniyle oluşan görünüm değişikliği engellenir.
-- Renk temizleme/bölme işlemi yalnız DOCX gövdesindeki hedef kırmızı-mavi şablon run'larını kaldırır; stiller, numaralandırma, header/footer ve sayfa ayarları değiştirilmez.
 
 ## v5.4.47 / 2026-09-01 — Süreçler / AI'sız Patent-Faydalı Model Ön Kontrolü
 

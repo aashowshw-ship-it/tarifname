@@ -7325,7 +7325,7 @@ elif work_type == "Süreçler":
             type=["docx", "doc", "pdf", "txt", "md", "eml", "msg", "png", "jpg", "jpeg", "webp", "tif", "tiff", "bmp"],
             accept_multiple_files=True,
             key="proc_info_sources",
-            help="Birden fazla dosya yükleyebilirsiniz. DOC/DOCX/PDF/e-posta/metin ve resimler yerel olarak okunur. Sistem hak sahibi, buluş sahibi, adres, rüçhan ve bulabildiği diğer başvuru bilgilerini kaynaklardan çıkarır. Buluş başlığı ise her zaman Tarifname'den alınır.",
+            help="Birden fazla dosya yükleyebilirsiniz. DOC/DOCX/PDF/e-posta/metin ve resimler yerel olarak okunur. Sistem hak sahibi, buluş sahibi, adres, rüçhan, buluşçu gizlilik tercihi, kamu destekli proje bilgisi ve erken yayın talebini kaynaklardan çıkarır. Resimlerde tablo sütunları koordinatlı OCR ile korunmaya çalışılır. Buluş başlığı ise her zaman Tarifname'den alınır.",
         )
         pasted_source = st.text_area(
             "E-posta / yazı metni (isteğe bağlı)",
@@ -7460,6 +7460,29 @@ elif work_type == "Süreçler":
                 {"Alan": "Rüçhan", "Bulunan bilgi": (metadata.get("priority") or {}).get("status") or "Belirsiz", "Kaynak": field_sources.get("priority") or (metadata.get("priority") or {}).get("source") or "-"},
             ]
             st.table(info_rows)
+
+            filing_options = metadata.get("filing_options") or {}
+            st.markdown("##### Başvuru tercihleri / beyanlar")
+            option_rows = []
+            for key in ("inventor_hidden", "public_project", "early_publication"):
+                row = filing_options.get(key) or {}
+                value = row.get("status") or "Belirsiz"
+                if key == "public_project" and value == "Evet":
+                    extras = []
+                    if row.get("institution"):
+                        extras.append(f"Kurum: {row.get('institution')}")
+                    if row.get("project_number"):
+                        extras.append(f"Proje No: {row.get('project_number')}")
+                    if extras:
+                        value = f"{value} — " + " / ".join(extras)
+                if not row.get("explicit") and row.get("source"):
+                    value = f"{value} (varsayılan)"
+                option_rows.append({
+                    "Bilgi": row.get("label") or key,
+                    "Cevap": value,
+                    "Kaynak": row.get("source") or "-",
+                })
+            st.table(option_rows)
 
             applicants = metadata.get("applicants") or []
             st.markdown("##### Hak sahibi / başvuru sahibi")

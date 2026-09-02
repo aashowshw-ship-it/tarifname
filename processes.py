@@ -347,11 +347,14 @@ def _docx_source_text(data: bytes) -> str:
 def _html_to_text(value: str) -> str:
     value = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", value or "")
     value = re.sub(r"(?i)<br\s*/?>", "\n", value)
+    # E-posta içindeki HTML tablolarında hücre sınırlarını TAB olarak koru.
+    value = re.sub(r"(?i)</t[dh]\s*>", "\t", value)
     value = re.sub(r"(?i)</p\s*>", "\n", value)
     value = re.sub(r"(?i)</(?:div|tr|li|h[1-6])\s*>", "\n", value)
     value = re.sub(r"(?s)<[^>]+>", " ", value)
     value = unescape(value)
-    value = re.sub(r"[ \t]+", " ", value)
+    value = re.sub(r" +", " ", value)
+    value = re.sub(r" *\t *", "\t", value)
     value = re.sub(r"\n\s*\n+", "\n", value)
     return value.strip()
 
@@ -409,9 +412,96 @@ def _eml_text(data: bytes) -> str:
             )
         except Exception:
             pass
-    body_parts = plain_parts or html_parts
+    structured_html = [x for x in html_parts if "\t" in x]
+    body_parts = structured_html or plain_parts or html_parts
     return "\n".join([x for x in head + body_parts + attachment_parts if x and x.strip()]).strip()
 
+
+
+def _ocr_image_source_text(data: bytes) -> str:
+    """Form/ekran görüntüsünü sütun ilişkisini mümkün olduğunca koruyarak OCR eder.
+
+    Tesseract'ın düz ``image_to_string`` çıktısı tablo sütunlarını tek satıra
+    yapıştırabildiği için hak sahibi/buluş sahibi alanları kayabiliyordu. Burada
+    kelime koordinatlarından satırlar yeniden kurulur ve büyük yatay boşluklar
+    TAB olarak korunur. Böylece ``Unvanı <TAB> ABC A.Ş. <TAB> VKN <TAB> ...``
+    yapısı kural tabanlı ayrıştırıcıya ulaşır.
+    """
+    try:
+        import pytesseract  # type: ignore
+    except ImportError as exc:
+        raise ValueError("Resimden metin okuyabilmek için yerel OCR bileşeni kurulu değildir.") from exc
+
+    image = Image.open(io.BytesIO(data))
+    image = ImageOps.exif_transpose(image)
+    # Küçük ekran görüntülerinde OCR doğruluğunu yükselt; oranı değiştirme.
+    if image.width < 1800:
+        scale = min(2.5, 1800 / max(1, image.width))
+        image = image.resize((int(image.width * scale), int(image.height * scale)))
+    gray = ImageOps.autocontrast(image.convert("L"))
+
+    ocr = pytesseract.image_to_data(
+        gray,
+        lang="tur+eng",
+        config="--psm 6 -c preserve_interword_spaces=1",
+        output_type=pytesseract.Output.DICT,
+    )
+    grouped: dict[tuple[int, int, int, int], list[dict[str, float | str]]] = {}
+    count = len(ocr.get("text", []))
+    for i in range(count):
+        word = str(ocr["text"][i] or "").strip()
+        if not word:
+            continue
+        try:
+            conf = float(ocr.get("conf", ["0"] * count)[i])
+        except Exception:
+            conf = 0.0
+        if conf < 15:
+            continue
+        key = (
+            int(ocr.get("page_num", [1] * count)[i]),
+            int(ocr.get("block_num", [0] * count)[i]),
+            int(ocr.get("par_num", [0] * count)[i]),
+            int(ocr.get("line_num", [0] * count)[i]),
+        )
+        grouped.setdefault(key, []).append({
+            "text": word,
+            "left": float(ocr["left"][i]),
+            "top": float(ocr["top"][i]),
+            "width": float(ocr["width"][i]),
+            "height": float(ocr["height"][i]),
+        })
+
+    rows: list[tuple[float, str]] = []
+    for words in grouped.values():
+        words.sort(key=lambda w: float(w["left"]))
+        if not words:
+            continue
+        char_widths = [float(w["width"]) / max(1, len(str(w["text"]))) for w in words]
+        heights = [float(w["height"]) for w in words]
+        char_widths.sort(); heights.sort()
+        med_char = char_widths[len(char_widths)//2] if char_widths else 8.0
+        med_h = heights[len(heights)//2] if heights else 18.0
+        # Belirgin hücre/sütun boşluğunu TAB yap. Normal kelime arası boşluk kalır.
+        gap_threshold = max(28.0, med_char * 4.8, med_h * 1.9)
+        chunks: list[str] = []
+        prev_right: float | None = None
+        for w in words:
+            left = float(w["left"])
+            if prev_right is not None:
+                gap = left - prev_right
+                chunks.append("\t" if gap >= gap_threshold else " ")
+            chunks.append(str(w["text"]))
+            prev_right = left + float(w["width"])
+        line = re.sub(r"[ ]{2,}", " ", "".join(chunks)).strip()
+        if line:
+            rows.append((min(float(w["top"]) for w in words), line))
+    rows.sort(key=lambda x: x[0])
+    row_text = "\n".join(x[1] for x in rows).strip()
+    if row_text:
+        return row_text
+    # Koordinatlı OCR olağan dışı biçimde boş dönerse güvenli geri dönüş.
+    return pytesseract.image_to_string(gray, lang="tur+eng", config="--psm 6").strip()
 
 def extract_application_source_text(filename: str, data: bytes) -> str:
     """Beyan formu/yazı/e-posta gibi başvuru bilgi kaynaklarından metin çıkarır."""
@@ -439,13 +529,20 @@ def extract_application_source_text(filename: str, data: bytes) -> str:
             src = Path(td) / Path(filename).name
             src.write_bytes(data)
             msg = extract_msg.Message(str(src))
+            html_body = getattr(msg, "htmlBody", None)
+            if isinstance(html_body, (bytes, bytearray)):
+                html_body = bytes(html_body).decode("utf-8", errors="replace")
+            structured_body = _html_to_text(str(html_body)) if html_body else ""
+            plain_body = getattr(msg, "body", "") or ""
+            # HTML tablo varsa hücre sınırları daha değerlidir; yoksa düz gövdeyi kullan.
+            preferred_body = structured_body if "\t" in structured_body else (plain_body or structured_body)
             parts = [
                 f"Konu: {getattr(msg, 'subject', '') or ''}",
                 f"Kimden: {getattr(msg, 'sender', '') or ''}",
                 f"Kime: {getattr(msg, 'to', '') or ''}",
                 f"Cc: {getattr(msg, 'cc', '') or ''}",
                 f"Tarih: {getattr(msg, 'date', '') or ''}",
-                getattr(msg, "body", "") or "",
+                preferred_body,
             ]
             # Outlook mesajının içindeki Word/PDF/TXT ve görsel ekleri de bilgi kaynağına kat.
             for att in getattr(msg, "attachments", []) or []:
@@ -462,15 +559,9 @@ def extract_application_source_text(filename: str, data: bytes) -> str:
                 pass
     elif suffix in {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp"}:
         try:
-            import pytesseract  # type: ignore
-        except ImportError as exc:
-            raise ValueError("Resimden metin okuyabilmek için yerel OCR bileşeni kurulu değildir.") from exc
-        try:
-            image = Image.open(io.BytesIO(data))
-            image = ImageOps.exif_transpose(image).convert("L")
-            image = ImageOps.autocontrast(image)
             # Türkçe + İngilizce OCR yerel çalışır; OpenAI/API kredisi tüketmez.
-            text = pytesseract.image_to_string(image, lang="tur+eng", config="--psm 6")
+            # Tablo/sütun koordinatları mümkün olduğunca TAB olarak korunur.
+            text = _ocr_image_source_text(data)
         except Exception as exc:
             raise ValueError(f"Resim OCR ile okunamadı: {exc}") from exc
     else:
@@ -607,9 +698,10 @@ def _canonical_label(label: str) -> str:
         "authorized_person": ["yetkili", "yetkili kisi", "yetkili kişi", "temsilci", "contact person"],
         "website": ["web", "web sitesi", "internet adresi", "website"],
         "entity_type": [
-            "kisi turu", "hak sahibi turu", "basvuru sahibi turu", "tuzel gercek kisi",
+            "kisi turu", "sahip turu", "hak sahibi turu", "basvuru sahibi turu", "tuzel gercek kisi",
             "gercek tuzel", "hukuki nitelik", "entity type",
         ],
+        "gender": ["cinsiyet", "gender", "sex"],
         "email": ["e posta", "eposta", "e mail", "email", "mail adresi", "elektronik posta"],
         "phone": ["telefon", "telefonu", "telefon no", "telefon numarasi", "gsm", "cep telefonu", "ev telefonu", "is telefonu", "ev is telefonu", "phone"],
         "priority": ["ruchan", "ruchan durumu", "ruchan talebi", "priority", "priority claim"],
@@ -620,7 +712,7 @@ def _canonical_label(label: str) -> str:
     order = (
         "priority_country", "priority_number", "priority_date", "application_kind", "invention_title",
         "reference", "entity_type", "applicant", "inventor", "name", "identity", "address", "country",
-        "location", "city", "district", "birth_date", "authorized_person", "postal_code", "email", "phone", "fax", "website", "priority",
+        "location", "city", "district", "birth_date", "gender", "authorized_person", "postal_code", "email", "phone", "fax", "website", "priority",
     )
     for key in order:
         for alias in aliases[key]:
@@ -637,7 +729,8 @@ def _is_instruction_text(value: str) -> bool:
         return False
     markers = [
         "not basvuru sahibinin", "birden fazla olmasi durumunda", "ayri ayri duzenlenmelidir",
-        "bu alan", "doldurulmalidir", "zorunlu alan", "gerekiyorsa", "aciklama", "ornek",
+        "bu alan", "doldurulmalidir", "zorunlu alan", "gerekiyorsa", "aciklama",
+        "ornek olarak", "ornek bilgi", "ornek metin",
         "basvuru sahibinin birden fazla", "bulusu yapan birden fazla", "her bir basvuru sahibi",
     ]
     return any(x in n for x in markers)
@@ -649,10 +742,107 @@ def _is_role_section_heading(raw_label: str, canonical: str) -> bool:
         return False
     # Resmî beyan formlarında bölüm başlığı bazen yalnız "... SAHİBİ(LERİ)"
     # biçimindedir ve hemen yanında açıklama/not bulunur. Bu da bölüm başlığıdır.
-    return any(x in n for x in [
+    if any(x in n for x in [
         "bilgi", "bilgileri", "bilgisi", "information", "detay", "detaylari",
         "sahipleri", "yapanlar", "mucitler", "buluscular",
-    ])
+    ]):
+        return True
+    # Kısa ve yalnız rol adlarından oluşan başlıkları kabul et;
+    # "Buluş Sahibi: Ali Veli" gibi etiket+değer satırını başlık sanma.
+    if re.search(r"[:\t|]", raw_label or ""):
+        return False
+    pure = n.strip()
+    return pure in {
+        "hak sahibi", "basvuru sahibi", "hak sahibi basvuru sahibi",
+        "hak sahipleri", "basvuru sahipleri", "hak sahipleri basvuru sahipleri",
+        "bulus sahibi", "bulus sahipleri", "bulusu yapan", "bulusu yapanlar",
+        "buluscu", "buluscular", "mucit", "mucitler",
+    }
+
+
+
+def _is_form_header_bundle(value: str) -> bool:
+    """OCR'ın bir tablo başlık satırını tek değer gibi birleştirmesini tanır."""
+    n = _plain_norm(value)
+    if not n:
+        return False
+    markers = [
+        "unvani", "ad soyad", "hak sahibi adresi", "adres", "sahip turu", "kisi turu",
+        "uyruk", "ulke", "tc kimlik", "tckn", "vergi no", "vkn", "e posta", "telefon",
+        "dogum tarihi", "cinsiyet", "il ilce", "ilce",
+    ]
+    hits = sum(1 for m in markers if m in n)
+    # Şirket unvanı veya gerçek bir e-posta/adres gibi açık bir veri varsa başlık
+    # demek için daha yüksek eşik kullan; aksi halde üç alan adı yeterlidir.
+    threshold = 5 if (_looks_like_company(value) or "@" in value) else 3
+    return hits >= threshold
+
+
+def _is_bad_person_value(field: str, value: str, *, applicant: bool) -> bool:
+    value = _clean_value(value)
+    n = _plain_norm(value)
+    if not n:
+        return True
+    if _is_instruction_text(value) or _is_form_header_bundle(value):
+        return True
+    if _canonical_label(value):
+        return True
+    bad = [
+        "bilgileri gizlensin", "cevap verilmemesi", "isleme alinacaktir", "cinsiyet",
+        "dogum tarihi", "ev is telefonu", "hak sahibi adresi", "sahip turu", "uyruk",
+        "tc kimlik vergi no", "e posta telefon", "basvuru sahibi bilgileri", "hak sahibi bilgileri",
+        "bulus sahibi bilgileri",
+    ]
+    if any(x in n for x in bad):
+        return True
+    if field == "name":
+        if not re.search(r"[A-Za-zÇĞİÖŞÜçğıöşü]", value):
+            return True
+        if "?" in value or "->" in value or "à" in value or "→" in value:
+            return True
+        if applicant:
+            # Gerçek kişi başvuru sahibi de olabilir; yalnız salt form etiketi/uzun
+            # açıklama cümlesini ad/unvan olarak kabul etme.
+            if len(value) > 220:
+                return True
+        else:
+            # Buluşçu adı normalde kısa bir kişi adıdır. Form soru/cümlelerini dışla.
+            if len(value) > 120 or len(value.split()) > 12:
+                return True
+    return False
+
+
+def _inline_field_pair(token: str) -> tuple[str, str, str] | None:
+    """OCR aynı hücrede ``Etiket Değer`` ürettiyse ikisini ayırır."""
+    token = _clean_value(token)
+    # Kimlik etiketi kendi içinde "No", "/ Vergi No" gibi sözcükler taşıyabilir.
+    # Uzun bir kimlik değeri yoksa bunu asla inline değerli alan sayma.
+    if _canonical_label(token) == "identity" and not re.search(r"\d{5,}", token):
+        return None
+    # Bazı etiketlerin kendisi slash içerir; bunları "etiket + değer" sanma.
+    if re.fullmatch(r"(?i)(?:tckn\s*/\s*kimlik|adı\s*/\s*unvanı|adi\s*/\s*unvani|il\s*/\s*ilçe|il\s*/\s*ilce)", token):
+        return None
+    patterns: list[tuple[str, str]] = [
+        (r"^(doğum\s+tarihi|dogum\s+tarihi|birth\s+date)\s+(.+)$", "birth_date"),
+        (r"^(t\.?\s*c\.?\s*kimlik(?:\s+no|\s+numarası|\s+numarasi)?|tc\s+kimlik(?:\s+no)?|tckn\s*/\s*kimlik|tckn|vkn|vergi\s+(?:kimlik\s+)?(?:no|numarası|numarasi))\s+(.+)$", "identity"),
+        (r"^(adı\s*/\s*unvanı|adi\s*/\s*unvani|adı\s+soyadı|adi\s+soyadi|ad\s+soyad|unvanı|unvani)\s+(.+)$", "name"),
+        (r"^(il\s*/\s*ilçe|il\s*/\s*ilce|il\s+ilçe|il\s+ilce)\s+(.+)$", "location"),
+        (r"^(ülke|ulke|uyruk|country)\s+(.+)$", "country"),
+        (r"^(ilçe|ilce|district)\s+(.+)$", "district"),
+        (r"^(il|şehir|sehir|city)\s+(.+)$", "city"),
+        (r"^(e[ -]?posta|eposta|e[ -]?mail|email)\s+(.+)$", "email"),
+        (r"^(ev\s*/\s*iş\s+telefonu|ev\s*/\s*is\s+telefonu|telefon|gsm|phone)\s+(.+)$", "phone"),
+        (r"^(adres|adresi|address)\s+(.+)$", "address"),
+        (r"^(sahip\s+türü|sahip\s+turu|kişi\s+türü|kisi\s+turu)\s+(.+)$", "entity_type"),
+        (r"^(cinsiyet|gender|sex)\s+(.+)$", "gender"),
+    ]
+    for pattern, label in patterns:
+        m = re.match(pattern, token, flags=re.IGNORECASE)
+        if m:
+            value = _clean_value(m.group(2))
+            if value:
+                return (m.group(1), label, value)
+    return None
 
 
 def _line_label_value_pairs(line: str) -> list[tuple[str, str, str]]:
@@ -664,6 +854,11 @@ def _line_label_value_pairs(line: str) -> list[tuple[str, str, str]]:
     line = (line or "").strip()
     if not line or line.startswith("[[TABLO") or line.startswith("[[E-POSTA EKI"):
         return []
+    # OCR tablo başlıklarını tek bir değer gibi yapıştırdıysa kişi adı/unvanı
+    # sanma. Koordinatlı OCR ile çoğu satır TAB'lı gelir; bu koruma geri dönüş
+    # senaryoları içindir.
+    if "\t" not in line and _is_form_header_bundle(line):
+        return []
 
     # Önce tablo/hücre ayraçlarını değerlendir. Hücre içindeki " / " normal
     # metin olarak bırakılır; yalnız tab ve belirgin dikey çizgiler ayraçtır.
@@ -672,6 +867,11 @@ def _line_label_value_pairs(line: str) -> list[tuple[str, str, str]]:
         pairs: list[tuple[str, str, str]] = []
         i = 0
         while i < len(tokens):
+            inline = _inline_field_pair(tokens[i])
+            if inline is not None:
+                pairs.append(inline)
+                i += 1
+                continue
             label = _canonical_label(tokens[i])
             if label:
                 j = i + 1
@@ -698,6 +898,11 @@ def _line_label_value_pairs(line: str) -> list[tuple[str, str, str]]:
             if label in {"applicant", "inventor"} and _is_instruction_text(value):
                 value = ""
             return [(raw_label, label, value)]
+    # OCR/PDF aynı hücreyi "Doğum Tarihi 23.05.1992" gibi döndürmüş olabilir.
+    generic_inline = _inline_field_pair(line)
+    if generic_inline is not None:
+        return [generic_inline]
+
     # PDF/antiword çıktısında tablo sütunları bazen ayraçsız tek satıra
     # düşer: "Hak Sahibi ABC A.Ş." gibi. Yalnız açık ve sabit etiket
     # başlangıçlarında ayraçsız geri dönüş uygula.
@@ -811,7 +1016,9 @@ def _apply_person_field(row: dict[str, str], field: str, value: str, *, applican
     if not value:
         return
     if field == "identity":
-        row["identity"] = _valid_identity(value)
+        ident = _valid_identity(value)
+        if ident:
+            row["identity"] = ident
     elif field == "entity_type" and applicant:
         row["entity_type"] = _entity_type(row.get("name", ""), value)
     elif field == "location":
@@ -831,6 +1038,8 @@ def _apply_person_field(row: dict[str, str], field: str, value: str, *, applican
         if re.search(r"(?<!\d)(?:0?[1-9]|[12]\d|3[01])[./-](?:0?[1-9]|1[0-2])[./-](?:19|20)\d{2}(?!\d)", value):
             row["birth_date"] = value
     elif field in {"address", "country", "city", "email", "phone"}:
+        if _is_bad_person_value(field, value, applicant=applicant):
+            return
         if not row.get(field):
             row[field] = value
 
@@ -911,8 +1120,18 @@ def _priority_status(value: str) -> str:
 
 
 def _valid_identity(value: str) -> str:
+    value = _clean_value(value)
+    if not value or _canonical_label(value) or _is_instruction_text(value) or _is_form_header_bundle(value):
+        return ""
     digits = re.sub(r"\D", "", value or "")
-    return digits if len(digits) in {10, 11} else _clean_value(value)
+    if len(digits) in {10, 11}:
+        return digits
+    # Yabancı kimlik/pasaport gibi alanlar yalnız sayı/harf içeren makul bir
+    # değer ise korunur; "Cinsiyet", "Doğum Tarihi" gibi etiketler artık girmez.
+    compact = re.sub(r"[^A-Za-z0-9]", "", value)
+    if 5 <= len(compact) <= 24 and any(ch.isdigit() for ch in compact):
+        return value
+    return ""
 
 
 def _set_singleton(result: dict[str, Any], key: str, value: str, source: str, seen: dict[str, tuple[str, str]]) -> None:
@@ -934,6 +1153,102 @@ def _set_singleton(result: dict[str, Any], key: str, value: str, source: str, se
         result[key] = value
 
 
+
+def _explicit_yes_no(segment: str) -> str:
+    """Soru içindeki varsayılan HAYIR metnini cevap sanmadan açık cevabı bulur."""
+    segment = segment or ""
+    # Müşteri formlarında en güvenilir ayraç: à / → / -> / =>
+    matches = re.findall(r"(?:à|→|->|=>)\s*(EVET|HAYIR)\b", segment, flags=re.IGNORECASE)
+    if matches:
+        return "Evet" if matches[-1].casefold() == "evet" else "Hayır"
+    # Parantez kapandıktan sonra veya satır sonunda yazılmış açık cevap.
+    matches = re.findall(r"\)\s*[:\-–—]?\s*(EVET|HAYIR)\b", segment, flags=re.IGNORECASE)
+    if matches:
+        return "Evet" if matches[-1].casefold() == "evet" else "Hayır"
+    for line in reversed(segment.splitlines()):
+        m = re.search(r"(?:cevap|yanıt)\s*[:\-]\s*(EVET|HAYIR)\b", line, flags=re.IGNORECASE)
+        if m:
+            return "Evet" if m.group(1).casefold() == "evet" else "Hayır"
+    return "Belirsiz"
+
+
+def _question_segment(text: str, anchors: list[str]) -> str:
+    normalized = text or ""
+    for anchor in anchors:
+        m = re.search(anchor, normalized, flags=re.IGNORECASE | re.DOTALL)
+        if not m:
+            continue
+        start = m.start()
+        tail = normalized[start:start + 1800]
+        # Bir sonraki numaralı soruda kes.
+        nxt = re.search(r"\n\s*\*{0,2}\d+[.)]\*{0,2}\s+", tail[20:])
+        if nxt:
+            tail = tail[:20 + nxt.start()]
+        return tail
+    return ""
+
+
+def _set_filing_option(result: dict[str, Any], key: str, status: str, source: str) -> None:
+    if status not in {"Evet", "Hayır"}:
+        return
+    row = result["filing_options"][key]
+    prior = row.get("status", "Belirsiz")
+    if prior in {"Evet", "Hayır"} and prior != status:
+        result["conflicts"].append(f"{row.get('label', key)}: '{prior}' ({row.get('source')}) / '{status}' ({source})")
+        return
+    row["status"] = status
+    row["source"] = source
+    row["explicit"] = True
+
+
+def _extract_filing_options(result: dict[str, Any], text: str, source: str) -> None:
+    # 1) Buluşçu bilgilerinin gizlenmesi
+    seg = _question_segment(text, [
+        r"buluşçu\s+bilgileri\s+gizlensin\s+mi",
+        r"buluş\s+sahibi\s+bilgileri\s+gizlensin\s+mi",
+        r"mucit\s+bilgileri\s+gizlensin\s+mi",
+    ])
+    if seg:
+        _set_filing_option(result, "inventor_hidden", _explicit_yes_no(seg), source)
+
+    # 2) TÜBİTAK/KOSGEB/kamu destekli proje
+    seg = _question_segment(text, [
+        r"buluş.{0,120}(?:TÜBİTAK|TUBITAK).{0,120}(?:KOSGEB).{0,260}?proje\s+kapsamında",
+        r"buluş.{0,180}?kamu\s+kurum.{0,220}?desteklenen\s+bir\s+proje",
+    ])
+    if seg:
+        status = _explicit_yes_no(seg)
+        _set_filing_option(result, "public_project", status, source)
+        if status == "Evet":
+            inst = re.search(r"(?:kurum|destekleyen\s+kurum)\s*[:\-]\s*([^\n;]{2,160})", seg, flags=re.IGNORECASE)
+            proj = re.search(r"(?:proje\s*(?:no|numarası|numarasi)|project\s*(?:no|number))\s*[:\-]\s*([^\n;]{2,80})", seg, flags=re.IGNORECASE)
+            row = result["filing_options"]["public_project"]
+            if inst:
+                row["institution"] = _clean_value(inst.group(1))
+            if proj:
+                row["project_number"] = _clean_value(proj.group(1))
+
+    # 3) Erken yayın
+    seg = _question_segment(text, [
+        r"erken\s+yayın\s+talep\s+ediliyor\s+mu",
+        r"erken\s+yayım\s+talep\s+ediliyor\s+mu",
+        r"erken\s+yayın\s+talebi",
+        r"erken\s+yayım\s+talebi",
+    ])
+    if seg:
+        _set_filing_option(result, "early_publication", _explicit_yes_no(seg), source)
+
+
+def _apply_filing_option_defaults(result: dict[str, Any]) -> None:
+    # Kullanıcının beyan formu kurallarında cevap verilmemesi halinde üç alan da
+    # HAYIR kabul ediliyor. Açık cevap bulunursa her zaman açık cevap üstün gelir.
+    for key in ("inventor_hidden", "public_project", "early_publication"):
+        row = result["filing_options"][key]
+        if row.get("status") not in {"Evet", "Hayır"}:
+            row["status"] = "Hayır"
+            row["source"] = "Varsayılan (cevap verilmemiş)"
+            row["explicit"] = False
+
 def extract_application_information_rule_based(
     source_blocks: list[tuple[str, str]], *, specification_text: str = "", specification_filename: str = ""
 ) -> dict[str, Any]:
@@ -949,6 +1264,11 @@ def extract_application_information_rule_based(
         "applicants": [],
         "inventors": [],
         "priority": {"status": "Belirsiz", "country": "", "number": "", "date": "", "source": ""},
+        "filing_options": {
+            "inventor_hidden": {"label": "Buluşçu bilgileri gizlensin mi?", "status": "Belirsiz", "source": "", "explicit": False},
+            "public_project": {"label": "Kamu destekli proje kapsamında mı?", "status": "Belirsiz", "institution": "", "project_number": "", "source": "", "explicit": False},
+            "early_publication": {"label": "Erken yayın talep ediliyor mu?", "status": "Belirsiz", "source": "", "explicit": False},
+        },
         "other_information": [],
         "conflicts": [],
         "source_files_used": [],
@@ -968,6 +1288,7 @@ def extract_application_information_rule_based(
         text = (raw_text or "").replace("\r", "\n")
         result["source_files_used"].append(source)
         _extract_contact_information(result, text, source)
+        _extract_filing_options(result, text, source)
 
         current_role = ""
         current_person: dict[str, str] | None = None
@@ -976,6 +1297,13 @@ def extract_application_information_rule_based(
         lines = [x.strip(" \r") for x in text.splitlines()]
         for line in lines:
             if not line or line.startswith("[[TABLO") or line.startswith("[[E-POSTA EKI"):
+                continue
+
+            whole_label = _canonical_label(line)
+            if whole_label in {"applicant", "inventor"} and _is_role_section_heading(line, whole_label):
+                current_role = whole_label
+                current_person = None
+                pending_label = ""
                 continue
 
             pairs = _line_label_value_pairs(line)
@@ -1011,7 +1339,10 @@ def extract_application_information_rule_based(
                     "priority", "priority_country", "priority_number", "priority_date",
                     "applicant_name", "inventor_name", "applicant_identity", "inventor_identity",
                     "applicant_address", "inventor_address", "applicant_country", "inventor_country",
-                    "applicant_city", "inventor_city", "name", "identity", "address", "country", "city",
+                    "applicant_city", "inventor_city", "applicant_district", "inventor_district",
+                    "applicant_email", "inventor_email", "applicant_phone", "inventor_phone",
+                    "applicant_birth_date", "inventor_birth_date", "name", "identity", "address", "country", "city",
+                    "district", "email", "phone", "birth_date", "entity_type", "gender",
                 }:
                     pending_label = label
                     if label.startswith("applicant") or label == "applicant":
@@ -1063,6 +1394,9 @@ def extract_application_information_rule_based(
                     role, field = label.split("_", 1)
                     current_role = role
                     target = result["applicants"] if role == "applicant" else result["inventors"]
+                    if field != "entity_type" and _is_bad_person_value(field, value, applicant=role == "applicant"):
+                        # Form başlığı/açıklama gerçek kişi verisi değildir.
+                        continue
                     if field == "name":
                         # Önce TCKN/doğum tarihi gibi alanları gelen aynı kişinin boş adını
                         # yeni satır açmadan tamamla. Ancak dolu ve farklı bir ad varsa yeni kişi başlat.
@@ -1081,7 +1415,14 @@ def extract_application_information_rule_based(
                         _apply_person_field(current_person, field, value, applicant=role == "applicant")
                     continue
 
-                if label in {"name", "identity", "address", "country", "location", "city", "district", "email", "phone", "birth_date", "entity_type"} and current_role in {"applicant", "inventor"}:
+                if label in {"name", "identity", "address", "country", "location", "city", "district", "email", "phone", "birth_date", "entity_type", "gender"} and current_role in {"applicant", "inventor"}:
+                    if label == "gender":
+                        if value and not _is_bad_person_value("gender", value, applicant=current_role == "applicant"):
+                            prefix = "Hak sahibi" if current_role == "applicant" else "Buluş sahibi"
+                            _add_other_information(result, f"{prefix} Cinsiyet", value, source)
+                        continue
+                    if label != "entity_type" and _is_bad_person_value(label, value, applicant=current_role == "applicant"):
+                        continue
                     target = result["applicants"] if current_role == "applicant" else result["inventors"]
                     if label == "name":
                         if current_person is not None and current_person in target and not current_person.get("name"):
@@ -1184,6 +1525,7 @@ def extract_application_information_rule_based(
             else:
                 by_id[digits] = row
 
+    _apply_filing_option_defaults(result)
     result["conflicts"] = list(dict.fromkeys(x for x in result["conflicts"] if x))
     return normalize_application_information(result)
 
@@ -1260,6 +1602,31 @@ def normalize_application_information(data: dict[str, Any] | None) -> dict[str, 
         return out
 
     priority = data.get("priority") if isinstance(data.get("priority"), dict) else {}
+    raw_opts = data.get("filing_options") if isinstance(data.get("filing_options"), dict) else {}
+    def opt(key: str, label: str, *, project: bool = False) -> dict[str, Any]:
+        src = raw_opts.get(key) if isinstance(raw_opts.get(key), dict) else {}
+        status = str(src.get("status") or "Belirsiz").strip()
+        if status not in {"Evet", "Hayır", "Belirsiz"}:
+            status = "Belirsiz"
+        source = str(src.get("source") or "").strip()
+        explicit = bool(src.get("explicit"))
+        if status == "Belirsiz":
+            status = "Hayır"
+            source = source or "Varsayılan (cevap verilmemiş)"
+            explicit = False
+        row: dict[str, Any] = {
+            "label": label, "status": status, "source": source,
+            "explicit": explicit,
+        }
+        if project:
+            row["institution"] = str(src.get("institution") or "").strip()
+            row["project_number"] = str(src.get("project_number") or "").strip()
+        return row
+    filing_options = {
+        "inventor_hidden": opt("inventor_hidden", "Buluşçu bilgileri gizlensin mi?"),
+        "public_project": opt("public_project", "Kamu destekli proje kapsamında mı?", project=True),
+        "early_publication": opt("early_publication", "Erken yayın talep ediliyor mu?"),
+    }
     other = data.get("other_information") if isinstance(data.get("other_information"), list) else []
     return {
         "application_kind": app_kind,
@@ -1274,6 +1641,7 @@ def normalize_application_information(data: dict[str, Any] | None) -> dict[str, 
             "date": str(priority.get("date") or "").strip(),
             "source": str(priority.get("source") or "").strip(),
         },
+        "filing_options": filing_options,
         "other_information": [
             {
                 "label": str(x.get("label") or "").strip(),
@@ -1328,6 +1696,20 @@ def application_precheck_missing(metadata: dict[str, Any], metrics: dict[str, An
         for field, label in [("country", "rüçhan ülkesi"), ("number", "rüçhan numarası"), ("date", "rüçhan tarihi")]:
             if not str(priority.get(field) or "").strip():
                 missing.append(label)
+    options = metadata.get("filing_options") or {}
+    for key, label in [
+        ("inventor_hidden", "buluşçu bilgilerinin gizlenme tercihi"),
+        ("public_project", "kamu destekli proje durumu"),
+        ("early_publication", "erken yayın tercihi"),
+    ]:
+        if str((options.get(key) or {}).get("status") or "").strip() not in {"Evet", "Hayır"}:
+            missing.append(label)
+    pub = options.get("public_project") or {}
+    if pub.get("status") == "Evet":
+        if not str(pub.get("institution") or "").strip():
+            missing.append("kamu destekli proje kurumu")
+        if not str(pub.get("project_number") or "").strip():
+            missing.append("kamu destekli proje numarası")
     if int(metrics.get("specification_pages") or 0) <= 0:
         missing.append("Tarifname PDF")
     if int(metrics.get("claim_count") or 0) <= 0:

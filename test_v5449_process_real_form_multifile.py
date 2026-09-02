@@ -42,7 +42,7 @@ def _realistic_beyan() -> bytes:
 
 
 def test_v5449_real_beyan_note_is_not_person_and_fields_attach_to_same_people():
-    assert APP_VERSION == "v5.4.49"
+    assert APP_VERSION == "v5.4.50"
     raw = _realistic_beyan()
     text = extract_application_source_text("Hologramli Gorusme - b.beyan.docx", raw)
     data = extract_application_information_rule_based(
