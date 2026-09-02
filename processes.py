@@ -506,43 +506,59 @@ def _current_email_body(value: str) -> str:
 
 
 def _eml_text(data: bytes) -> str:
-    """EML'de yalnız güncel mesaj gövdesini oku; eski reply/forward zincirini alma."""
+    """EML'de güncel gövdeyi oku; yalnız bilinen başvuru tercihlerini ayrıca kurtar.
+
+    Eski reply/forward zinciri hak sahibi/buluşçu kaynağı yapılmaz. Ancak Outlook
+    bazı yanıtlı soru formlarını quoted blok içine taşıyabildiğinden, yalnız üç
+    bilinen başvuru sorusunun açık EVET/HAYIR kanıtı ham gövdeden geri alınır.
+    """
     msg = BytesParser(policy=policy.default).parsebytes(data)
     plain_parts: list[str] = []
     html_parts: list[str] = []
+    evidence_raw: list[str] = []
     if msg.is_multipart():
         for part in msg.walk():
             disposition = part.get_content_disposition()
             filename = part.get_filename() or ""
             if disposition == "attachment" or filename:
-                # E-posta eki başvuru kaynağı olacaksa kullanıcı ayrıca yükler.
                 continue
             ctype = part.get_content_type()
             if ctype == "text/plain":
                 try:
-                    plain_parts.append(_current_email_body(str(part.get_content())))
+                    raw = str(part.get_content())
                 except Exception:
                     payload = part.get_payload(decode=True) or b""
-                    plain_parts.append(_current_email_body(payload.decode(part.get_content_charset() or "utf-8", errors="replace")))
+                    raw = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+                evidence_raw.append(raw)
+                plain_parts.append(_current_email_body(raw))
             elif ctype == "text/html":
                 try:
-                    html = _strip_quoted_email_html(str(part.get_content()))
-                    html_parts.append(_current_email_body(_html_to_text(html)))
+                    raw_html = str(part.get_content())
+                    evidence_raw.append(_html_to_text(raw_html))
+                    html_parts.append(_current_email_body(_html_to_text(_strip_quoted_email_html(raw_html))))
                 except Exception:
                     pass
     else:
         try:
             content = msg.get_content()
             if msg.get_content_type() == "text/html":
+                raw = _html_to_text(str(content))
+                evidence_raw.append(raw)
                 body = _html_to_text(_strip_quoted_email_html(str(content)))
+                html_parts.append(_current_email_body(body))
             else:
-                body = str(content)
-            (html_parts if msg.get_content_type() == "text/html" else plain_parts).append(_current_email_body(body))
+                raw = str(content)
+                evidence_raw.append(raw)
+                plain_parts.append(_current_email_body(raw))
         except Exception:
             pass
     structured_html = [x for x in html_parts if "\t" in x]
     body_parts = structured_html or plain_parts or html_parts
-    return "\n".join(x for x in body_parts if x and x.strip()).strip()
+    current = "\n".join(x for x in body_parts if x and x.strip()).strip()
+    recovered = _recover_known_filing_option_evidence("\n".join(evidence_raw))
+    if recovered and _plain_norm(recovered) not in _plain_norm(current):
+        current = (current + "\n[[BAŞVURU TERCİHLERİ]]\n" + recovered).strip()
+    return current
 
 
 def _ocr_image_source_text(data: bytes) -> str:
@@ -659,10 +675,12 @@ def extract_application_source_text(filename: str, data: bytes) -> str:
             html_body = getattr(msg, "htmlBody", None)
             if isinstance(html_body, (bytes, bytearray)):
                 html_body = bytes(html_body).decode("utf-8", errors="replace")
+            full_html_text = _html_to_text(str(html_body)) if html_body else ""
+            full_plain_text = getattr(msg, "body", "") or ""
             structured_body = _current_email_body(_html_to_text(_strip_quoted_email_html(str(html_body)))) if html_body else ""
-            plain_body = _current_email_body(getattr(msg, "body", "") or "")
-            # Yalnız mevcut mesaj gövdesi kullanılır. HTML ve düz metin aynı güncel
-            # gövdeyi temsil eder; EVET/HAYIR ve başvuru etiketlerini daha iyi koruyanı seç.
+            plain_body = _current_email_body(full_plain_text)
+            # Hak sahibi/buluşçu için yalnız güncel mesaj gövdesi kullanılır. HTML ve
+            # düz metin aynı gövdeyi temsil eder; başvuru sinyallerini daha iyi koruyanı seç.
             def _body_score(v: str) -> tuple[int, int]:
                 n = _plain_norm(v)
                 signals = sum(n.count(x) for x in [
@@ -672,6 +690,9 @@ def extract_application_source_text(filename: str, data: bytes) -> str:
                 return (signals, len(v or ""))
             candidates = [x for x in [structured_body, plain_body] if x.strip()]
             text = max(candidates, key=_body_score) if candidates else ""
+            recovered = _recover_known_filing_option_evidence("\n".join(x for x in [full_html_text, full_plain_text] if x))
+            if recovered and _plain_norm(recovered) not in _plain_norm(text):
+                text = (text + "\n[[BAŞVURU TERCİHLERİ]]\n" + recovered).strip()
             try:
                 msg.close()
             except Exception:
@@ -711,6 +732,40 @@ def _plain_norm(value: str) -> str:
 def _clean_value(value: str) -> str:
     value = re.sub(r"\s+", " ", (value or "").strip(" \t|:;-"))
     return value.strip()
+
+
+_FORM_PLACEHOLDER_RE = re.compile(
+    r"(?i)(?:^|[,(;])\s*(?:seçilmedi|secilmedi|seçiniz|seciniz|lütfen seçiniz|lutfen seciniz|"
+    r"belirtilmedi|belirtilmemiş|belirtilmemis|yok|n/?a)\b\s*[,);:-]*\s*"
+)
+
+def _clean_form_value(value: str) -> str:
+    """Form seçici artıkları gerçek alan değerinden ayırır.
+
+    ``(seçilmedi, GAYRETTEPE...)`` gibi OCR/HTML çıktılarında yalnız seçim
+    placeholder'ı kaldırılır; geride kalan gerçek veri korunur.
+    """
+    value = _clean_value(value)
+    if not value:
+        return ""
+    value = _FORM_PLACEHOLDER_RE.sub(" ", value)
+    value = re.sub(r"^[()\[\]{},;:\-\s]+|[()\[\]{},;:\-\s]+$", "", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    if _plain_norm(value) in {"secilmedi", "seciniz", "belirtilmedi", "belirtilmemis", "yok", "n a"}:
+        return ""
+    return value
+
+
+def _looks_like_address_value(value: str) -> bool:
+    value = _clean_form_value(value)
+    if not value:
+        return False
+    n = _plain_norm(value)
+    cues = (
+        "mah", "mahalle", "cad", "caddesi", "sok", "sokak", "bulvar", "blv",
+        "no ", "no:", "kat", "daire", "posta", "merkez", "mudurluk", "turkiye",
+    )
+    return len(value) >= 14 and (bool(re.search(r"\d", value)) or any(c in n for c in cues))
 
 
 def _looks_like_company(name: str) -> bool:
@@ -902,6 +957,8 @@ def _is_bad_person_value(field: str, value: str, *, applicant: bool) -> bool:
     n = _plain_norm(value)
     if not n:
         return True
+    if n in {"secilmedi", "seciniz", "belirtilmedi", "belirtilmemis", "n a"}:
+        return True
     if _is_instruction_text(value) or _is_form_header_bundle(value):
         return True
     if _canonical_label(value):
@@ -929,6 +986,25 @@ def _is_bad_person_value(field: str, value: str, *, applicant: bool) -> bool:
             if len(value) > 120 or len(value.split()) > 12:
                 return True
     return False
+
+
+def _role_name_quality_good(value: str, *, applicant: bool) -> bool:
+    value = _clean_form_value(value)
+    if not value or _is_bad_person_value("name", value, applicant=applicant):
+        return False
+    words = [w for w in re.split(r"\s+", value) if w]
+    if applicant:
+        if _looks_like_company(value):
+            return True
+        # Gerçek kişi hak sahibi mümkündür; en az ad+soyad gibi iki kelime bekle.
+        return len(words) >= 2 and sum(1 for w in words if w[:1].isupper()) >= 2
+    # Buluşçu için tek kelimelik adres parçalarını (örn. Sultan) isim sayma.
+    if _looks_like_company(value) or len(words) < 2 or len(words) > 6:
+        return False
+    bad_terms = {"mah", "mahalle", "cad", "caddesi", "sok", "sokak", "merkezi", "mudurlugu", "müdürlüğü"}
+    if {_plain_norm(w.strip(".,;()[]")) for w in words} & bad_terms:
+        return False
+    return sum(1 for w in words if w[:1].isupper()) >= 2
 
 
 def _inline_field_pair(token: str) -> tuple[str, str, str] | None:
@@ -1137,7 +1213,7 @@ def _split_city_district(value: str) -> tuple[str, str]:
 
 
 def _apply_person_field(row: dict[str, str], field: str, value: str, *, applicant: bool) -> None:
-    value = _clean_value(value)
+    value = _clean_form_value(value)
     if not value:
         return
     if field == "identity":
@@ -1164,6 +1240,10 @@ def _apply_person_field(row: dict[str, str], field: str, value: str, *, applican
             row["birth_date"] = value
     elif field in {"address", "country", "city", "email", "phone"}:
         if _is_bad_person_value(field, value, applicant=applicant):
+            return
+        if field == "address" and not _looks_like_address_value(value):
+            return
+        if field in {"country", "city"} and _plain_norm(value) in {"secilmedi", "seciniz", "belirtilmedi", "belirtilmemis"}:
             return
         if not row.get(field):
             row[field] = value
@@ -1242,6 +1322,16 @@ def _priority_status(value: str) -> str:
     if any(x in n for x in positive):
         return "Var"
     return "Belirsiz"
+
+
+def _apply_priority_default(result: dict[str, Any]) -> None:
+    """Rüçhan açıkça belirtilmemişse başvuruyu rüçhansız kabul eder."""
+    priority = result.get("priority") if isinstance(result.get("priority"), dict) else {}
+    if str(priority.get("status") or "").strip() not in {"Var", "Yok"}:
+        priority["status"] = "Yok"
+        priority["source"] = "Varsayılan (rüçhan belirtilmemiş)"
+        result["priority"] = priority
+        result.setdefault("field_sources", {})["priority"] = priority["source"]
 
 
 def _valid_identity(value: str) -> str:
@@ -1364,8 +1454,8 @@ def _extract_filing_options(result: dict[str, Any], text: str, source: str) -> N
 
     # 2) TÜBİTAK/KOSGEB/kamu destekli proje
     seg = _question_segment(text, [
-        r"buluş.{0,120}(?:TÜBİTAK|TUBITAK).{0,120}(?:KOSGEB).{0,260}?proje\s+kapsamında",
-        r"buluş.{0,180}?kamu\s+kurum.{0,220}?desteklenen\s+bir\s+proje",
+        r"\bbuluş\b.{0,220}?(?:TÜBİTAK|TUBITAK|KOSGEB|kamu\s+kurum).{0,320}?proje\s+kapsamında",
+        r"\bbuluş\b.{0,260}?kamu\s+kurum.{0,260}?desteklenen\s+bir\s+proje",
     ])
     if seg:
         status = _explicit_yes_no(seg)
@@ -1388,6 +1478,35 @@ def _extract_filing_options(result: dict[str, Any], text: str, source: str) -> N
     ])
     if seg:
         _set_filing_option(result, "early_publication", _explicit_yes_no(seg), source)
+
+
+def _recover_known_filing_option_evidence(text: str) -> str:
+    """Ham mailden yalnız üç bilinen sorunun kısa ve açık cevap kanıtını kurtarır.
+
+    Önceki yazışmanın geri kalanını asla taşımayız; yalnız soru etiketi + gerçek
+    EVET/HAYIR sonucu eklenir. Böylece eski maildeki kişi/şirket bilgileri güncel
+    başvuru verisine karışmaz.
+    """
+    specs = [
+        ("Buluşçu bilgileri gizlensin mi?", [r"buluşçu\s+bilgileri\s+gizlensin\s+mi", r"buluş\s+sahibi\s+bilgileri\s+gizlensin\s+mi", r"mucit\s+bilgileri\s+gizlensin\s+mi"]),
+        ("Buluş, TÜBİTAK/KOSGEB/kamu kurumu tarafından desteklenen bir proje kapsamında mı?", [r"\bbuluş\b.{0,220}?(?:TÜBİTAK|TUBITAK|KOSGEB|kamu\s+kurum).{0,320}?proje\s+kapsamında", r"\bbuluş\b.{0,260}?kamu\s+kurum.{0,260}?desteklenen\s+bir\s+proje"]),
+        ("Erken yayın talep ediliyor mu?", [r"erken\s+yayın\s+talep\s+ediliyor\s+mu", r"erken\s+yayım\s+talep\s+ediliyor\s+mu", r"erken\s+yayın\s+talebi", r"erken\s+yayım\s+talebi"]),
+    ]
+    evidence: list[str] = []
+    for idx, (label, anchors) in enumerate(specs):
+        seg = _question_segment(text or "", anchors)
+        status = _explicit_yes_no(seg) if seg else "Belirsiz"
+        if status not in {"Evet", "Hayır"}:
+            continue
+        evidence.append(f"{label} -> {status.upper()}")
+        if idx == 1 and status == "Evet":
+            inst = re.search(r"(?:kurum|destekleyen\s+kurum)\s*[:\-]\s*([^\n;]{2,160})", seg, flags=re.IGNORECASE)
+            proj = re.search(r"(?:proje\s*(?:no|numarası|numarasi)|project\s*(?:no|number))\s*[:\-]\s*([^\n;]{2,80})", seg, flags=re.IGNORECASE)
+            if inst:
+                evidence.append(f"Kurum: {_clean_value(inst.group(1))}")
+            if proj:
+                evidence.append(f"Proje No: {_clean_value(proj.group(1))}")
+    return "\n".join(evidence)
 
 
 def _apply_filing_option_defaults(result: dict[str, Any]) -> None:
@@ -1432,6 +1551,52 @@ def _table_header_field(cell: str) -> str:
     return ""
 
 
+def _infer_role_from_pair_context(lines: list[tuple[int, str]], line_pos: int, pairs: list[tuple[str, str, str]]) -> str:
+    """Etiketli form satırının rolünü yakın tablo bağlamından belirler.
+
+    Form yerleşimi değişse bile ``Ad Soyad`` + ``Doğum Tarihi/Cinsiyet`` buluşçu,
+    ``Unvan`` + ``Sahip Türü/VKN`` hak sahibi olarak anlaşılabilir. Açık rol
+    sözcüğü varsa her zaman o üstün gelir.
+    """
+    labels = [label for _raw, label, _value in pairs]
+    raw_labels = " ".join(_plain_norm(raw) for raw, _label, _value in pairs)
+    values = [value for _raw, _label, value in pairs if value]
+    start = max(0, line_pos - 4)
+    end = min(len(lines), line_pos + 5)
+    nearby = " ".join(_plain_norm(lines[j][1]) for j in range(start, end))
+
+    if any(l.startswith("applicant_") or l == "applicant" for l in labels) or any(x in nearby for x in ["hak sahibi", "basvuru sahibi"]):
+        return "applicant"
+    if any(l.startswith("inventor_") or l == "inventor" for l in labels) or any(x in nearby for x in ["bulus sahibi", "buluscu", "mucit", "bulusu yapan"]):
+        return "inventor"
+
+    # Alan kombinasyonları resmî formlarda rolü açıkça işaret eder.
+    if "entity_type" in labels or any(x in raw_labels for x in ["sahip turu", "vergi no", "vkn", "hak sahibi adresi"]):
+        return "applicant"
+    if "birth_date" in labels or "gender" in labels or any(x in raw_labels for x in ["dogum tarihi", "cinsiyet"]):
+        return "inventor"
+    # Dikey formlarda Ad Soyad satırının rol ipucu bir sonraki/önceki satırdadır.
+    if any(x in nearby for x in ["dogum tarihi", "cinsiyet"]):
+        return "inventor"
+    if any(x in nearby for x in ["sahip turu", "vergi no", "vergi kimlik", "hak sahibi adresi"]):
+        return "applicant"
+
+    # Unvan değeri açık bir şirketse hak sahibi; kişi adı tek başına rol tayin etmez.
+    for raw, label, value in pairs:
+        nr = _plain_norm(raw)
+        if label == "name" and value and ("unvan" in nr or _looks_like_company(value)):
+            return "applicant"
+
+    # 10 haneli VKN + şirket/kurum çevresi hak sahibi; 11 haneli TCKN + doğum
+    # tarihi/cinsiyet çevresi buluşçu. Salt numaradan rol çıkarma yapılmaz.
+    ids = [re.sub(r"\D", "", v) for _r, l, v in pairs if l == "identity" and v]
+    if any(len(x) == 10 for x in ids) and any(x in nearby for x in ["unvan", "sahip turu", "vergi"]):
+        return "applicant"
+    if any(len(x) == 11 for x in ids) and any(x in nearby for x in ["dogum tarihi", "cinsiyet", "ad soyad"]):
+        return "inventor"
+    return ""
+
+
 def _structured_role_rows(text: str, source: str) -> tuple[list[dict[str, str]], list[dict[str, str]], set[int]]:
     """Açık rol bölümündeki tablo başlıklarını hemen sonraki veri satırıyla eşler.
 
@@ -1457,12 +1622,19 @@ def _structured_role_rows(text: str, source: str) -> tuple[list[dict[str, str]],
         field_count = sum(1 for f in fields if f)
         inferred = current_role
         joined = " ".join(_plain_norm(c) for c in cells)
+        header_pairs = [(cells[k], fields[k], "") for k in range(min(len(cells), len(fields))) if fields[k]]
+        contextual = _infer_role_from_pair_context(lines, i, header_pairs)
+        if contextual:
+            inferred = contextual
         if any(x in joined for x in ["sahip turu", "vergi no", "vergi kimlik", "hak sahibi adres"]):
             inferred = "applicant"
         if any(x in joined for x in ["dogum tarihi", "cinsiyet"]):
             inferred = "inventor"
 
-        if field_count >= 3 and inferred in {"applicant", "inventor"}:
+        distinctive = any(f in {"entity_type", "birth_date", "gender"} for f in fields) or any(
+            x in joined for x in ["unvan", "vergi no", "vkn", "dogum tarihi", "cinsiyet"]
+        )
+        if field_count >= (2 if distinctive else 3) and inferred in {"applicant", "inventor"}:
             j = i + 1
             while j < min(len(lines), i + 5):
                 jidx, candidate = lines[j]
@@ -1593,6 +1765,11 @@ def extract_application_information_rule_based(
                 continue
 
             pairs = _line_label_value_pairs(line)
+            if pairs and current_role not in {"applicant", "inventor"}:
+                inferred_role = _infer_role_from_pair_context(lines=[(j, x) for j, x in enumerate(lines)], line_pos=line_idx, pairs=pairs)
+                if inferred_role:
+                    current_role = inferred_role
+                    current_person = None
             if not pairs and pending_label:
                 # Başlık bir satır, değer sonraki satır. Ancak sonraki satır başka
                 # bir tablo/bölüm başlığıysa onu değer sanma.
@@ -1812,6 +1989,7 @@ def extract_application_information_rule_based(
                 by_id[digits] = row
 
     _reconcile_role_rows(result)
+    _apply_priority_default(result)
     _apply_filing_option_defaults(result)
     result["conflicts"] = list(dict.fromkeys(x for x in result["conflicts"] if x))
     return normalize_application_information(result)
@@ -2085,6 +2263,11 @@ def _verified_ai_value(field: str, value: Any, source_blocks: list[tuple[str, st
 
 
 def _sanitize_person_row(row: dict[str, str], *, applicant: bool) -> None:
+    for field in ("name", "country", "city", "district", "address", "email", "phone"):
+        if row.get(field):
+            row[field] = _clean_form_value(row.get(field, ""))
+    if row.get("address") and not _looks_like_address_value(row.get("address", "")):
+        row["address"] = ""
     if row.get("email"):
         m = _LOCAL_AI_EMAIL_RE.search(row.get("email", ""))
         row["email"] = m.group(0) if m else ""
@@ -2695,6 +2878,20 @@ def normalize_application_information(data: dict[str, Any] | None) -> dict[str, 
     }
 
 
+def application_needs_semantic_ai(metadata: dict[str, Any]) -> bool:
+    """Açık tablo/etiket okuması yeterliyse ağır CPU modelini hiç çalıştırma.
+
+    Semantik model yalnız hak sahibi veya buluşçu adı/unvanı gerçekten eksik ya
+    da bariz form artığıysa devreye girer. Böylece doğru deterministik sonuç
+    AI tarafından gereksiz yere değiştirilmez.
+    """
+    applicants = metadata.get("applicants") or []
+    inventors = metadata.get("inventors") or []
+    app_ok = any(_role_name_quality_good(str(x.get("name") or ""), applicant=True) for x in applicants if isinstance(x, dict))
+    inv_ok = any(_role_name_quality_good(str(x.get("name") or ""), applicant=False) for x in inventors if isinstance(x, dict))
+    return not (app_ok and inv_ok)
+
+
 def application_precheck_missing(metadata: dict[str, Any], metrics: dict[str, Any], *, figures_required: bool = False) -> list[str]:
     missing: list[str] = []
     if not str(metadata.get("application_kind") or "").strip():
@@ -2834,10 +3031,11 @@ def _fitz_span_rgb(color: int) -> tuple[int, int, int]:
 
 
 def _pdf_epats_cleanup(data: bytes) -> bytes:
-    """PDF'de kırmızı/mavi şablon metnini ve sol marj satır numaralarını görsel olarak kaldırır.
+    """PDF'de yalnız şablon renklerini ve hatalı ``1X/2X`` artefaktlarını kaldırır.
 
-    Sayfa boyutu, fontlar ve kalan içerik yeniden dizilmez. PDF kaynaklarında DOCX gibi
-    reflow yapılamayacağından kaldırılan alanlar beyaz boşluk olarak kalabilir.
+    Gerçek Word sayfa numaraları ile sol marjdaki 5/10/15... satır numaraları
+    başvuru belgesinin parçasıdır ve özellikle korunur. Sayfa boyutu, fontlar ve
+    kalan içerik yeniden dizilmez.
     """
     import fitz  # pymupdf
 
@@ -2854,18 +3052,12 @@ def _pdf_epats_cleanup(data: bytes) -> bytes:
                     bbox = fitz.Rect(span.get("bbox"))
                     r, g, b = _fitz_span_rgb(span.get("color", 0))
                     is_template_color = (r >= 150 and g <= 130 and b <= 130) or (b >= 150 and r <= 130 and g <= 160)
-                    is_left_line_number = (
-                        bool(re.fullmatch(r"\d{1,3}", text))
-                        and bbox.x0 < page.rect.width * 0.10
-                        and 25 < bbox.y0 < page.rect.height - 25
-                        and int(text) % 5 == 0
-                    )
                     is_top_page_artifact = (
                         bool(re.fullmatch(r"\d{1,3}\s*[Xx]", text))
                         and bbox.x0 < page.rect.width * 0.18
                         and bbox.y0 < page.rect.height * 0.12
                     )
-                    if is_template_color or is_left_line_number or is_top_page_artifact:
+                    if is_template_color or is_top_page_artifact:
                         page.add_redact_annot(bbox + (-1, -1, 1, 1), fill=(1, 1, 1))
                         changed = True
         if changed:
@@ -2916,8 +3108,53 @@ def _copy_pdf_vertical_range(src_doc, out_doc, page_index: int, y0: float, y1: f
     new_page.show_pdf_page(clip, src_doc, page_index, clip=clip)
 
 
+def _pdf_page_is_blank_except_numbering(page) -> bool:
+    """Yalnız sayfa/satır numaraları kalan sayfayı boş kabul eder."""
+    texts = []
+    for raw in (page.get_text("text") or "").splitlines():
+        t = raw.strip()
+        if not t:
+            continue
+        if re.fullmatch(r"\d{1,3}", t):
+            # Üst sayfa numarası veya Word satır numarası.
+            continue
+        texts.append(t)
+    return not texts
+
+
+def _pdf_bytes_from_page_range(src, start_page: int, end_page_exclusive: int) -> bytes:
+    import fitz
+
+    out = fitz.open()
+    start_page = max(0, int(start_page))
+    end_page_exclusive = min(len(src), int(end_page_exclusive))
+    if start_page >= end_page_exclusive:
+        raise ValueError("PDF bölümünde aktarılacak sayfa bulunamadı.")
+
+    # Word bölüm geçişlerinden doğan gerçek anlamda boş sayfaları yalnız bölümün
+    # başından/sonundan at. İçerikli sayfalara, sayfa numarasına ve satır
+    # numaralarına hiç dokunma.
+    while start_page < end_page_exclusive and _pdf_page_is_blank_except_numbering(src[start_page]):
+        start_page += 1
+    while end_page_exclusive > start_page and _pdf_page_is_blank_except_numbering(src[end_page_exclusive - 1]):
+        end_page_exclusive -= 1
+    if start_page >= end_page_exclusive:
+        raise ValueError("PDF bölümü yalnız boş sayfalardan oluşuyor.")
+
+    out.insert_pdf(src, from_page=start_page, to_page=end_page_exclusive - 1)
+    payload = out.tobytes(garbage=4, deflate=True)
+    out.close()
+    return payload
+
+
 def split_patent_pdf(data: bytes) -> dict[str, bytes]:
-    """Birleşik Tarifname/İstemler/Özet PDF'ini görsel biçimi bozmadan ayırır."""
+    """Birleşik Tarifname/İstemler/Özet PDF'ini tam sayfalar üzerinden ayırır.
+
+    Patent Atölyesi Word şablonunda İSTEMLER ve ÖZET ayrı sayfadan başlar. Bu
+    nedenle kırpılmış/yeni sayfa üretmek yerine kaynak PDF'nin *orijinal
+    sayfaları* kopyalanır. Böylece üstteki Word sayfa numarası, soldaki satır
+    numaraları, header/footer, font ve tüm yerleşim birebir korunur.
+    """
     import fitz
 
     cleaned = _pdf_epats_cleanup(data)
@@ -2925,33 +3162,22 @@ def split_patent_pdf(data: bytes) -> dict[str, bytes]:
     abstract_pos = _find_pdf_heading(cleaned, "ÖZET")
     if not claims_pos or not abstract_pos:
         raise ValueError("PDF içinde İSTEMLER ve ÖZET başlıkları bulunamadı.")
-    if claims_pos[0] > abstract_pos[0] or (claims_pos[0] == abstract_pos[0] and claims_pos[1] >= abstract_pos[1]):
-        raise ValueError("PDF içindeki İSTEMLER / ÖZET sırası beklenen yapıda değil.")
+    claims_page, claims_y = claims_pos
+    abstract_page, abstract_y = abstract_pos
+    if claims_page >= abstract_page:
+        raise ValueError("İSTEMLER ve ÖZET başlıkları ayrı ve doğru sıralı sayfalarda olmalıdır.")
 
     src = fitz.open(stream=cleaned, filetype="pdf")
-    outputs: dict[str, bytes] = {}
-    sections = {
-        "Tarifname.pdf": ((0, 0.0), claims_pos),
-        "Istemler.pdf": (claims_pos, abstract_pos),
-        "Ozet.pdf": (abstract_pos, (len(src) - 1, src[-1].rect.height)),
-    }
     try:
-        for name, (start, end) in sections.items():
-            out = fitz.open()
-            start_page, start_y = start
-            end_page, end_y = end
-            for page_index in range(start_page, end_page + 1):
-                page = src[page_index]
-                y0 = start_y if page_index == start_page else 0.0
-                y1 = end_y if page_index == end_page else page.rect.height
-                _copy_pdf_vertical_range(src, out, page_index, y0, y1)
-            if len(out) == 0:
-                raise ValueError(f"PDF içindeki {name} bölümü boş bulundu.")
-            outputs[name] = out.tobytes(garbage=4, deflate=True)
-            out.close()
+        # Başlıkların ayrı sayfada bulunması mevcut Patent Atölyesi şablonunun
+        # zorunlu yapısıdır. Tam sayfa kopyalama sayfa/satır numaralarını korur.
+        return {
+            "Tarifname.pdf": _pdf_bytes_from_page_range(src, 0, claims_page),
+            "Istemler.pdf": _pdf_bytes_from_page_range(src, claims_page, abstract_page),
+            "Ozet.pdf": _pdf_bytes_from_page_range(src, abstract_page, len(src)),
+        }
     finally:
         src.close()
-    return outputs
 
 
 def count_claims_from_pdf(data: bytes) -> int:
@@ -2995,11 +3221,14 @@ def build_epats_application_package(
     pdfs: dict[str, bytes] = {}
     if suffix in {".docx", ".doc"}:
         docx = specification_data if suffix == ".docx" else _libreoffice_to_docx(specification_data, specification_name)
-        split_docs = split_patent_docx(docx)
-        for docx_name, docx_data in split_docs.items():
-            pdf_name = Path(docx_name).with_suffix(".pdf").name
-            conversion_docx = remove_word_header_page_numbers(docx_data)
-            pdfs[pdf_name] = _pdf_epats_cleanup(_libreoffice_to_pdf(conversion_docx, docx_name))
+        # Biçimi birebir korumanın güvenilir yolu: Word'ü bölüm bölüm yeniden
+        # oluşturmamak. Yalnız kırmızı/mavi şablon açıklamalarını OOXML'den
+        # temizle, birleşik Word'ü tek seferde PDF'ye çevir ve PDF'nin tam
+        # sayfalarını İSTEMLER/ÖZET başlıklarından ayır. Böylece Word sayfa ve
+        # satır numaraları dahil bütün sayfa düzeni korunur.
+        cleaned_docx = strip_template_colored_text(docx)
+        full_pdf = _libreoffice_to_pdf(cleaned_docx, Path(specification_name).with_suffix(".docx").name)
+        pdfs.update(split_patent_pdf(full_pdf))
     elif suffix == ".pdf":
         pdfs.update(split_patent_pdf(specification_data))
     else:
@@ -3018,7 +3247,7 @@ def build_epats_application_package(
     return out.getvalue(), pdfs
 
 # -----------------------------------------------------------------------------
-# v5.4.57 - CPU/WASM SEMANTIK ROL AI SONUCU -> BASVURU ALANLARI
+# v5.4.58 - CPU/WASM SEMANTIK ROL AI SONUCU -> BASVURU ALANLARI
 # -----------------------------------------------------------------------------
 
 def _semantic_block_source_ok(source: str, block_text: str, source_map: dict[str, str]) -> bool:
@@ -3186,7 +3415,7 @@ def _semantic_enrich_from_existing(
 def merge_verified_cpu_semantic_application_information(
     rule_data: dict[str, Any], semantic_data: dict[str, Any], source_blocks: list[tuple[str, str]]
 ) -> dict[str, Any]:
-    """v5.4.57: form yerleşiminden bağımsız semantik rol AI + kaynak doğrulama.
+    """v5.4.58: form yerleşiminden bağımsız semantik rol AI + kaynak doğrulama.
 
     Tarayıcı CPU modeli yalnız bir metin bloğunun *rolünü* sınıflandırır. Gerçek
     ad/unvan/telefon/e-posta/kimlik değerleri Python tarafında doğrudan kaynaktan
@@ -3237,19 +3466,24 @@ def merge_verified_cpu_semantic_application_information(
     # AI rolü içerisinde kaynakta doğrulanmış bir ad/unvan bulunduysa bu rol için
     # semantik satırlar otoritedir. Eski parser'ın "ronik", "Sultan", açıklama vb.
     # hayalet kayıtları taşınmaz; yalnız eşleşen eski satırdan boş alan tamamlanır.
-    if any(x.get("name") for x in semantic_apps):
-        merged["applicants"] = _semantic_enrich_from_existing(
-            semantic_apps, merged.get("applicants") or [], applicant=True
-        )
-    elif semantic_apps:
-        merged["applicants"] = _merge_ai_people(merged.get("applicants") or [], semantic_apps, applicant=True)
+    existing_apps = merged.get("applicants") or []
+    existing_invs = merged.get("inventors") or []
+    valid_existing_app = any(_role_name_quality_good(str(x.get("name") or ""), applicant=True) for x in existing_apps)
+    valid_existing_inv = any(_role_name_quality_good(str(x.get("name") or ""), applicant=False) for x in existing_invs)
 
-    if any(x.get("name") for x in semantic_invs):
-        merged["inventors"] = _semantic_enrich_from_existing(
-            semantic_invs, merged.get("inventors") or [], applicant=False
-        )
-    elif semantic_invs:
-        merged["inventors"] = _merge_ai_people(merged.get("inventors") or [], semantic_invs, applicant=False)
+    # Açık etiket/tablodan doğru ad/unvan zaten bulunduysa semantik AI o rolü
+    # asla değiştirmez. AI yalnız eksik rolü kurtarmak için devreye girer.
+    if not valid_existing_app:
+        if any(x.get("name") for x in semantic_apps):
+            merged["applicants"] = _semantic_enrich_from_existing(semantic_apps, existing_apps, applicant=True)
+        elif semantic_apps:
+            merged["applicants"] = _merge_ai_people(existing_apps, semantic_apps, applicant=True)
+
+    if not valid_existing_inv:
+        if any(x.get("name") for x in semantic_invs):
+            merged["inventors"] = _semantic_enrich_from_existing(semantic_invs, existing_invs, applicant=False)
+        elif semantic_invs:
+            merged["inventors"] = _merge_ai_people(existing_invs, semantic_invs, applicant=False)
 
     # Başvuru tercihleri AI tarafından üretilmez. AI yalnız ilgili soru bloğunu
     # işaretler; EVET/HAYIR yine blok metninden deterministik okunur.

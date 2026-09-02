@@ -65,5 +65,6 @@ test_v5454_current_mail_body.py
 test_v5455_cpu_ner.py
 test_v5456_process_role_binding.py
 test_v5457_cpu_semantic_roles.py
+test_v5458_process_direct_pdf_defaults.py
 validators.py
 word_math.py

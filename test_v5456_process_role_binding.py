@@ -15,7 +15,7 @@ from rules import APP_VERSION
 
 
 def test_v5456_version():
-    assert APP_VERSION == "v5.4.57"
+    assert APP_VERSION == "v5.4.58"
 
 
 def test_v5456_structured_roles_and_mail_preferences_are_not_crossed():

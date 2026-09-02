@@ -76,6 +76,7 @@ from tarifname_figure_generation import (
 
 from processes import (
     application_precheck_missing,
+    application_needs_semantic_ai,
     build_epats_application_package,
     epats_document_metrics,
     extract_application_source_text,
@@ -7413,14 +7414,13 @@ elif work_type == "Süreçler":
                         specification_text=specification_text,
                         specification_filename=specification_upload.name,
                     )
-                    # v5.4.57: Form düzeni dosyadan dosyaya değişebildiği için CPU semantik AI
-                    # her bilgi kaynağında rol sınıflandırması yapar. Model değer üretmez; yalnız
-                    # metin bloklarını hak sahibi / buluşçu / başvuru tercihleri olarak ayırır.
-                    # Gerçek alan değerleri yine kaynak metinden deterministik çıkarılır ve doğrulanır.
-                    needs_cpu_semantic = bool(source_blocks)
+                    # v5.4.58: Önce açık tablo/etiket yapısı otoritedir. Hak sahibi ve
+                    # buluşçu ad/unvanı bu yolla güvenle bulunduysa CPU modeli hiç açılmaz.
+                    # Yalnız rol/ad eksik kalırsa semantik AI form yerleşiminden bağımsız destek olur.
+                    needs_cpu_semantic = bool(source_blocks) and application_needs_semantic_ai(extracted)
                     extracted["browser_ai"] = {"used": False, "pending": needs_cpu_semantic, "warning": ""}
 
-                    progress.progress(50, text="Kırmızı/mavi şablon yazıları temizleniyor ve EPATS PDF'leri hazırlanıyor...")
+                    progress.progress(50, text="Word biçimi korunarak doğrudan PDF'ye çevriliyor ve EPATS bölümleri ayrılıyor...")
                     figures_data = figures_upload.getvalue() if figures_upload is not None else None
                     figures_name = figures_upload.name if figures_upload is not None else None
                     package, pdfs = build_epats_application_package(
@@ -7580,11 +7580,16 @@ elif work_type == "Süreçler":
 
             st.markdown("#### Başvuru bilgileri")
             field_sources = metadata.get("field_sources") or {}
+            priority_preview = metadata.get("priority") or {}
+            priority_status_preview = priority_preview.get("status") or "Belirsiz"
+            priority_source_preview = field_sources.get("priority") or priority_preview.get("source") or "-"
+            if priority_status_preview == "Yok" and str(priority_source_preview).startswith("Varsayılan"):
+                priority_status_preview = "Rüçhansız (varsayılan)"
             info_rows = [
                 {"Alan": "Başvuru türü", "Bulunan bilgi": metadata.get("application_kind") or "EKSİK", "Kaynak": field_sources.get("application_kind") or "-"},
                 {"Alan": "DP / dosya referansı", "Bulunan bilgi": metadata.get("reference") or "-", "Kaynak": field_sources.get("reference") or "-"},
                 {"Alan": "Buluş başlığı", "Bulunan bilgi": metadata.get("invention_title") or "EKSİK", "Kaynak": field_sources.get("invention_title") or "-"},
-                {"Alan": "Rüçhan", "Bulunan bilgi": (metadata.get("priority") or {}).get("status") or "Belirsiz", "Kaynak": field_sources.get("priority") or (metadata.get("priority") or {}).get("source") or "-"},
+                {"Alan": "Rüçhan", "Bulunan bilgi": priority_status_preview, "Kaynak": priority_source_preview},
             ]
             st.table(info_rows)
 

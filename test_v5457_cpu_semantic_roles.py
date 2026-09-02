@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent
 
 
 def test_v5457_version_and_semantic_cpu_model():
-    assert APP_VERSION == "v5.4.57"
+    assert APP_VERSION == "v5.4.58"
     js = (ROOT / "browser_ai_component" / "main.js").read_text(encoding="utf-8")
     assert "zero-shot-classification" in js
     assert "multilingual-MiniLMv2-L6-mnli-xnli-ONNX" in js

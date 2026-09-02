@@ -1,4 +1,13 @@
-# Patent Atölyesi v5.4.57
+# Patent Atölyesi v5.4.58
+
+## v5.4.58 / 2026-09-02 — Word→PDF birebir koruma + alan okuma düzeltmeleri
+
+- Tarifname DOC/DOCX artık bölüm bölüm yeniden oluşturulmaz. Kırmızı/mavi şablon açıklamaları OOXML seviyesinde temizlendikten sonra **orijinal Word tek seferde PDF'ye çevrilir**; ardından İSTEMLER ve ÖZET başlangıç sayfalarından tam sayfa olarak ayrılır. Böylece Word'deki üst sayfa numaraları, 5/10/15... satır numaraları, font, header/footer, kenar boşlukları ve yerleşim korunur.
+- İstemler ve Özet PDF'lerinin başına bölüm kesiminden kaynaklanan boş sayfa eklenmez. `1X / 2X ...` gibi gerçek olmayan artefaktlar temizlenirken gerçek sayfa/satır numaralarına dokunulmaz.
+- Rüçhan bilgisi kaynaklarda hiç belirtilmemişse başvuru otomatik olarak `Rüçhansız / Yok (varsayılan)` kabul edilir ve bu durum ön kontrolü bloke etmez.
+- `.msg/.eml` içinde eski yazışmalar kişi/şirket kaynağı yapılmaz; ancak Outlook'un quoted alana taşıdığı üç bilinen başvuru sorusunun yalnız kısa EVET/HAYIR cevabı güvenli biçimde geri kazanılır. Böylece `HAYIR / HAYIR / EVET` gibi cevaplar varsayılana düşmez.
+- Dikey veya farklı yerleşimli formlarda `Unvanı + Sahip Türü/VKN` hak sahibi; `Ad Soyad + TCKN/Doğum Tarihi/Cinsiyet` buluşçu bağlamı olarak okunur. Açık ve kaliteli ad/unvan bulunduysa CPU semantik model çalıştırılmaz ve doğru deterministik kayıt AI tarafından değiştirilmez.
+- `seçilmedi / seçiniz / belirtilmedi` gibi form placeholder'ları gerçek alan değeri sayılmaz; `(seçilmedi, GAYRETTEPE...)` gibi OCR çıktılarında placeholder temizlenip gerçek adres korunur.
 
 ## v5.4.57 – Değişken beyan formu düzenleri için CPU semantik rol AI
 
