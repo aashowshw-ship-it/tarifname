@@ -1,5 +1,15 @@
-# Patent Atölyesi v5.4.47
+# Patent Atölyesi v5.4.48
 
+
+## v5.4.48 / 2026-09-02 — Süreçler / Belge Yakalama + Biçim Koruma
+
+- Süreçler bölümü AI/API kullanmadan çalışmaya devam eder.
+- Beyan formu tablolarında birleşik hücreler, çok hücreli satırlar ve `Adı Soyadı/Unvanı`, `Başvuru Sahibinin`, `Buluşu Yapan`, `Mucit` gibi gerçek form varyasyonları desteklenir.
+- EML/MSG gövdesine ek olarak desteklenen Word/PDF/TXT e-posta ekleri de okunur.
+- Tarifname dosya adındaki DP/ofis referansı (örn. `Tarifname_181176...docx`) otomatik DP ref olarak alınır.
+- Bulunan iletişim ve diğer etiketli bilgiler ön kontrolde kaynaklarıyla korunur; belirsiz bilgi tahmin edilmez.
+- PDF dönüşüm sunucusuna Arial/Times New Roman Microsoft Core Fonts eklenir; LibreOffice'in sessiz font ikamesi nedeniyle oluşan görünüm değişikliği engellenir.
+- Renk temizleme/bölme işlemi yalnız DOCX gövdesindeki hedef kırmızı-mavi şablon run'larını kaldırır; stiller, numaralandırma, header/footer ve sayfa ayarları değiştirilmez.
 
 ## v5.4.47 / 2026-09-01 — Süreçler / AI'sız Patent-Faydalı Model Ön Kontrolü
 

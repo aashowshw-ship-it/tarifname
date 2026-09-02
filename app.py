@@ -7379,6 +7379,7 @@ elif work_type == "Süreçler":
                     extracted = extract_application_information_rule_based(
                         source_blocks,
                         specification_text=specification_text,
+                        specification_filename=specification_upload.name,
                     )
 
                     progress.progress(50, text="Kırmızı/mavi şablon yazıları temizleniyor ve EPATS PDF'leri hazırlanıyor...")

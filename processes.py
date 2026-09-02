@@ -245,28 +245,31 @@ def epats_document_metrics(specification_docx: bytes, pdfs: dict[str, bytes]) ->
 
 
 def _docx_source_text(data: bytes) -> str:
+    """DOCX metnini tablo yapısını kaybetmeden çıkarır.
+
+    Özellikle TÜRKPATENT/beyan formlarında sık görülen birleştirilmiş hücreler ve
+    çok hücreli satırlar için her hücreyi ayrı token olarak korur. Böylece daha
+    sonra etiket/değer eşleştirmesi yalnız görsel satır düzenine bağımlı kalmaz.
+    """
     doc = Document(io.BytesIO(data))
     parts: list[str] = []
     for p in doc.paragraphs:
-        if p.text.strip():
-            parts.append(p.text.strip())
-    for table in doc.tables:
+        text = p.text.strip()
+        if text:
+            parts.append(text)
+    for table_index, table in enumerate(doc.tables, 1):
+        parts.append(f"[[TABLO {table_index}]]")
         for row in table.rows:
-            vals = [cell.text.strip().replace("\n", " | ") for cell in row.cells]
-            if not any(vals):
-                continue
-            # Beyan formlarında bir satırda birden çok etiket/değer çifti bulunabilir.
-            # Örn: Hak Sahibi | ABC A.Ş. | Ülke | Türkiye. Bunları ayrı satırlara
-            # çevirerek deterministik alan çıkarıcının bağlamı doğru kurmasını sağla.
-            paired = False
-            if len(vals) >= 4 and len(vals) % 2 == 0:
-                candidate_pairs = [(vals[i], vals[i + 1]) for i in range(0, len(vals), 2)]
-                if sum(1 for label, _ in candidate_pairs if label and _canonical_label(label)) >= 2:
-                    for label, value in candidate_pairs:
-                        if label or value:
-                            parts.append(f"{label}\t{value}")
-                    paired = True
-            if not paired:
+            vals: list[str] = []
+            for cell in row.cells:
+                value = re.sub(r"\s*\n\s*", " / ", cell.text or "").strip()
+                # python-docx birleşik hücrelerde aynı hücre metnini birden fazla
+                # kez döndürebilir. Yan yana birebir tekrarları at.
+                if value and (not vals or _plain_norm(value) != _plain_norm(vals[-1])):
+                    vals.append(value)
+                elif not value and not vals:
+                    vals.append("")
+            if any(v for v in vals):
                 parts.append("\t".join(vals))
     return "\n".join(parts)
 
@@ -275,8 +278,23 @@ def _html_to_text(value: str) -> str:
     value = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", value or "")
     value = re.sub(r"(?i)<br\s*/?>", "\n", value)
     value = re.sub(r"(?i)</p\s*>", "\n", value)
+    value = re.sub(r"(?i)</(?:div|tr|li|h[1-6])\s*>", "\n", value)
     value = re.sub(r"(?s)<[^>]+>", " ", value)
-    return re.sub(r"[ \t]+", " ", unescape(value)).strip()
+    value = unescape(value)
+    value = re.sub(r"[ \t]+", " ", value)
+    value = re.sub(r"\n\s*\n+", "\n", value)
+    return value.strip()
+
+
+def _attachment_text(filename: str, data: bytes) -> str:
+    """E-posta eklerindeki desteklenen metin belgelerini güvenli biçimde oku."""
+    suffix = Path(filename or "").suffix.lower()
+    if suffix in {".docx", ".doc", ".pdf", ".txt", ".md"}:
+        try:
+            return extract_application_source_text(filename, data)
+        except Exception:
+            return ""
+    return ""
 
 
 def _eml_text(data: bytes) -> str:
@@ -288,30 +306,41 @@ def _eml_text(data: bytes) -> str:
         f"Cc: {msg.get('cc', '')}",
         f"Tarih: {msg.get('date', '')}",
     ]
-    body_parts: list[str] = []
+    plain_parts: list[str] = []
+    html_parts: list[str] = []
+    attachment_parts: list[str] = []
     if msg.is_multipart():
         for part in msg.walk():
-            if part.get_content_disposition() == "attachment":
+            disposition = part.get_content_disposition()
+            filename = part.get_filename() or ""
+            if disposition == "attachment" or filename:
+                payload = part.get_payload(decode=True) or b""
+                att = _attachment_text(filename, payload)
+                if att:
+                    attachment_parts.append(f"[[E-POSTA EKI: {filename}]]\n{att}")
                 continue
             ctype = part.get_content_type()
             if ctype == "text/plain":
                 try:
-                    body_parts.append(part.get_content())
+                    plain_parts.append(str(part.get_content()))
                 except Exception:
                     payload = part.get_payload(decode=True) or b""
-                    body_parts.append(payload.decode(part.get_content_charset() or "utf-8", errors="replace"))
-            elif ctype == "text/html" and not body_parts:
+                    plain_parts.append(payload.decode(part.get_content_charset() or "utf-8", errors="replace"))
+            elif ctype == "text/html":
                 try:
-                    body_parts.append(_html_to_text(part.get_content()))
+                    html_parts.append(_html_to_text(str(part.get_content())))
                 except Exception:
                     pass
     else:
         try:
             content = msg.get_content()
-            body_parts.append(_html_to_text(content) if msg.get_content_type() == "text/html" else str(content))
+            (html_parts if msg.get_content_type() == "text/html" else plain_parts).append(
+                _html_to_text(str(content)) if msg.get_content_type() == "text/html" else str(content)
+            )
         except Exception:
             pass
-    return "\n".join([x for x in head + body_parts if x and x.strip()]).strip()
+    body_parts = plain_parts or html_parts
+    return "\n".join([x for x in head + body_parts + attachment_parts if x and x.strip()]).strip()
 
 
 def extract_application_source_text(filename: str, data: bytes) -> str:
@@ -326,7 +355,7 @@ def extract_application_source_text(filename: str, data: bytes) -> str:
             proc = subprocess.run(["antiword", str(src)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
             text = proc.stdout.decode("utf-8", errors="replace") if proc.returncode == 0 else ""
     elif suffix == ".pdf":
-        text = "\n".join((p.extract_text() or "") for p in PdfReader(io.BytesIO(data)).pages)
+        text = "\n".join((page.extract_text() or "") for page in PdfReader(io.BytesIO(data)).pages)
     elif suffix in {".txt", ".md"}:
         text = data.decode("utf-8", errors="replace")
     elif suffix == ".eml":
@@ -340,16 +369,23 @@ def extract_application_source_text(filename: str, data: bytes) -> str:
             src = Path(td) / Path(filename).name
             src.write_bytes(data)
             msg = extract_msg.Message(str(src))
-            text = "\n".join(
-                x for x in [
-                    f"Konu: {getattr(msg, 'subject', '') or ''}",
-                    f"Kimden: {getattr(msg, 'sender', '') or ''}",
-                    f"Kime: {getattr(msg, 'to', '') or ''}",
-                    f"Cc: {getattr(msg, 'cc', '') or ''}",
-                    f"Tarih: {getattr(msg, 'date', '') or ''}",
-                    getattr(msg, "body", "") or "",
-                ] if x.strip()
-            )
+            parts = [
+                f"Konu: {getattr(msg, 'subject', '') or ''}",
+                f"Kimden: {getattr(msg, 'sender', '') or ''}",
+                f"Kime: {getattr(msg, 'to', '') or ''}",
+                f"Cc: {getattr(msg, 'cc', '') or ''}",
+                f"Tarih: {getattr(msg, 'date', '') or ''}",
+                getattr(msg, "body", "") or "",
+            ]
+            # Outlook mesajının içindeki Word/PDF/TXT eklerini de bilgi kaynağına kat.
+            for att in getattr(msg, "attachments", []) or []:
+                att_name = str(getattr(att, "longFilename", None) or getattr(att, "shortFilename", None) or "")
+                att_data = getattr(att, "data", None)
+                if att_name and isinstance(att_data, (bytes, bytearray)):
+                    att_text = _attachment_text(att_name, bytes(att_data))
+                    if att_text:
+                        parts.append(f"[[E-POSTA EKI: {att_name}]]\n{att_text}")
+            text = "\n".join(x for x in parts if x and str(x).strip())
             try:
                 msg.close()
             except Exception:
@@ -360,7 +396,6 @@ def extract_application_source_text(filename: str, data: bytes) -> str:
     if not text:
         raise ValueError(f"{filename} dosyasından metin çıkarılamadı.")
     return text
-
 
 
 
@@ -403,45 +438,203 @@ def _entity_type(name: str, explicit: str = "") -> str:
 
 def _canonical_label(label: str) -> str:
     n = _plain_norm(label)
-    # Rol + alan birleşik etiketleri (örn. "Hak Sahibi Adresi", "Buluş Sahibi TCKN").
-    applicant_role = any(x in n for x in ["hak sahibi", "basvuru sahibi", "applicant"])
-    inventor_role = any(x in n for x in ["bulus sahibi", "buluscu", "inventor"])
+    if not n:
+        return ""
+
+    # Form başlıklarında sık geçen ek/sonekleri normalleştir; anlamı bozacak
+    # genel kelimeleri tamamen silmek yerine rol tespitinde esnek davran.
+    applicant_role = any(x in n for x in [
+        "hak sahibi", "basvuru sahibi", "basvuran", "applicant", "patent sahibi",
+    ])
+    inventor_role = any(x in n for x in [
+        "bulus sahibi", "bulusu yapan", "bulus yapan", "buluscu", "mucit", "inventor",
+    ])
+    name_terms = [
+        "adi soyadi", "ad soyad", "adi ve soyadi", "ad ve soyad", "ad soyadi",
+        "adi unvani", "ad unvan", "adi ve unvani", "unvani", "unvan", "isim", "name",
+    ]
+    identity_terms = [
+        "tckn", "t c kimlik", "tc kimlik", "vkn", "vergi no", "vergi numarasi",
+        "kimlik no", "kimlik numarasi", "identity", "tax number",
+    ]
+
+    # Rol + alan birleşik etiketleri: "Başvuru Sahibinin Adı/Unvanı",
+    # "Buluşu Yapanın Adresi", "Hak Sahibi TCKN/VKN" vb.
     if applicant_role or inventor_role:
         role = "applicant" if applicant_role else "inventor"
-        if any(x in n for x in ["adres", "address"]):
+        if any(x in n for x in ["adres", "address", "tebligat adres", "ikametgah"]):
             return role + "_address"
-        if any(x in n for x in ["ulke", "uyruk", "tabiyet", "country"]):
+        if any(x in n for x in ["ulke", "uyruk", "tabiyet", "country", "milliyet"]):
             return role + "_country"
         if re.search(r"\b(il|sehir|city)\b", n):
             return role + "_city"
-        if any(x in n for x in ["tckn", "tc kimlik", "vkn", "vergi no", "vergi numarasi", "kimlik no", "identity"]):
+        if any(x in n for x in identity_terms):
             return role + "_identity"
-        if applicant_role and any(x in n for x in ["kisi turu", "tuzel", "gercek", "entity type"]):
+        if any(x in n for x in name_terms):
+            return role + "_name"
+        if applicant_role and any(x in n for x in ["kisi turu", "tuzel", "gercek", "entity type", "hukuki nitelik"]):
             return "applicant_entity_type"
 
     aliases = {
-        "application_kind": ["basvuru turu", "basvuru tipi", "koruma turu", "basvuru sekli"],
-        "reference": ["dp referans", "dp no", "dosya referansi", "dosya no", "referans no", "referans numarasi", "referans"],
-        "invention_title": ["bulus basligi", "bulusun basligi", "bulus adi", "bulusun adi", "invention title"],
-        "applicant": ["hak sahibi", "basvuru sahibi", "basvuru sahipleri", "hak sahipleri", "applicant", "applicants"],
-        "inventor": ["bulus sahibi", "bulus sahipleri", "buluscu", "buluscular", "inventor", "inventors"],
-        "identity": ["tckn", "tc kimlik no", "tc kimlik numarasi", "vkn", "vergi no", "vergi numarasi", "kimlik no", "kimlik numarasi"],
-        "address": ["adres", "tebligat adresi", "ikamet adresi", "merkez adresi"],
-        "country": ["ulke", "uyruk", "tabiyet", "country"],
+        "application_kind": [
+            "basvuru turu", "basvuru tipi", "koruma turu", "basvuru sekli", "koruma sekli",
+            "patent faydali model tercihi", "patent veya faydali model",
+        ],
+        "reference": [
+            "dp referans", "dp ref", "dp no", "dosya referansi", "dosya referans no", "dosya no",
+            "referans no", "referans numarasi", "referans", "is no", "is numarasi", "dosya kodu",
+        ],
+        "invention_title": [
+            "bulus basligi", "bulusun basligi", "bulus adi", "bulusun adi", "buluşun adı",
+            "invention title", "baslik",
+        ],
+        "applicant": [
+            "hak sahibi", "hak sahipleri", "basvuru sahibi", "basvuru sahipleri", "basvuran",
+            "applicant", "applicants", "hak sahibi bilgileri", "basvuru sahibi bilgileri",
+        ],
+        "inventor": [
+            "bulus sahibi", "bulus sahipleri", "buluscu", "buluscular", "bulusu yapan",
+            "bulusu yapanlar", "bulus yapan", "mucit", "mucitler", "inventor", "inventors",
+            "bulus sahibi bilgileri", "bulusu yapan bilgileri",
+        ],
+        "name": name_terms,
+        "identity": identity_terms,
+        "address": [
+            "adres", "adresi", "tebligat adresi", "ikamet adresi", "ikametgah", "merkez adresi",
+            "yazisma adresi", "address",
+        ],
+        "country": ["ulke", "uyruk", "tabiyet", "milliyet", "country"],
         "city": ["il", "sehir", "city"],
-        "entity_type": ["kisi turu", "hak sahibi turu", "basvuru sahibi turu", "tuzel gercek kisi", "entity type"],
-        "priority": ["ruchan", "ruchan durumu", "priority", "priority claim"],
+        "district": ["ilce", "district"],
+        "entity_type": [
+            "kisi turu", "hak sahibi turu", "basvuru sahibi turu", "tuzel gercek kisi",
+            "gercek tuzel", "hukuki nitelik", "entity type",
+        ],
+        "email": ["e posta", "eposta", "e mail", "email", "mail adresi", "elektronik posta"],
+        "phone": ["telefon", "telefon no", "telefon numarasi", "gsm", "cep telefonu", "phone"],
+        "priority": ["ruchan", "ruchan durumu", "ruchan talebi", "priority", "priority claim"],
         "priority_country": ["ruchan ulkesi", "priority country"],
-        "priority_number": ["ruchan numarasi", "ruchan no", "priority number"],
+        "priority_number": ["ruchan numarasi", "ruchan no", "ruchan basvuru no", "priority number"],
         "priority_date": ["ruchan tarihi", "priority date"],
     }
-    # En spesifik etiketler önce kontrol edilir.
-    for key in ("priority_country", "priority_number", "priority_date", "application_kind", "invention_title", "reference", "entity_type", "applicant", "inventor", "identity", "address", "country", "city", "priority"):
+    order = (
+        "priority_country", "priority_number", "priority_date", "application_kind", "invention_title",
+        "reference", "entity_type", "applicant", "inventor", "name", "identity", "address", "country",
+        "city", "district", "email", "phone", "priority",
+    )
+    for key in order:
         for alias in aliases[key]:
-            if n == alias or n.startswith(alias + " "):
+            a = _plain_norm(alias)
+            if n == a or n.startswith(a + " ") or n.endswith(" " + a):
                 return key
     return ""
 
+
+
+def _is_role_section_heading(raw_label: str, canonical: str) -> bool:
+    n = _plain_norm(raw_label)
+    if canonical not in {"applicant", "inventor"}:
+        return False
+    return any(x in n for x in ["bilgi", "bilgileri", "bilgisi", "information", "detay", "detaylari"])
+
+
+def _line_label_value_pairs(line: str) -> list[tuple[str, str, str]]:
+    """Bir görsel/tablo satırındaki bir veya birden çok etiket-değer çiftini çıkar.
+
+    Dönüş: (ham etiket, kanonik etiket, değer). Tablo satırlarında
+    "Hak Sahibi | ABC A.Ş. | Ülke | Türkiye" gibi birden çok çift desteklenir.
+    """
+    line = (line or "").strip()
+    if not line or line.startswith("[[TABLO") or line.startswith("[[E-POSTA EKI"):
+        return []
+
+    # Önce tablo/hücre ayraçlarını değerlendir. Hücre içindeki " / " normal
+    # metin olarak bırakılır; yalnız tab ve belirgin dikey çizgiler ayraçtır.
+    tokens = [x.strip() for x in re.split(r"\t+|\s+\|\s+", line) if x.strip()]
+    if len(tokens) >= 2:
+        pairs: list[tuple[str, str, str]] = []
+        i = 0
+        while i < len(tokens):
+            label = _canonical_label(tokens[i])
+            if label:
+                j = i + 1
+                vals: list[str] = []
+                while j < len(tokens) and not _canonical_label(tokens[j]):
+                    vals.append(tokens[j])
+                    j += 1
+                pairs.append((tokens[i], label, _clean_value(" / ".join(vals))))
+                i = max(j, i + 1)
+            else:
+                i += 1
+        if pairs:
+            return pairs
+
+    m = _LABEL_SPLIT_RE.match(line)
+    if m:
+        raw_label = m.group(1)
+        label = _canonical_label(raw_label)
+        if label:
+            return [(raw_label, label, _clean_value(m.group(2)))]
+    # PDF/antiword çıktısında tablo sütunları bazen ayraçsız tek satıra
+    # düşer: "Hak Sahibi ABC A.Ş." gibi. Yalnız açık ve sabit etiket
+    # başlangıçlarında ayraçsız geri dönüş uygula.
+    inline_patterns = [
+        (r"^(hak\s+sahibi|başvuru\s+sahibi|başvuru\s+sahibinin|hak\s+sahibinin)\s+(.+)$", "applicant"),
+        (r"^(buluş\s+sahibi|buluşu\s+yapan|buluşçu|mucit)\s+(.+)$", "inventor"),
+        (r"^(buluş\s+başlığı|buluşun\s+başlığı|buluş\s+adı)\s+(.+)$", "invention_title"),
+        (r"^(başvuru\s+türü|başvuru\s+tipi|koruma\s+türü)\s+(.+)$", "application_kind"),
+        (r"^(dp\s*(?:ref(?:erans)?|no)|dosya\s+(?:referansı|no)|referans\s+no)\s+(.+)$", "reference"),
+    ]
+    for pattern, default_label in inline_patterns:
+        mm = re.match(pattern, line, flags=re.IGNORECASE)
+        if mm:
+            value = _clean_value(mm.group(2))
+            if _plain_norm(value) not in {"bilgi", "bilgileri", "bilgisi"}:
+                return [(mm.group(1), default_label, value)]
+
+    label = _canonical_label(line)
+    if label:
+        return [(line, label, "")]
+    return []
+
+
+def reference_from_filename(filename: str) -> str:
+    """Tarifname dosya adındaki DP/ofis referansını güvenli biçimde çıkar.
+
+    Örn. Tarifname_181176_rev3.docx -> 181176. Yalnız açık bir numaralı
+    referans bulunduğunda döner; tarih/sürüm gibi kısa parçaları seçmez.
+    """
+    stem = Path(filename or "").stem
+    # DP181176, DP-181176, Tarifname_181176, 181176_Tarifname gibi örnekler.
+    explicit = re.search(r"(?i)\bdp\s*[-_ ]?\s*(\d{4,12})\b", stem)
+    if explicit:
+        return explicit.group(1)
+    candidates = re.findall(r"(?<!\d)(\d{5,12})(?!\d)", stem)
+    if candidates:
+        # En uzun aday; eşitlikte soldaki. 5.4.48 gibi sürüm parçaları zaten
+        # noktalı/kısa olduğundan bu kalıba girmez.
+        return sorted(enumerate(candidates), key=lambda x: (-len(x[1]), x[0]))[0][1]
+    return ""
+
+
+def _add_other_information(result: dict[str, Any], label: str, value: str, source: str) -> None:
+    label = _clean_value(label)
+    value = _clean_value(value)
+    if not value:
+        return
+    key = (_plain_norm(label), _plain_norm(value), source)
+    for row in result.get("other_information", []):
+        if (_plain_norm(row.get("label", "")), _plain_norm(row.get("value", "")), row.get("source", "")) == key:
+            return
+    result["other_information"].append({"label": label or "Diğer bilgi", "value": value, "source": source})
+
+
+def _extract_contact_information(result: dict[str, Any], text: str, source: str) -> None:
+    """Serbest mail/yazı içindeki açık iletişim bilgilerini 'diğer bilgiler'e al."""
+    for email in sorted(set(re.findall(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", text or ""))):
+        _add_other_information(result, "E-posta", email, source)
+    for phone in sorted(set(re.findall(r"(?<!\d)(?:\+?90\s*)?(?:\(?0?\d{3}\)?[ .-]*)\d{3}[ .-]*\d{2}[ .-]*\d{2}(?!\d)", text or ""))):
+        _add_other_information(result, "Telefon", phone, source)
 
 def _split_people_value(value: str) -> list[str]:
     value = _clean_value(value)
@@ -552,11 +745,12 @@ def _set_singleton(result: dict[str, Any], key: str, value: str, source: str, se
 
 
 def extract_application_information_rule_based(
-    source_blocks: list[tuple[str, str]], *, specification_text: str = ""
+    source_blocks: list[tuple[str, str]], *, specification_text: str = "", specification_filename: str = ""
 ) -> dict[str, Any]:
-    """Başvuru verilerini OpenAI/API kullanmadan etiketler ve bağlam kurallarıyla çıkarır.
+    """Başvuru verilerini OpenAI/API kullanmadan belge yapısı + açık metin kurallarıyla çıkarır.
 
-    Bilgi uydurmaz. Açıkça bulunamayan alan boş bırakılır ve ön kontrol kapısı tarafından bloke edilir.
+    Bilgi uydurmaz. Tablo hücreleri, bölüm başlıkları, etiket/değer satırları ve açık
+    e-posta cümleleri desteklenir. Bulunamayan alan ön kontrol kapısı tarafından bloke edilir.
     """
     result: dict[str, Any] = {
         "application_kind": "",
@@ -572,142 +766,194 @@ def extract_application_information_rule_based(
     }
     seen: dict[str, tuple[str, str]] = {}
 
+    def ensure_person(role: str, source: str, *, force_new: bool = False) -> dict[str, str]:
+        target = result["applicants"] if role == "applicant" else result["inventors"]
+        if force_new or not target:
+            row = _new_person("", source, applicant=role == "applicant")
+            target.append(row)
+            return row
+        return target[-1]
+
     for source, raw_text in source_blocks:
         text = (raw_text or "").replace("\r", "\n")
         result["source_files_used"].append(source)
+        _extract_contact_information(result, text, source)
+
         current_role = ""
         current_person: dict[str, str] | None = None
-        current_applicant = False
         pending_label = ""
 
         lines = [x.strip(" \r") for x in text.splitlines()]
         for line in lines:
-            if not line:
+            if not line or line.startswith("[[TABLO") or line.startswith("[[E-POSTA EKI"):
                 continue
 
-            m = _LABEL_SPLIT_RE.match(line)
-            if m:
-                raw_label, value = m.group(1), _clean_value(m.group(2))
-                label = _canonical_label(raw_label)
-            else:
-                raw_label, value, label = line, "", _canonical_label(line)
-
-            # Başlık tek satır, değer sonraki satır biçimini destekle.
-            if pending_label and not label and line:
-                label, value, pending_label = pending_label, line, ""
-            elif label and not value and label in {"application_kind", "reference", "invention_title", "applicant", "inventor", "priority", "priority_country", "priority_number", "priority_date"}:
-                pending_label = label
-                if label == "applicant":
-                    current_role, current_person, current_applicant = "applicant", None, True
-                elif label == "inventor":
-                    current_role, current_person, current_applicant = "inventor", None, False
+            pairs = _line_label_value_pairs(line)
+            if not pairs and pending_label:
+                # Başlık bir satır, değer sonraki satır. Ancak sonraki satır başka
+                # bir tablo/bölüm başlığıysa onu değer sanma.
+                if not _canonical_label(line):
+                    pairs = [(pending_label, pending_label, _clean_value(line))]
+                    pending_label = ""
+            if not pairs:
+                nline = _plain_norm(line)
+                if "ruchan" in nline and result["priority"]["status"] == "Belirsiz":
+                    status = _priority_status(line)
+                    if status != "Belirsiz":
+                        _set_singleton(result, "priority.status", status, source, seen)
+                if not result["application_kind"] and any(x in nline for x in ["patent basvuru", "faydali model basvuru", "faydali model olarak", "patent olarak"]):
+                    kind = _kind_from_text(line)
+                    if kind:
+                        _set_singleton(result, "application_kind", kind, source, seen)
                 continue
 
-            if label == "application_kind":
-                kind = _kind_from_text(value)
-                if kind:
-                    _set_singleton(result, "application_kind", kind, source, seen)
-                continue
-            if label == "reference":
-                _set_singleton(result, "reference", value, source, seen)
-                continue
-            if label == "invention_title":
-                _set_singleton(result, "invention_title", value, source, seen)
-                continue
-            if label == "priority":
-                status = _priority_status(value)
-                if status != "Belirsiz":
-                    _set_singleton(result, "priority.status", status, source, seen)
-                current_role, current_person = "priority", None
-                continue
-            if label == "priority_country":
-                _set_singleton(result, "priority.country", value, source, seen)
-                current_role, current_person = "priority", None
-                continue
-            if label == "priority_number":
-                _set_singleton(result, "priority.number", value, source, seen)
-                current_role, current_person = "priority", None
-                continue
-            if label == "priority_date":
-                _set_singleton(result, "priority.date", value, source, seen)
-                current_role, current_person = "priority", None
-                continue
+            for raw_label, label, value in pairs:
+                # Bölüm başlığı: "HAK SAHİBİ BİLGİLERİ" / "BULUŞU YAPAN BİLGİLERİ".
+                if label in {"applicant", "inventor"} and not value and _is_role_section_heading(raw_label, label):
+                    current_role = label
+                    current_person = None
+                    pending_label = ""
+                    continue
 
-            if label in {"applicant", "inventor"}:
-                current_role = label
-                current_applicant = label == "applicant"
-                people = _split_people_value(value)
-                current_person = None
-                for person_name in people:
-                    row = _new_person(person_name, source, applicant=current_applicant)
-                    current_person = _append_unique_person(result["applicants"] if current_applicant else result["inventors"], row, applicant=current_applicant)
-                continue
+                # Tek satır başlık + sonraki satır değer formatı.
+                if not value and label in {
+                    "application_kind", "reference", "invention_title", "applicant", "inventor",
+                    "priority", "priority_country", "priority_number", "priority_date",
+                    "applicant_name", "inventor_name", "applicant_identity", "inventor_identity",
+                    "applicant_address", "inventor_address", "applicant_country", "inventor_country",
+                    "applicant_city", "inventor_city", "name", "identity", "address", "country", "city",
+                }:
+                    pending_label = label
+                    if label.startswith("applicant") or label == "applicant":
+                        current_role = "applicant"
+                    elif label.startswith("inventor") or label == "inventor":
+                        current_role = "inventor"
+                    continue
 
-            if label.startswith("applicant_") or label.startswith("inventor_"):
-                role, field = label.split("_", 1)
-                current_role = role
-                current_applicant = role == "applicant"
-                target = result["applicants"] if current_applicant else result["inventors"]
-                if current_person is None or current_person not in target:
-                    current_person = target[-1] if target else _new_person("", source, applicant=current_applicant)
-                    if not target:
-                        target.append(current_person)
-                if field == "identity":
-                    current_person["identity"] = _valid_identity(value)
-                elif field == "entity_type" and current_applicant:
-                    current_person["entity_type"] = _entity_type(current_person.get("name", ""), value)
-                elif field in {"address", "country", "city"}:
-                    current_person[field] = value
-                continue
+                if label == "application_kind":
+                    kind = _kind_from_text(value)
+                    if kind:
+                        _set_singleton(result, "application_kind", kind, source, seen)
+                    continue
+                if label == "reference":
+                    _set_singleton(result, "reference", value, source, seen)
+                    continue
+                if label == "invention_title":
+                    _set_singleton(result, "invention_title", value, source, seen)
+                    continue
+                if label == "priority":
+                    status = _priority_status(value)
+                    if status != "Belirsiz":
+                        _set_singleton(result, "priority.status", status, source, seen)
+                    current_role, current_person = "priority", None
+                    continue
+                if label == "priority_country":
+                    _set_singleton(result, "priority.country", value, source, seen)
+                    current_role, current_person = "priority", None
+                    continue
+                if label == "priority_number":
+                    _set_singleton(result, "priority.number", value, source, seen)
+                    current_role, current_person = "priority", None
+                    continue
+                if label == "priority_date":
+                    _set_singleton(result, "priority.date", value, source, seen)
+                    current_role, current_person = "priority", None
+                    continue
 
-            if label in {"identity", "address", "country", "city", "entity_type"} and current_role in {"applicant", "inventor"}:
-                target = result["applicants"] if current_role == "applicant" else result["inventors"]
-                if current_person is None:
-                    current_person = _new_person("", source, applicant=current_role == "applicant")
-                    target.append(current_person)
-                if label == "identity":
-                    current_person["identity"] = _valid_identity(value)
-                elif label == "entity_type" and current_role == "applicant":
-                    current_person["entity_type"] = _entity_type(current_person.get("name", ""), value)
-                else:
-                    current_person[label] = value
-                continue
+                if label in {"applicant", "inventor"}:
+                    current_role = label
+                    current_person = None
+                    for person_name in _split_people_value(value):
+                        row = _new_person(person_name, source, applicant=label == "applicant")
+                        target = result["applicants"] if label == "applicant" else result["inventors"]
+                        current_person = _append_unique_person(target, row, applicant=label == "applicant")
+                    continue
 
-            # Açık cümle biçimleri: "Rüçhan yoktur", "başvuru patent olarak yapılacaktır".
-            nline = _plain_norm(line)
-            if "ruchan" in nline and result["priority"]["status"] == "Belirsiz":
-                status = _priority_status(line)
-                if status != "Belirsiz":
-                    _set_singleton(result, "priority.status", status, source, seen)
-            if not result["application_kind"] and ("patent basvuru" in nline or "faydali model basvuru" in nline):
-                kind = _kind_from_text(line)
-                if kind:
-                    _set_singleton(result, "application_kind", kind, source, seen)
+                if label.startswith("applicant_") or label.startswith("inventor_"):
+                    role, field = label.split("_", 1)
+                    current_role = role
+                    target = result["applicants"] if role == "applicant" else result["inventors"]
+                    if field == "name":
+                        # Aynı rol bölümünde ikinci kez dolu ad görülürse yeni kişi kabul et.
+                        if current_person is not None and current_person.get("name") and _plain_norm(current_person.get("name", "")) != _plain_norm(value):
+                            current_person = None
+                        row = _new_person(value, source, applicant=role == "applicant")
+                        current_person = _append_unique_person(target, row, applicant=role == "applicant")
+                    else:
+                        if current_person is None or current_person not in target:
+                            current_person = target[-1] if target else ensure_person(role, source)
+                        if field == "identity":
+                            current_person["identity"] = _valid_identity(value)
+                        elif field == "entity_type" and role == "applicant":
+                            current_person["entity_type"] = _entity_type(current_person.get("name", ""), value)
+                        elif field in {"address", "country", "city"}:
+                            current_person[field] = value
+                    continue
 
-            # Etiketli fakat başvuru çekirdek alanlarına ait olmayan bilgileri koru.
-            if m and value and not label:
-                result["other_information"].append({"label": _clean_value(raw_label), "value": value, "source": source})
+                if label in {"name", "identity", "address", "country", "city", "entity_type"} and current_role in {"applicant", "inventor"}:
+                    target = result["applicants"] if current_role == "applicant" else result["inventors"]
+                    if label == "name":
+                        if current_person is not None and current_person.get("name") and _plain_norm(current_person.get("name", "")) != _plain_norm(value):
+                            current_person = None
+                        row = _new_person(value, source, applicant=current_role == "applicant")
+                        current_person = _append_unique_person(target, row, applicant=current_role == "applicant")
+                    else:
+                        if current_person is None or current_person not in target:
+                            current_person = target[-1] if target else ensure_person(current_role, source)
+                        if label == "identity":
+                            current_person["identity"] = _valid_identity(value)
+                        elif label == "entity_type" and current_role == "applicant":
+                            current_person["entity_type"] = _entity_type(current_person.get("name", ""), value)
+                        elif label in {"address", "country", "city"}:
+                            current_person[label] = value
+                    continue
 
-        # Serbest e-posta cümlelerinde yalnız açık rol ifadelerine izin ver.
-        # "XYZ üzerinden ilerleyelim" gibi yoruma açık ifadeler kişi/şirket rolüne çevrilmez.
+                # İletişim, ilçe ve tanınan fakat çekirdek şemaya dahil olmayan alanları kaybetme.
+                if label in {"email", "phone", "district"}:
+                    prefix = "Hak sahibi" if current_role == "applicant" else "Buluş sahibi" if current_role == "inventor" else ""
+                    nice = {"email": "E-posta", "phone": "Telefon", "district": "İlçe"}[label]
+                    _add_other_information(result, f"{prefix} {nice}".strip(), value, source)
+                    continue
+
+                # Etiketli fakat çekirdek alanlara ait olmayan bilgileri ön kontrolde koru.
+                if value:
+                    _add_other_information(result, raw_label, value, source)
+
+        # Serbest e-posta/yazı cümlelerinde yalnız açık rol ifadelerine izin ver.
+        applicant_patterns = [
+            r"(?:hak|başvuru)\s+sahibi(?:\s+olarak)?\s*(?::|-)?\s+(.{3,180}?)(?=\s+(?:olacaktır|olacak|olarak\s+belirlenmiştir|belirlenmiştir|dır|dir)\b|[\n;]|$)",
+            r"başvuru\s+(.{3,180}?)\s+(?:adına|üzerinden)\s+yapılacaktır",
+        ]
+        inventor_patterns = [
+            r"(?:buluş\s+sahibi|buluşçu|mucit|buluşu\s+yapan)(?:\s+olarak)?\s*(?::|-)?\s+(.{3,160}?)(?=\s+(?:olacaktır|olacak|olarak\s+belirlenmiştir|belirlenmiştir|dır|dir)\b|[\n;]|$)",
+        ]
         if not result["applicants"]:
-            match = re.search(
-                r"(?i)(?:hak|başvuru)\s+sahibi(?:\s+olarak)?\s*(?::|-)?\s+(.{3,140}?)(?=\s+(?:olacaktır|olacak|olarak\s+belirlenmiştir|belirlenmiştir)\b|[\n;]|$)",
-                text,
-            )
-            if match:
-                name = re.sub(r"(?i)\s+(?:olacaktır|olacak|olarak\s+belirlenmiştir|belirlenmiştir)$", "", _clean_value(match.group(1))).strip(" ,")
-                if name:
-                    _append_unique_person(result["applicants"], _new_person(name, source, applicant=True), applicant=True)
+            for pattern in applicant_patterns:
+                match = re.search(pattern, text, flags=re.IGNORECASE)
+                if match:
+                    for name in _split_people_value(_clean_value(match.group(1)).strip(" ,")):
+                        _append_unique_person(result["applicants"], _new_person(name, source, applicant=True), applicant=True)
+                    if result["applicants"]:
+                        break
         if not result["inventors"]:
-            match = re.search(
-                r"(?i)(?:buluş\s+sahibi|buluşçu)(?:\s+olarak)?\s*(?::|-)?\s+(.{3,120}?)(?=\s+(?:olacaktır|olacak|olarak\s+belirlenmiştir|belirlenmiştir|dir|dır)\b|[\n;]|$)",
-                text,
+            for pattern in inventor_patterns:
+                match = re.search(pattern, text, flags=re.IGNORECASE)
+                if match:
+                    for name in _split_people_value(_clean_value(match.group(1)).strip(" ,")):
+                        _append_unique_person(result["inventors"], _new_person(name, source, applicant=False), applicant=False)
+                    if result["inventors"]:
+                        break
+
+    # DP referansı tarifname dosya adında zaten bulunuyorsa bunu ana kaynak olarak kullan.
+    file_ref = reference_from_filename(specification_filename)
+    if file_ref:
+        if result["reference"] and _plain_norm(result["reference"]) != _plain_norm(file_ref):
+            result["conflicts"].append(
+                f"DP / dosya referansı: '{result['reference']}' (başvuru kaynağı) / '{file_ref}' (Tarifname dosya adı)"
             )
-            if match:
-                name = re.sub(r"(?i)\s+(?:olacaktır|olacak|olarak\s+belirlenmiştir|belirlenmiştir|dir|dır)$", "", _clean_value(match.group(1))).strip(" ,")
-                if name:
-                    _append_unique_person(result["inventors"], _new_person(name, source, applicant=False), applicant=False)
+        elif not result["reference"]:
+            result["reference"] = file_ref
+            result["field_sources"]["reference"] = "Tarifname dosya adı"
 
     # Tarifname yalnız başlık teyidi/geri dönüş kaynağıdır.
     spec_title = _specification_title(specification_text)
@@ -721,14 +967,21 @@ def extract_application_information_rule_based(
             result["invention_title"] = spec_title
             result["field_sources"]["invention_title"] = "Tarifname"
 
-    # Tekil alanların kaynaklarını ön kontrolde görünür tut.
+    # Adresin içinde ülke açıkça yazıyorsa ayrıca ülke alanını doldur; tahmin yok.
+    for rows in (result["applicants"], result["inventors"]):
+        for row in rows:
+            if not row.get("country"):
+                naddr = _plain_norm(row.get("address", ""))
+                if "turkiye" in naddr or re.search(r"\bturkey\b", naddr):
+                    row["country"] = "Türkiye"
+
     for field_name in ("application_kind", "reference", "invention_title"):
-        if field_name in seen:
+        if field_name in seen and field_name not in result["field_sources"]:
             result["field_sources"][field_name] = seen[field_name][1]
     if result["priority"].get("source"):
         result["field_sources"]["priority"] = result["priority"]["source"]
 
-    # Aynı kimlik numarasının farklı adla kullanılmasını veya aynı kişinin farklı kritik bilgilerini işaretle.
+    # Aynı kimlik numarasının farklı adla kullanılmasını işaretle.
     for role_key, label in (("applicants", "Hak sahibi"), ("inventors", "Buluş sahibi")):
         rows = result[role_key]
         by_id: dict[str, dict[str, str]] = {}
@@ -741,7 +994,6 @@ def extract_application_information_rule_based(
             else:
                 by_id[digits] = row
 
-    # Tekrarlı conflict metinlerini temizle.
     result["conflicts"] = list(dict.fromkeys(x for x in result["conflicts"] if x))
     return normalize_application_information(result)
 
