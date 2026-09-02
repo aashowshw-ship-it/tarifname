@@ -1,4 +1,10 @@
-# Patent Atölyesi v5.4.52
+# Patent Atölyesi v5.4.53
+
+## v5.4.53 / 2026-09-02 — Süreçler / Tarayıcı AI bileşeni self-contained düzeltmesi
+
+- Tarayıcı AI bileşeninin `browser_ai_component/` alt klasörü GitHub/Render aktarımında eksik kalsa bile uygulama artık bileşen dosyalarını çalışma anında güvenli geçici dizine kendisi oluşturur.
+- Böylece `Tarayıcı AI bileşeni bulunamadı` fallback nedeni ortadan kaldırılır; WebGPU/CDN/model aşamasında ayrı ve gerçek hata mesajı gösterilir.
+- Mevcut v5.4.52 tarayıcı WebGPU AI davranışı ve kaynak-doğrulamalı merge kuralları korunur.
 
 ## v5.4.52 / 2026-09-02 — Süreçler / Tarayıcı WebGPU AI
 

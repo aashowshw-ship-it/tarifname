@@ -108,8 +108,32 @@ from gorus_audit import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-_BROWSER_AI_DIR = BASE_DIR / "browser_ai_component"
-_BROWSER_AI_COMPONENT = components.declare_component("patent_atolyesi_browser_ai", path=str(_BROWSER_AI_DIR)) if _BROWSER_AI_DIR.is_dir() else None
+_BROWSER_AI_INDEX_HTML = '<!doctype html>\n<html lang="tr">\n<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0;background:transparent}</style></head>\n<body><div id="app"></div><script type="module" src="./main.js"></script></body>\n</html>\n'
+_BROWSER_AI_MAIN_JS = 'import { Streamlit } from "https://cdn.jsdelivr.net/npm/streamlit-component-lib@2.0.0/+esm";\n\nconst root = document.getElementById("app");\nlet lastRequestId = null;\nlet running = false;\nlet generator = null;\n\nfunction esc(s) { return String(s ?? "").replace(/[&<>\\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;"}[c])); }\nfunction paint(title, detail, progress = null, kind = "info") {\n  const pct = progress == null ? "" : `<div style="height:6px;background:#e5e7eb;border-radius:99px;overflow:hidden;margin-top:8px"><div style="height:100%;width:${Math.max(2,Math.min(100,progress))}%;background:#2563eb"></div></div>`;\n  const bg = kind === "error" ? "#fef2f2" : kind === "ok" ? "#f0fdf4" : "#f8fafc";\n  const border = kind === "error" ? "#fecaca" : kind === "ok" ? "#bbf7d0" : "#e2e8f0";\n  root.innerHTML = `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;padding:12px 14px;border:1px solid ${border};border-radius:10px;background:${bg};font-size:14px;color:#0f172a"><div style="font-weight:650">${esc(title)}</div><div style="margin-top:4px;color:#475569">${esc(detail)}</div>${pct}</div>`;\n  Streamlit.setFrameHeight(92);\n}\nfunction extractJson(text) {\n  const raw = String(text || "").trim();\n  try { return JSON.parse(raw); } catch (_) {}\n  const start = raw.indexOf("{"); if (start < 0) throw new Error("Model JSON üretmedi.");\n  let depth=0,inString=false,escaped=false;\n  for(let i=start;i<raw.length;i++) { const ch=raw[i]; if(inString){if(escaped)escaped=false;else if(ch==="\\\\")escaped=true;else if(ch===\'"\')inString=false;continue;} if(ch===\'"\')inString=true; else if(ch==="{")depth++; else if(ch==="}"){depth--;if(depth===0)return JSON.parse(raw.slice(start,i+1));} }\n  throw new Error("Model yanıtındaki JSON tamamlanamadı.");\n}\nasync function ensureGenerator(modelId) {\n  if (generator) return generator;\n  if (!("gpu" in navigator)) throw new Error("WebGPU bulunamadı. Güncel Chrome/Edge ve donanım hızlandırmayı kullanın.");\n  paint("Tarayıcı AI hazırlanıyor", "Model ilk kullanımda indirilir; sonra tarayıcı önbelleğinden açılır.", 8);\n  const mod = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/+esm");\n  mod.env.allowLocalModels = false;\n  generator = await mod.pipeline("text-generation", modelId, {dtype:"q4",device:"webgpu",progress_callback:(p)=>{const v=typeof p?.progress==="number"?Math.round(p.progress):18;paint("Tarayıcı AI hazırlanıyor",p?.file?`Model dosyası: ${p.file}`:"Model yükleniyor...",Math.max(8,Math.min(70,v*.7)));}});\n  return generator;\n}\nasync function run(args) {\n  running=true;\n  try {\n    const modelId=args.model_id||"onnx-community/Qwen2.5-0.5B-Instruct";\n    const gen=await ensureGenerator(modelId);\n    paint("Belge bilgileri AI ile doğrulanıyor","İşlem bu cihazın tarayıcısında yapılıyor; belge metni harici AI API\'sine gönderilmiyor.",78);\n    const messages=[{role:"system",content:"You are a precise data extraction engine. Read Turkish patent application source text. Never invent data. Return only valid JSON."},{role:"user",content:args.prompt||""}];\n    const output=await gen(messages,{max_new_tokens:Number(args.max_new_tokens||650),do_sample:false,repetition_penalty:1.02,return_full_text:true});\n    let content=output?.[0]?.generated_text;\n    if(Array.isArray(content)) content=content.at(-1)?.content||"";\n    else if(typeof content!=="string") content="";\n    const parsed=extractJson(content);\n    paint("Tarayıcı AI tamamlandı","Değerler kaynak metinle sunucuda yeniden doğrulanıyor.",100,"ok");\n    Streamlit.setComponentValue({request_id:args.request_id,ok:true,data:parsed,model:modelId});\n  } catch(e) {\n    const msg=e?.message||String(e); paint("Tarayıcı AI çalıştırılamadı",msg,null,"error"); Streamlit.setComponentValue({request_id:args.request_id,ok:false,error:msg});\n  } finally { running=false; }\n}\nfunction onRender(event) { const args=event.detail.args||{}; Streamlit.setFrameHeight(92); if(!args.request_id){paint("Tarayıcı AI hazır","Belge analizi başlatıldığında yalnız bu tarayıcıda çalışır.");return;} if(args.request_id!==lastRequestId&&!running){lastRequestId=args.request_id;run(args);} }\nStreamlit.events.addEventListener(Streamlit.RENDER_EVENT,onRender); Streamlit.setComponentReady(); Streamlit.setFrameHeight(92); paint("Tarayıcı AI hazırlanıyor","Analiz isteği bekleniyor...");\n'
+
+def _prepare_browser_ai_component_dir() -> Path | None:
+    """Return a usable Streamlit component directory even if GitHub omitted subfolders."""
+    packaged = BASE_DIR / "browser_ai_component"
+    if (packaged / "index.html").is_file() and (packaged / "main.js").is_file():
+        return packaged
+    try:
+        runtime_dir = Path(tempfile.gettempdir()) / "patent_atolyesi_browser_ai_v5453"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        (runtime_dir / "index.html").write_text(_BROWSER_AI_INDEX_HTML, encoding="utf-8")
+        (runtime_dir / "main.js").write_text(_BROWSER_AI_MAIN_JS, encoding="utf-8")
+        if (runtime_dir / "index.html").is_file() and (runtime_dir / "main.js").is_file():
+            return runtime_dir
+    except Exception:
+        return None
+    return None
+
+_BROWSER_AI_DIR = _prepare_browser_ai_component_dir()
+try:
+    _BROWSER_AI_COMPONENT = components.declare_component(
+        "patent_atolyesi_browser_ai", path=str(_BROWSER_AI_DIR)
+    ) if _BROWSER_AI_DIR is not None else None
+except Exception:
+    _BROWSER_AI_COMPONENT = None
 TARIFNAME_TEMPLATE = BASE_DIR / "Tarifname_181176_template.docx"
 GORUS_TEMPLATE = BASE_DIR / "Gorus_metni_696809_template.docx"
 ARASTIRMA_TEMPLATE = BASE_DIR / "On_Arastirma_Raporu_181612_template.docx"
