@@ -5,7 +5,7 @@ from rules import APP_VERSION
 
 
 def test_version():
-    assert APP_VERSION == "v5.4.54"
+    assert APP_VERSION == "v5.4.55"
 
 
 def test_current_body_drops_old_outlook_thread_and_signature():

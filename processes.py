@@ -2000,6 +2000,222 @@ def _merge_local_ai_information(rule_data: dict[str, Any], ai_data: dict[str, An
     return normalize_application_information(merged)
 
 
+
+# -----------------------------------------------------------------------------
+# TARAYICI CPU/WASM NER SONUCU -> BASVURU ALANLARI
+# -----------------------------------------------------------------------------
+_CPU_NER_EMAIL_RE = re.compile(r"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}", re.IGNORECASE)
+_CPU_NER_PHONE_LABEL_RE = re.compile(
+    r"(?:cep(?:\s*telefonu)?|gsm|mobil\s*telefon|telefon|tel\.?)(?:\s*(?:no|numarasi|numarası))?\s*[:|\-]?\s*"
+    r"(\+?\d[\d\s().\-/]{5,}\d)", re.IGNORECASE,
+)
+_CPU_NER_BIRTH_RE = re.compile(
+    r"(?:dogum|doğum)\s*tarihi\s*[:|\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})", re.IGNORECASE,
+)
+_CPU_NER_ADDRESS_RE = re.compile(
+    r"(?:hak\s*sahibi\s*adresi|başvuru\s*sahibi\s*adresi|basvuru\s*sahibi\s*adresi|buluş\s*sahibi\s*adresi|bulus\s*sahibi\s*adresi|adres)"
+    r"\s*[:|\-]?\s*([^\n]{5,320})", re.IGNORECASE,
+)
+_CPU_NER_TCKN_RE = re.compile(
+    r"(?:t\.?\s*c\.?\s*kimlik(?:\s*(?:no|numarasi|numarası))?|tckn)\D{0,28}(\d{11})(?!\d)", re.IGNORECASE,
+)
+_CPU_NER_VKN_RE = re.compile(
+    r"(?:vergi(?:\s*kimlik)?(?:\s*(?:no|numarasi|numarası))?|vkn)\D{0,28}(\d{10})(?!\d)", re.IGNORECASE,
+)
+
+
+def _cpu_ner_role(entity: dict[str, Any]) -> str:
+    """NER varligini en yakin rol basligina baglar; tahmin icin tum belgeyi kullanmaz."""
+    before = _plain_norm(str(entity.get("before") or ""))
+    after = _plain_norm(str(entity.get("after") or ""))
+    label = str(entity.get("label") or "").upper()
+    applicant_terms = ["hak sahibi", "basvuru sahibi", "basvuran", "applicant", "patent sahibi"]
+    inventor_terms = ["bulus sahibi", "buluscu", "mucit", "bulusu yapan", "inventor"]
+
+    def _last_pos(text: str, terms: list[str]) -> int:
+        return max([text.rfind(_plain_norm(t)) for t in terms] + [-1])
+
+    ap = _last_pos(before, applicant_terms)
+    inv = _last_pos(before, inventor_terms)
+    # En yakin onceki rol basligi birincil sinyaldir.
+    if ap >= 0 or inv >= 0:
+        if abs(ap - inv) > 8:
+            return "applicant" if ap > inv else "inventor"
+    # Tablo/OCR'da etiket degerden sonra kalmissa yalniz cok yakin sonraki etikete bak.
+    after_head = after[:220]
+    ap2 = min([after_head.find(_plain_norm(t)) for t in applicant_terms if after_head.find(_plain_norm(t)) >= 0] + [9999])
+    inv2 = min([after_head.find(_plain_norm(t)) for t in inventor_terms if after_head.find(_plain_norm(t)) >= 0] + [9999])
+    if min(ap2, inv2) < 9999 and abs(ap2 - inv2) > 8:
+        return "applicant" if ap2 < inv2 else "inventor"
+    # NER semantigi: kurumlar tipik olarak hak sahibi, kisi ise buluscu olabilir.
+    # Bu fallback yalniz rol basligi yakalanamadiginda kullanilir; sonraki kaynak
+    # dogrulamasi olmadan hicbir deger kabul edilmez.
+    if label == "ORG":
+        return "applicant"
+    if label == "PER":
+        context = before[-700:] + " " + after[:700]
+        has_inv = any(_plain_norm(t) in context for t in inventor_terms)
+        has_app = any(_plain_norm(t) in context for t in applicant_terms)
+        if has_inv and not has_app:
+            return "inventor"
+        if has_app and not has_inv:
+            return "applicant"
+    return ""
+
+
+def _cpu_ner_nearest_match(pattern: re.Pattern[str], context: str, center: int, *, group: int = 1) -> str:
+    candidates: list[tuple[int, str]] = []
+    for m in pattern.finditer(context):
+        try:
+            value = _clean_value(m.group(group))
+        except Exception:
+            continue
+        if not value:
+            continue
+        mid = (m.start() + m.end()) // 2
+        candidates.append((abs(mid - center), value))
+    if not candidates:
+        return ""
+    candidates.sort(key=lambda x: x[0])
+    return candidates[0][1]
+
+
+def _cpu_ner_context_fields(entity: dict[str, Any], *, applicant: bool) -> dict[str, str]:
+    before = str(entity.get("before") or "")[-1200:]
+    word = _clean_value(str(entity.get("word") or ""))
+    after = str(entity.get("after") or "")[:1700]
+    context = before + "\n" + word + "\n" + after
+    center = len(before) + 1 + len(word) // 2
+    row: dict[str, str] = {}
+
+    # Kimlik numarasi yalniz acik TCKN/VKN etiketiyle eslesirse baglanir.
+    if applicant:
+        vkn = _cpu_ner_nearest_match(_CPU_NER_VKN_RE, context, center)
+        tckn = _cpu_ner_nearest_match(_CPU_NER_TCKN_RE, context, center)
+        row["identity"] = vkn or tckn
+    else:
+        row["identity"] = _cpu_ner_nearest_match(_CPU_NER_TCKN_RE, context, center)
+
+    # E-posta icin tum contextte aday olabilir; merkezdeki kisi/kuruma en yakinini al.
+    emails: list[tuple[int, str]] = []
+    for m in _CPU_NER_EMAIL_RE.finditer(context):
+        emails.append((abs(((m.start() + m.end()) // 2) - center), m.group(0)))
+    if emails:
+        emails.sort(key=lambda x: x[0])
+        # Cok uzaktaki imza/onceki blok e-postasini baglama.
+        if emails[0][0] <= 950:
+            row["email"] = emails[0][1]
+
+    # Telefon yalniz Telefon/Cep/GSM etiketiyle yakalanir; belgedeki ilk sayi asla alinmaz.
+    phone = _cpu_ner_nearest_match(_CPU_NER_PHONE_LABEL_RE, context, center)
+    if phone:
+        row["phone"] = phone
+    # Adres yalniz acik Adres/Hak Sahibi Adresi/Bulus Sahibi Adresi etiketiyle baglanir.
+    address = _cpu_ner_nearest_match(_CPU_NER_ADDRESS_RE, context, center)
+    if address:
+        # Ayni satirda sonraki tablo etiketi de gelmisse orada kes.
+        address = re.split(
+            r"\s+(?=(?:e[ -]?posta|email|telefon|tel\.?|cep|gsm|tckn|tc\s*kimlik|vkn|vergi|doğum\s*tarihi|dogum\s*tarihi|uyruk|ülke|ulke|ilçe|ilce)\b)",
+            address, maxsplit=1, flags=re.IGNORECASE,
+        )[0].strip(" \t|:;-")
+        if len(address) >= 6:
+            row["address"] = address
+            # Acik Ilce/Il kalibi (örn. Umraniye/Istanbul) varsa bagla.
+            locs = list(re.finditer(r"([A-Za-zÇĞİÖŞÜçğıöşü]+)\s*/\s*([A-Za-zÇĞİÖŞÜçğıöşü]+)", address))
+            if locs:
+                district, city = locs[-1].group(1), locs[-1].group(2)
+                if _plain_norm(city) in _TURKEY_PROVINCES:
+                    row["city"] = city
+                    row["district"] = district
+            if not row.get("city"):
+                for token in reversed(re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", address)):
+                    if _plain_norm(token) in _TURKEY_PROVINCES:
+                        row["city"] = token
+                        break
+            if "turkiye" in _plain_norm(address) or (row.get("city") and _plain_norm(row["city"]) in _TURKEY_PROVINCES):
+                row["country"] = "Türkiye"
+    if not applicant:
+        birth = _cpu_ner_nearest_match(_CPU_NER_BIRTH_RE, context, center)
+        if birth:
+            row["birth_date"] = birth
+    return row
+
+
+def _cpu_ner_verified_entity_word(entity: dict[str, Any], source_text: str, *, applicant: bool) -> str:
+    word = _clean_value(str(entity.get("word") or "").replace("##", ""))
+    if not word or len(word) < 3:
+        return ""
+    label = str(entity.get("label") or "").upper()
+    if applicant and label not in {"ORG", "PER"}:
+        return ""
+    if not applicant and label != "PER":
+        return ""
+    if _plain_norm(word) not in _plain_norm(source_text):
+        return ""
+    if _is_bad_person_value("name", word, applicant=applicant):
+        return ""
+    return word
+
+
+def _cpu_ner_ai_payload(ner_data: dict[str, Any], source_blocks: list[tuple[str, str]]) -> dict[str, Any]:
+    """CPU NER varliklarini mevcut guvenli AI-merge semasina cevirir."""
+    by_source = {name: text for name, text in source_blocks}
+    applicants: list[dict[str, str]] = []
+    inventors: list[dict[str, str]] = []
+    entities = ner_data.get("entities") if isinstance(ner_data, dict) else []
+    if not isinstance(entities, list):
+        entities = []
+
+    # Ayni kaynak/rol/ad NER chunk overlap nedeniyle birden fazla kez gelebilir.
+    combined: dict[tuple[str, str, str], dict[str, str]] = {}
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+        source = str(entity.get("source") or "").strip()
+        if source not in by_source:
+            continue
+        score = float(entity.get("score") or 0.0)
+        if score < 0.55:
+            continue
+        role = _cpu_ner_role(entity)
+        if role not in {"applicant", "inventor"}:
+            continue
+        applicant = role == "applicant"
+        name = _cpu_ner_verified_entity_word(entity, by_source[source], applicant=applicant)
+        if not name:
+            continue
+        row = _new_person(name, source, applicant=applicant)
+        row.update({k: v for k, v in _cpu_ner_context_fields(entity, applicant=applicant).items() if v})
+        key = (source, role, _plain_norm(name))
+        if key in combined:
+            current = combined[key]
+            for field, value in row.items():
+                if value and not current.get(field):
+                    current[field] = value
+        else:
+            combined[key] = row
+
+    for (_, role, _), row in combined.items():
+        if role == "applicant":
+            applicants.append(row)
+        else:
+            inventors.append(row)
+    # Filing options generatif AI gerektirmez; mevcut acik EVET/HAYIR parser'i korunur.
+    return {"applicants": applicants, "inventors": inventors, "filing_options": {}}
+
+
+def merge_verified_cpu_ner_application_information(
+    rule_data: dict[str, Any], ner_data: dict[str, Any], source_blocks: list[tuple[str, str]]
+) -> dict[str, Any]:
+    """Tarayici CPU/WASM NER sonucunu kaynakta dogrulanmis alanlarla birlestirir."""
+    ai_data = _cpu_ner_ai_payload(ner_data if isinstance(ner_data, dict) else {}, source_blocks)
+    merged = _merge_local_ai_information(rule_data, ai_data, source_blocks)
+    for row in merged.get("applicants") or []:
+        _sanitize_person_row(row, applicant=True)
+    for row in merged.get("inventors") or []:
+        _sanitize_person_row(row, applicant=False)
+    return normalize_application_information(merged)
+
 def merge_verified_ai_application_information(
     rule_data: dict[str, Any], ai_data: dict[str, Any], source_blocks: list[tuple[str, str]]
 ) -> dict[str, Any]:

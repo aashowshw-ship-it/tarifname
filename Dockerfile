@@ -18,7 +18,7 @@ RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
  && fc-match Arial | grep -qi 'Arial' \
  && rm -rf /var/lib/apt/lists/*
 
-# Süreçler AI'sı tarayıcı WebGPU üzerinde çalışır; sunucuya model kurulmaz.
+# Süreçler CPU AI'sı kullanıcının tarayıcısında WASM ile çalışır; sunucuya model kurulmaz ve WebGPU gerekmez.
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

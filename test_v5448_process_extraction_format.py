@@ -43,7 +43,7 @@ def _sample_form() -> bytes:
 
 
 def test_v5448_structured_form_roles_and_filename_reference():
-    assert APP_VERSION == "v5.4.54"
+    assert APP_VERSION == "v5.4.55"
     form = _sample_form()
     text = extract_application_source_text("Beyan_Formu.docx", form)
     data = extract_application_information_rule_based(

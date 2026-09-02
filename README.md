@@ -1,4 +1,14 @@
-# Patent Atölyesi v5.4.54
+# Patent Atölyesi v5.4.55
+
+## v5.4.55 / 2026-09-02 — Süreçler / CPU-WASM NER; WebGPU kaldırıldı
+
+- Qwen/WebGPU tarayıcı modeli tamamen kaldırıldı. Süreçler ikinci kontrolü artık tarayıcı CPU'sunda **WebAssembly (WASM)** ile çalışan `Xenova/distilbert-base-multilingual-cased-ner-hrl` NER modeliyle yapılır; GPU, OpenAI API anahtarı ve kredi gerekmez.
+- Model yaklaşık 135 MB q8 ONNX ağırlığı kullanır. İlk kullanımda tarayıcıya indirilir; sonraki kullanımlarda tarayıcı önbelleğinden açılır. Metin üretmediği için eski Qwen akışından belirgin biçimde daha hafiftir.
+- CPU AI yalnız kişi/kurum/konum varlıklarını tanır. TCKN/VKN, e-posta, telefon, doğum tarihi ve adres; tanınan kişi/kurumun yakın bağlamındaki **etiketli** değerlerden bağlanır. Belgedeki ilk telefon/ilk sayı otomatik seçilmez.
+- Örneğin `TT MOBİL İLETİŞİM HİZMETLERİ ANONİM ŞİRKETİ` kurum olarak hak sahibine, `Gürkan Erkoç` kişi olarak buluş sahibine bağlanabilir; yakınındaki VKN/TCKN, e-posta ve telefon aynı kayda taşınır.
+- NER sonucundaki ad/unvan kaynak metinde yeniden doğrulanamazsa kabul edilmez. Buluş başlığı yine yalnız Tarifname'den, DP referansı Tarifname dosya adından gelir.
+- `.msg/.eml` için v5.4.54'teki yalnız güncel mail gövdesini okuma kuralı aynen korunur; eski mail zinciri CPU AI'ya verilmez.
+
 
 ## v5.4.54 / 2026-09-02 — Süreçler / yalnız güncel mail gövdesi + hafif tarayıcı AI
 
