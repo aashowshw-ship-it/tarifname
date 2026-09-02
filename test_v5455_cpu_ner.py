@@ -7,11 +7,12 @@ ROOT = Path(__file__).resolve().parent
 
 
 def test_v5455_version_and_browser_component_is_cpu_wasm_only():
-    assert APP_VERSION == "v5.4.55"
+    assert APP_VERSION == "v5.4.57"
     js = (ROOT / "browser_ai_component" / "main.js").read_text(encoding="utf-8")
     assert 'device: "wasm"' in js
     assert 'dtype: "q8"' in js
-    assert "distilbert-base-multilingual-cased-ner-hrl" in js
+    assert "multilingual-MiniLMv2-L6-mnli-xnli-ONNX" in js
+    assert 'zero-shot-classification' in js
     assert 'device: "webgpu"' not in js
     assert "Qwen2.5" not in js
 

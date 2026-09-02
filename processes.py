@@ -182,6 +182,78 @@ def remove_word_line_numbering(data: bytes) -> bytes:
     return out.getvalue()
 
 
+
+def remove_word_header_page_numbers(data: bytes) -> bytes:
+    """EPATS alt belgelerinde üstbilgideki PAGE alanlarını kaldırır.
+
+    Teknik gövdeye, stillere ve diğer üstbilgi içeriğine dokunmaz. Bazı
+    LibreOffice sürümlerinde PAGE alanının ``1X / 2X`` gibi artefakt üretmesini
+    önlemek içindir.
+    """
+    src = io.BytesIO(data)
+    out = io.BytesIO()
+    with zipfile.ZipFile(src, "r") as zin:
+        replacements: dict[str, bytes] = {}
+        for name in zin.namelist():
+            if not (name.startswith("word/header") and name.endswith(".xml")):
+                continue
+            raw = zin.read(name)
+            try:
+                root = ET.fromstring(raw)
+            except Exception:
+                continue
+            parent_map = {child: parent for parent in root.iter() for child in parent}
+            changed = False
+            for instr in list(root.iter(_W + "instrText")):
+                code = re.sub(r"\s+", " ", (instr.text or "")).strip().upper()
+                if not code.startswith("PAGE") or code.startswith("PAGEREF"):
+                    continue
+                ancestors = list(parent_map_chain(instr, parent_map))
+                # Textbox/drawing içindeki sayfa alanında tüm dış drawing run'ını kaldır.
+                outer_run = None
+                for anc in ancestors:
+                    if anc.tag == _W + "r" and any(
+                        x.tag.rsplit("}", 1)[-1] in {"drawing", "pict", "AlternateContent"}
+                        for x in anc.iter()
+                    ):
+                        outer_run = anc
+                if outer_run is not None:
+                    par = parent_map.get(outer_run)
+                    if par is not None:
+                        try:
+                            par.remove(outer_run)
+                            changed = True
+                            continue
+                        except ValueError:
+                            pass
+                # Düz PAGE field için begin..end run grubunu kaldır.
+                paragraph = next((a for a in ancestors if a.tag == _W + "p"), None)
+                if paragraph is None:
+                    continue
+                runs = [c for c in list(paragraph) if c.tag == _W + "r"]
+                target = next((i for i, r in enumerate(runs) if instr in list(r.iter(_W + "instrText"))), -1)
+                if target < 0:
+                    continue
+                start = target
+                while start > 0 and not any(x.attrib.get(_W + "fldCharType") == "begin" for x in runs[start].iter(_W + "fldChar")):
+                    start -= 1
+                end = target
+                while end < len(runs) - 1 and not any(x.attrib.get(_W + "fldCharType") == "end" for x in runs[end].iter(_W + "fldChar")):
+                    end += 1
+                for run in runs[start:end + 1]:
+                    try:
+                        paragraph.remove(run)
+                        changed = True
+                    except ValueError:
+                        pass
+            if changed:
+                replacements[name] = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+        with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                zout.writestr(item, replacements.get(item.filename, zin.read(item.filename)))
+    return out.getvalue()
+
+
 def _paragraph_numbering(paragraph: ET.Element) -> tuple[str, str] | None:
     ppr = paragraph.find(_W + "pPr")
     if ppr is None:
@@ -589,8 +661,17 @@ def extract_application_source_text(filename: str, data: bytes) -> str:
                 html_body = bytes(html_body).decode("utf-8", errors="replace")
             structured_body = _current_email_body(_html_to_text(_strip_quoted_email_html(str(html_body)))) if html_body else ""
             plain_body = _current_email_body(getattr(msg, "body", "") or "")
-            # Yalnız mevcut mesaj gövdesi kullanılır. Başlıklar, eski yazışmalar ve ekler dahil edilmez.
-            text = structured_body if "\t" in structured_body else (plain_body or structured_body)
+            # Yalnız mevcut mesaj gövdesi kullanılır. HTML ve düz metin aynı güncel
+            # gövdeyi temsil eder; EVET/HAYIR ve başvuru etiketlerini daha iyi koruyanı seç.
+            def _body_score(v: str) -> tuple[int, int]:
+                n = _plain_norm(v)
+                signals = sum(n.count(x) for x in [
+                    "evet", "hayir", "buluscu", "bulus sahibi", "hak sahibi",
+                    "erken yayin", "erken yayim", "tubitak", "kosgeb", "proje",
+                ])
+                return (signals, len(v or ""))
+            candidates = [x for x in [structured_body, plain_body] if x.strip()]
+            text = max(candidates, key=_body_score) if candidates else ""
             try:
                 msg.close()
             except Exception:
@@ -996,17 +1077,23 @@ def _add_other_information(result: dict[str, Any], label: str, value: str, sourc
 
 
 def _extract_contact_information(result: dict[str, Any], text: str, source: str) -> None:
-    """Serbest mail/yazı içindeki açık iletişim bilgilerini 'diğer bilgiler'e al."""
+    """Serbest mail/yazıdaki açık iletişim bilgilerini 'diğer bilgiler'e al.
+
+    Telefon için yalnız açık Telefon/Tel/Cep/GSM etiketi kabul edilir; VKN/TCKN,
+    dosya numarası veya metindeki başka sayı telefon sanılmaz.
+    """
     for email in sorted(set(re.findall(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", text or ""))):
         _add_other_information(result, "E-posta", email, source)
-    phone_re = re.compile(r"(?<!\d)(?:\+?90\s*)?(?:\(?0?\d{3}\)?[ .-]*)\d{3}[ .-]*\d{2}[ .-]*\d{2}(?!\d)")
-    for match in phone_re.finditer(text or ""):
-        phone = match.group(0)
-        context = _plain_norm((text or "")[max(0, match.start()-24):match.end()+24])
-        # VKN/TCKN gibi 10/11 haneli kimlikleri telefon sanma.
-        if any(x in context for x in ["vkn", "vergi no", "vergi numarasi", "tckn", "tc kimlik", "kimlik no"]):
-            continue
-        _add_other_information(result, "Telefon", phone, source)
+    phone_labeled = re.compile(
+        r"(?i)(?:telefon|tel\.?|cep(?:\s*telefonu)?|gsm|mobil\s*telefon)"
+        r"(?:\s*(?:no|numarası|numarasi))?\s*[:|\-]?\s*"
+        r"((?:\+?90\s*)?(?:\(?0?\d{3}\)?[ .-]*)?\d{3}[ .-]*\d{2}[ .-]*\d{2})"
+    )
+    for match in phone_labeled.finditer(text or ""):
+        phone = _clean_value(match.group(1))
+        if len(re.sub(r"\D", "", phone)) >= 7:
+            _add_other_information(result, "Telefon", phone, source)
+
 
 def _split_people_value(value: str) -> list[str]:
     value = _clean_value(value)
@@ -1193,20 +1280,32 @@ def _set_singleton(result: dict[str, Any], key: str, value: str, source: str, se
 
 
 def _explicit_yes_no(segment: str) -> str:
-    """Soru içindeki varsayılan HAYIR metnini cevap sanmadan açık cevabı bulur."""
+    """Varsayılan HAYIR açıklamasını cevap sanmadan gerçek EVET/HAYIR cevabını bulur."""
     segment = segment or ""
-    # Müşteri formlarında en güvenilir ayraç: à / → / -> / =>
-    matches = re.findall(r"(?:à|→|->|=>)\s*(EVET|HAYIR)\b", segment, flags=re.IGNORECASE)
+
+    def mapped(token: str) -> str:
+        return "Evet" if _plain_norm(token) == "evet" else "Hayır"
+
+    matches = re.findall(r"(?:à|→|->|=>|⇒|⟶)\s*(EVET|HAYIR)\b", segment, flags=re.IGNORECASE)
     if matches:
-        return "Evet" if matches[-1].casefold() == "evet" else "Hayır"
-    # Parantez kapandıktan sonra veya satır sonunda yazılmış açık cevap.
-    matches = re.findall(r"\)\s*[:\-–—]?\s*(EVET|HAYIR)\b", segment, flags=re.IGNORECASE)
+        return mapped(matches[-1])
+
+    # HTML/OCR bazı ok karakterlerini düz 'a' olarak bırakabiliyor.
+    matches = re.findall(r"\)\s*(?:a|:|[-–—>]+)?\s*(EVET|HAYIR)\b", segment, flags=re.IGNORECASE)
     if matches:
-        return "Evet" if matches[-1].casefold() == "evet" else "Hayır"
+        return mapped(matches[-1])
+
     for line in reversed(segment.splitlines()):
-        m = re.search(r"(?:cevap|yanıt)\s*[:\-]\s*(EVET|HAYIR)\b", line, flags=re.IGNORECASE)
+        m = re.search(r"(?:cevap|yanıt|yanit)\s*[:\-]\s*(EVET|HAYIR)\b", line, flags=re.IGNORECASE)
         if m:
-            return "Evet" if m.group(1).casefold() == "evet" else "Hayır"
+            return mapped(m.group(1))
+
+    # Formlarda varsayılan açıklama önce, gerçek cevap en sonda bulunur.
+    tokens = list(re.finditer(r"\b(EVET|HAYIR)\b", segment, flags=re.IGNORECASE))
+    if len(tokens) >= 2:
+        return mapped(tokens[-1].group(1))
+    if len(tokens) == 1 and _plain_norm(tokens[0].group(1)) == "evet":
+        return "Evet"
     return "Belirsiz"
 
 
@@ -1218,10 +1317,24 @@ def _question_segment(text: str, anchors: list[str]) -> str:
             continue
         start = m.start()
         tail = normalized[start:start + 1800]
+        cuts: list[int] = []
         # Bir sonraki numaralı soruda kes.
         nxt = re.search(r"\n\s*\*{0,2}\d+[.)]\*{0,2}\s+", tail[20:])
         if nxt:
-            tail = tail[:20 + nxt.start()]
+            cuts.append(20 + nxt.start())
+        # Numarasız/yapıştırılmış e-postalarda bir sonraki bilinen başvuru sorusunu kes.
+        next_question = re.search(
+            r"\n\s*(?:\*{0,2}\d+[.)]\*{0,2}\s*)?(?:"
+            r"başvuru\s+esnasında\s+)?(?:buluşçu\s+bilgileri\s+gizlensin\s+mi|"
+            r"buluş\s+sahibi\s+bilgileri\s+gizlensin\s+mi|"
+            r"buluş.{0,220}?(?:tübitak|tubitak|kosgeb|kamu\s+kurum).{0,260}?proje\s+kapsamında|"
+            r"erken\s+yay(?:ın|ım)\s+(?:talep\s+ediliyor\s+mu|talebi))",
+            tail[20:], flags=re.IGNORECASE | re.DOTALL,
+        )
+        if next_question:
+            cuts.append(20 + next_question.start())
+        if cuts:
+            tail = tail[:min(cuts)]
         return tail
     return ""
 
@@ -1287,6 +1400,133 @@ def _apply_filing_option_defaults(result: dict[str, Any]) -> None:
             row["source"] = "Varsayılan (cevap verilmemiş)"
             row["explicit"] = False
 
+
+def _table_header_field(cell: str) -> str:
+    n = _plain_norm(cell)
+    if not n:
+        return ""
+    if any(x in n for x in ["adi soyadi", "ad soyad", "adi unvani", "adi / unvani", "unvani", "unvan"]):
+        return "name"
+    if any(x in n for x in ["tc kimlik", "tckn", "vergi no", "vergi kimlik", "vkn"]):
+        return "identity"
+    if "hak sahibi adres" in n or "basvuru sahibi adres" in n or n in {"adres", "adresi", "address"}:
+        return "address"
+    if "sahip turu" in n or "kisi turu" in n:
+        return "entity_type"
+    if n in {"uyruk", "ulke", "country"}:
+        return "country"
+    if n in {"il", "sehir", "city"}:
+        return "city"
+    if n in {"ilce", "district"}:
+        return "district"
+    if "il / ilce" in n or "il ilce" in n:
+        return "location"
+    if any(x in n for x in ["e posta", "eposta", "email", "e mail"]):
+        return "email"
+    if any(x in n for x in ["telefon", "gsm", "cep"]):
+        return "phone"
+    if "dogum tarihi" in n:
+        return "birth_date"
+    if "cinsiyet" in n:
+        return "gender"
+    return ""
+
+
+def _structured_role_rows(text: str, source: str) -> tuple[list[dict[str, str]], list[dict[str, str]], set[int]]:
+    """Açık rol bölümündeki tablo başlıklarını hemen sonraki veri satırıyla eşler.
+
+    Kişi/kurum modeli kayıt yaratmaz; kayıt yalnız açık Hak/başvuru sahibi veya
+    Buluş sahibi/buluşçu tablo yapısından oluşur.
+    """
+    lines = [(i, x.strip()) for i, x in enumerate((text or "").splitlines())]
+    applicants: list[dict[str, str]] = []
+    inventors: list[dict[str, str]] = []
+    consumed: set[int] = set()
+    current_role = ""
+    i = 0
+    while i < len(lines):
+        idx, line = lines[i]
+        n = _plain_norm(line)
+        if any(x in n for x in ["hak sahibi", "basvuru sahibi", "basvuru sahibinin"]):
+            current_role = "applicant"
+        if any(x in n for x in ["bulus sahibi", "buluscu", "mucit", "bulusu yapan"]):
+            current_role = "inventor"
+
+        cells = [c.strip() for c in re.split(r"\t+|\s+\|\s+", line) if c.strip()]
+        fields = [_table_header_field(c) for c in cells]
+        field_count = sum(1 for f in fields if f)
+        inferred = current_role
+        joined = " ".join(_plain_norm(c) for c in cells)
+        if any(x in joined for x in ["sahip turu", "vergi no", "vergi kimlik", "hak sahibi adres"]):
+            inferred = "applicant"
+        if any(x in joined for x in ["dogum tarihi", "cinsiyet"]):
+            inferred = "inventor"
+
+        if field_count >= 3 and inferred in {"applicant", "inventor"}:
+            j = i + 1
+            while j < min(len(lines), i + 5):
+                jidx, candidate = lines[j]
+                if not candidate or candidate.startswith("[["):
+                    j += 1
+                    continue
+                cn = _plain_norm(candidate)
+                if any(x in cn for x in ["not basvuru sahibinin", "cevap verilmemesi"]):
+                    j += 1
+                    continue
+                vals = [c.strip() for c in re.split(r"\t+|\s+\|\s+", candidate)]
+                if sum(1 for v in vals if v) < 2 or abs(len(vals) - len(cells)) > 2:
+                    j += 1
+                    continue
+                if len(vals) < len(cells):
+                    vals += [""] * (len(cells) - len(vals))
+                row = _new_person("", source, applicant=inferred == "applicant")
+                for col, field in enumerate(fields):
+                    if not field or col >= len(vals):
+                        continue
+                    value = _clean_value(vals[col])
+                    if not value or _is_form_header_bundle(value) or _is_instruction_text(value):
+                        continue
+                    if field == "name":
+                        if not _is_bad_person_value("name", value, applicant=inferred == "applicant"):
+                            row["name"] = value
+                            if inferred == "applicant":
+                                row["entity_type"] = _entity_type(value, row.get("entity_type", ""))
+                    elif field == "gender":
+                        continue
+                    else:
+                        _apply_person_field(row, field, value, applicant=inferred == "applicant")
+                _fill_country_from_explicit_location(row)
+                if row.get("name") or row.get("identity") or row.get("address") or row.get("email"):
+                    (applicants if inferred == "applicant" else inventors).append(row)
+                    consumed.update({idx, jidx})
+                i = j
+                break
+        i += 1
+    return applicants, inventors, consumed
+
+
+def _reconcile_role_rows(result: dict[str, Any]) -> None:
+    """Açık rol tablosuna aykırı hayalet/çapraz kayıtları temizler."""
+    apps = [dict(x) for x in result.get("applicants") or []]
+    invs = [dict(x) for x in result.get("inventors") or []]
+    inv_ids = {
+        re.sub(r"\D", "", x.get("identity", ""))
+        for x in invs
+        if len(re.sub(r"\D", "", x.get("identity", ""))) == 11
+    }
+    cleaned_apps: list[dict[str, str]] = []
+    for row in apps:
+        ident = re.sub(r"\D", "", row.get("identity", ""))
+        bad_name = not row.get("name") or _is_bad_person_value("name", row.get("name", ""), applicant=True)
+        if ident in inv_ids and bad_name:
+            row["identity"] = ""
+        if bad_name and not row.get("identity") and not row.get("address") and not row.get("email"):
+            continue
+        cleaned_apps.append(row)
+    result["applicants"] = cleaned_apps
+    result["inventors"] = invs
+
+
 def extract_application_information_rule_based(
     source_blocks: list[tuple[str, str]], *, specification_text: str = "", specification_filename: str = ""
 ) -> dict[str, Any]:
@@ -1328,12 +1568,20 @@ def extract_application_information_rule_based(
         _extract_contact_information(result, text, source)
         _extract_filing_options(result, text, source)
 
+        structured_apps, structured_invs, structured_consumed = _structured_role_rows(text, source)
+        for row in structured_apps:
+            _append_unique_person(result["applicants"], row, applicant=True)
+        for row in structured_invs:
+            _append_unique_person(result["inventors"], row, applicant=False)
+
         current_role = ""
         current_person: dict[str, str] | None = None
         pending_label = ""
 
         lines = [x.strip(" \r") for x in text.splitlines()]
-        for line in lines:
+        for line_idx, line in enumerate(lines):
+            if line_idx in structured_consumed:
+                continue
             if not line or line.startswith("[[TABLO") or line.startswith("[[E-POSTA EKI"):
                 continue
 
@@ -1563,6 +1811,7 @@ def extract_application_information_rule_based(
             else:
                 by_id[digits] = row
 
+    _reconcile_role_rows(result)
     _apply_filing_option_defaults(result)
     result["conflicts"] = list(dict.fromkeys(x for x in result["conflicts"] if x))
     return normalize_application_information(result)
@@ -2039,27 +2288,25 @@ def _cpu_ner_role(entity: dict[str, Any]) -> str:
     inv = _last_pos(before, inventor_terms)
     # En yakin onceki rol basligi birincil sinyaldir.
     if ap >= 0 or inv >= 0:
+        if ap >= 0 and inv < 0:
+            return "applicant"
+        if inv >= 0 and ap < 0:
+            return "inventor"
         if abs(ap - inv) > 8:
             return "applicant" if ap > inv else "inventor"
     # Tablo/OCR'da etiket degerden sonra kalmissa yalniz cok yakin sonraki etikete bak.
     after_head = after[:220]
     ap2 = min([after_head.find(_plain_norm(t)) for t in applicant_terms if after_head.find(_plain_norm(t)) >= 0] + [9999])
     inv2 = min([after_head.find(_plain_norm(t)) for t in inventor_terms if after_head.find(_plain_norm(t)) >= 0] + [9999])
-    if min(ap2, inv2) < 9999 and abs(ap2 - inv2) > 8:
-        return "applicant" if ap2 < inv2 else "inventor"
-    # NER semantigi: kurumlar tipik olarak hak sahibi, kisi ise buluscu olabilir.
-    # Bu fallback yalniz rol basligi yakalanamadiginda kullanilir; sonraki kaynak
-    # dogrulamasi olmadan hicbir deger kabul edilmez.
-    if label == "ORG":
-        return "applicant"
-    if label == "PER":
-        context = before[-700:] + " " + after[:700]
-        has_inv = any(_plain_norm(t) in context for t in inventor_terms)
-        has_app = any(_plain_norm(t) in context for t in applicant_terms)
-        if has_inv and not has_app:
-            return "inventor"
-        if has_app and not has_inv:
+    if min(ap2, inv2) < 9999:
+        if ap2 < 9999 and inv2 == 9999:
             return "applicant"
+        if inv2 < 9999 and ap2 == 9999:
+            return "inventor"
+        if abs(ap2 - inv2) > 8:
+            return "applicant" if ap2 < inv2 else "inventor"
+    # Açık rol başlığı yoksa NER tek başına kayıt yaratmaz.
+    # ORG=hak sahibi veya PER=buluşçu varsayımı yanlış rol karışmasına yol açar.
     return ""
 
 
@@ -2207,14 +2454,63 @@ def _cpu_ner_ai_payload(ner_data: dict[str, Any], source_blocks: list[tuple[str,
 def merge_verified_cpu_ner_application_information(
     rule_data: dict[str, Any], ner_data: dict[str, Any], source_blocks: list[tuple[str, str]]
 ) -> dict[str, Any]:
-    """Tarayici CPU/WASM NER sonucunu kaynakta dogrulanmis alanlarla birlestirir."""
-    ai_data = _cpu_ner_ai_payload(ner_data if isinstance(ner_data, dict) else {}, source_blocks)
-    merged = _merge_local_ai_information(rule_data, ai_data, source_blocks)
-    for row in merged.get("applicants") or []:
-        _sanitize_person_row(row, applicant=True)
-    for row in merged.get("inventors") or []:
-        _sanitize_person_row(row, applicant=False)
+    """CPU NER yalnız açık rol bloklarındaki mevcut kaydı düzeltir.
+
+    Yeni hak sahibi/buluşçu satırı yaratmaz. Telefon ve kimlik ancak açık
+    Telefon/TCKN/VKN etiketiyle NER bağlamında yakalanmışsa yanlış mevcut değeri
+    düzeltebilir; belgedeki serbest sayı asla taşınmaz.
+    """
+    merged = normalize_application_information(rule_data)
+    candidates = _cpu_ner_ai_payload(ner_data if isinstance(ner_data, dict) else {}, source_blocks)
+    source_map = {name: text for name, text in source_blocks}
+
+    def _explicit_current_ok(field: str, value: str, source_text: str, *, applicant: bool) -> bool:
+        if not value:
+            return False
+        if field == "phone":
+            digits = re.sub(r"\D", "", value)
+            return any(digits and digits == re.sub(r"\D", "", m.group(1)) for m in _CPU_NER_PHONE_LABEL_RE.finditer(source_text or ""))
+        if field == "identity":
+            digits = re.sub(r"\D", "", value)
+            pats = [_CPU_NER_VKN_RE, _CPU_NER_TCKN_RE] if applicant else [_CPU_NER_TCKN_RE]
+            return any(digits and digits == re.sub(r"\D", "", m.group(1)) for pat in pats for m in pat.finditer(source_text or ""))
+        return True
+
+    for key, applicant in (("applicants", True), ("inventors", False)):
+        rows = [dict(x) for x in merged.get(key) or []]
+        cands = candidates.get(key) if isinstance(candidates.get(key), list) else []
+        for row in rows:
+            _sanitize_person_row(row, applicant=applicant)
+        for cand in cands:
+            cname = str(cand.get("name") or "").strip()
+            csrcs = {x for x in str(cand.get("source") or "").split("; ") if x}
+            if not cname or not csrcs:
+                continue
+            eligible = [
+                r for r in rows
+                if csrcs & {x for x in str(r.get("source") or "").split("; ") if x}
+            ]
+            if len(eligible) != 1:
+                continue
+            row = eligible[0]
+            if not row.get("name") or _is_bad_person_value("name", row.get("name", ""), applicant=applicant):
+                row["name"] = cname
+                if applicant:
+                    row["entity_type"] = _entity_type(cname, row.get("entity_type", ""))
+
+            source_text = "\n".join(source_map.get(x, "") for x in csrcs)
+            for field in ("identity", "address", "email", "phone", "birth_date", "country", "city", "district"):
+                val = str(cand.get(field) or "").strip()
+                if not val:
+                    continue
+                current = str(row.get(field) or "").strip()
+                if not current or (field in {"phone", "identity"} and not _explicit_current_ok(field, current, source_text, applicant=applicant)):
+                    row[field] = val
+            _sanitize_person_row(row, applicant=applicant)
+        merged[key] = rows
+    _reconcile_role_rows(merged)
     return normalize_application_information(merged)
+
 
 def merge_verified_ai_application_information(
     rule_data: dict[str, Any], ai_data: dict[str, Any], source_blocks: list[tuple[str, str]]
@@ -2564,7 +2860,12 @@ def _pdf_epats_cleanup(data: bytes) -> bytes:
                         and 25 < bbox.y0 < page.rect.height - 25
                         and int(text) % 5 == 0
                     )
-                    if is_template_color or is_left_line_number:
+                    is_top_page_artifact = (
+                        bool(re.fullmatch(r"\d{1,3}\s*[Xx]", text))
+                        and bbox.x0 < page.rect.width * 0.18
+                        and bbox.y0 < page.rect.height * 0.12
+                    )
+                    if is_template_color or is_left_line_number or is_top_page_artifact:
                         page.add_redact_annot(bbox + (-1, -1, 1, 1), fill=(1, 1, 1))
                         changed = True
         if changed:
@@ -2697,7 +2998,8 @@ def build_epats_application_package(
         split_docs = split_patent_docx(docx)
         for docx_name, docx_data in split_docs.items():
             pdf_name = Path(docx_name).with_suffix(".pdf").name
-            pdfs[pdf_name] = _libreoffice_to_pdf(docx_data, docx_name)
+            conversion_docx = remove_word_header_page_numbers(docx_data)
+            pdfs[pdf_name] = _pdf_epats_cleanup(_libreoffice_to_pdf(conversion_docx, docx_name))
     elif suffix == ".pdf":
         pdfs.update(split_patent_pdf(specification_data))
     else:
@@ -2714,3 +3016,260 @@ def build_epats_application_package(
         if metadata:
             zf.writestr("basvuru_verileri.json", json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"))
     return out.getvalue(), pdfs
+
+# -----------------------------------------------------------------------------
+# v5.4.57 - CPU/WASM SEMANTIK ROL AI SONUCU -> BASVURU ALANLARI
+# -----------------------------------------------------------------------------
+
+def _semantic_block_source_ok(source: str, block_text: str, source_map: dict[str, str]) -> bool:
+    """Tarayıcıdan gelen blok gerçekten ilgili yüklenen kaynaktan türetilmiş mi?"""
+    full = _plain_norm(source_map.get(source, ""))
+    if not full:
+        return False
+    lines = [
+        _plain_norm(x).strip()
+        for x in (block_text or "").splitlines()
+        if len(_plain_norm(x).strip()) >= 8
+    ]
+    if not lines:
+        return False
+    # Pencere oluşturma sırasında satırlar birleştirilmez; anlamlı satırların çoğu
+    # tam kaynakta bulunmalı. Böylece tarayıcı sonucu yeni metin uyduramaz.
+    hits = sum(1 for x in lines if x in full)
+    return hits >= max(1, (len(lines) + 1) // 2)
+
+
+def _semantic_map_pair_label(label: str, *, applicant: bool) -> str:
+    role = "applicant" if applicant else "inventor"
+    if label.startswith(role + "_"):
+        return label[len(role) + 1:]
+    if label in {"name", "identity", "address", "country", "location", "city", "district", "email", "phone", "birth_date", "entity_type"}:
+        return label
+    if label == role:
+        return "name"
+    return ""
+
+
+def _semantic_company_candidate(text: str) -> str:
+    values: list[str] = []
+    for line in (text or "").splitlines():
+        for cell in re.split(r"\t+|\s+\|\s+", line):
+            value = _clean_value(cell)
+            if not value or _is_instruction_text(value) or _is_form_header_bundle(value):
+                continue
+            if _looks_like_company(value):
+                values.append(value)
+    if not values:
+        return ""
+    values.sort(key=lambda x: (len(x.split()), len(x)), reverse=True)
+    return values[0]
+
+
+def _semantic_probable_person_candidate(text: str) -> str:
+    """Yalnız çok sıkı koşullarda etiketsiz kişi adı geri dönüşü.
+
+    Adres, kurum, form başlığı veya soru cümlesi asla kişi adı yapılmaz.
+    """
+    address_terms = {
+        "mah", "mahalle", "cad", "caddesi", "cd", "sok", "sokak", "bulvar", "blv",
+        "no", "kat", "daire", "merkezi", "mudurlugu", "müdürlüğü", "turkiye", "türkiye",
+    }
+    candidates: list[str] = []
+    for raw in (text or "").splitlines():
+        line = _clean_value(raw)
+        if not line or "\t" in raw or ":" in line or "@" in line or re.search(r"\d", line):
+            continue
+        if _canonical_label(line) or _is_instruction_text(line) or _is_form_header_bundle(line) or _looks_like_company(line):
+            continue
+        words = [x for x in re.split(r"\s+", line) if x]
+        if not (2 <= len(words) <= 5):
+            continue
+        norm_words = {_plain_norm(x.strip(".,;()[]")) for x in words}
+        if norm_words & address_terms:
+            continue
+        if not all(re.search(r"[A-Za-zÇĞİÖŞÜçğıöşü]", w) for w in words):
+            continue
+        # Tamamı küçük harfli açıklama cümlelerini dışla; adlarda en az iki kelime
+        # büyük harfle/uppercase başlar.
+        cap = sum(1 for w in words if w[:1].isupper())
+        if cap < 2:
+            continue
+        candidates.append(line)
+    if not candidates:
+        return ""
+    # Kısa kişi adını uzun açıklamaya tercih et.
+    candidates.sort(key=lambda x: (len(x.split()), len(x)))
+    return candidates[0]
+
+
+def _semantic_role_rows_from_block(block_text: str, source: str, *, applicant: bool) -> list[dict[str, str]]:
+    """AI'nın yalnız rolünü belirlediği kaynak bloğundan alanları deterministik çıkar.
+
+    AI değer üretmez; ad/unvan, kimlik, adres, e-posta ve telefon yine kaynak
+    bloğundaki etiket/değer veya tablo hücrelerinden alınır.
+    """
+    heading = "HAK SAHİBİ / BAŞVURU SAHİBİ" if applicant else "BULUŞ SAHİBİ / BULUŞÇU"
+    forced = heading + "\n" + (block_text or "")
+    parsed = extract_application_information_rule_based([(source, forced)])
+    key = "applicants" if applicant else "inventors"
+    rows = [dict(x) for x in (parsed.get(key) or [])]
+
+    # Farklı form tasarımlarında aynı satırdaki açık etiket/değerleri ayrıca tara.
+    fallback = _new_person("", source, applicant=applicant)
+    for line in (block_text or "").splitlines():
+        for _raw_label, label, value in _line_label_value_pairs(line):
+            field = _semantic_map_pair_label(label, applicant=applicant)
+            if not field or not value:
+                continue
+            if field == "name":
+                if not _is_bad_person_value("name", value, applicant=applicant):
+                    fallback["name"] = _clean_value(value)
+                    if applicant:
+                        fallback["entity_type"] = _entity_type(fallback["name"], fallback.get("entity_type", ""))
+            else:
+                _apply_person_field(fallback, field, value, applicant=applicant)
+
+    if applicant and not fallback.get("name"):
+        company = _semantic_company_candidate(block_text)
+        if company:
+            fallback["name"] = company
+            fallback["entity_type"] = _entity_type(company)
+    if not applicant and not fallback.get("name"):
+        person = _semantic_probable_person_candidate(block_text)
+        if person:
+            fallback["name"] = person
+
+    _fill_country_from_explicit_location(fallback)
+    _sanitize_person_row(fallback, applicant=applicant)
+    if fallback.get("name") or fallback.get("identity") or fallback.get("email") or fallback.get("address"):
+        rows.append(fallback)
+
+    out: list[dict[str, str]] = []
+    for row in rows:
+        row["source"] = source
+        _sanitize_person_row(row, applicant=applicant)
+        if row.get("name") or row.get("identity") or row.get("email") or row.get("address"):
+            _append_unique_person(out, row, applicant=applicant)
+    return out
+
+
+def _semantic_enrich_from_existing(
+    semantic_rows: list[dict[str, str]], existing_rows: list[dict[str, str]], *, applicant: bool
+) -> list[dict[str, str]]:
+    """Semantik rolü doğru bulunan satırı eski parser'ın güvenli alanlarıyla tamamla."""
+    rows = [dict(x) for x in semantic_rows]
+    for row in rows:
+        best = None
+        best_score = -1
+        for current in existing_rows:
+            score = _person_match_score(current, row)
+            if score > best_score:
+                best, best_score = current, score
+        # Aynı kaynaktan yalnız bir eski ve bir semantik satır varsa alan tamamlama
+        # için kaynak eşleşmesi yeterlidir; eski rol/name semantik sonucu değiştiremez.
+        if best_score < 15 and len(rows) == 1 and len(existing_rows) == 1:
+            rs = {x for x in (row.get("source") or "").split("; ") if x}
+            es = {x for x in (existing_rows[0].get("source") or "").split("; ") if x}
+            if rs & es:
+                best, best_score = existing_rows[0], 10
+        if best is None or best_score < 10:
+            continue
+        for field in ("identity", "country", "city", "district", "address", "email", "phone", "birth_date"):
+            if not row.get(field) and best.get(field):
+                row[field] = best[field]
+        if applicant and not row.get("entity_type"):
+            row["entity_type"] = _entity_type(row.get("name", ""), best.get("entity_type", ""))
+        _sanitize_person_row(row, applicant=applicant)
+    return rows
+
+
+def merge_verified_cpu_semantic_application_information(
+    rule_data: dict[str, Any], semantic_data: dict[str, Any], source_blocks: list[tuple[str, str]]
+) -> dict[str, Any]:
+    """v5.4.57: form yerleşiminden bağımsız semantik rol AI + kaynak doğrulama.
+
+    Tarayıcı CPU modeli yalnız bir metin bloğunun *rolünü* sınıflandırır. Gerçek
+    ad/unvan/telefon/e-posta/kimlik değerleri Python tarafında doğrudan kaynaktan
+    çıkarılır ve tam kaynakta tekrar doğrulanır. Böylece AI serbest değer üretemez.
+    """
+    merged = normalize_application_information(rule_data)
+    source_map = {name: text for name, text in source_blocks}
+    raw_blocks = semantic_data.get("blocks") if isinstance(semantic_data, dict) else []
+    if not isinstance(raw_blocks, list):
+        raw_blocks = []
+
+    semantic_apps: list[dict[str, str]] = []
+    semantic_invs: list[dict[str, str]] = []
+    option_updates: list[tuple[str, dict[str, Any]]] = []
+
+    for item in raw_blocks:
+        if not isinstance(item, dict):
+            continue
+        source = str(item.get("source") or "").strip()
+        block_text = str(item.get("text") or "").strip()
+        role = str(item.get("role") or "").strip()
+        try:
+            score = float(item.get("score") or 0.0)
+            margin = float(item.get("margin") or 0.0)
+        except Exception:
+            continue
+        if source not in source_map or not _semantic_block_source_ok(source, block_text, source_map):
+            continue
+        threshold = 0.40 if role == "options" else 0.46
+        if score < threshold or (margin < 0.015 and score < 0.62):
+            continue
+
+        if role == "applicant":
+            rows = _semantic_role_rows_from_block(block_text, source, applicant=True)
+            # Her değer tüm orijinal kaynağa karşı tekrar doğrulanır.
+            verified = _ai_person_rows(rows, applicant=True, source_blocks=source_blocks)
+            for row in verified:
+                _append_unique_person(semantic_apps, row, applicant=True)
+        elif role == "inventor":
+            rows = _semantic_role_rows_from_block(block_text, source, applicant=False)
+            verified = _ai_person_rows(rows, applicant=False, source_blocks=source_blocks)
+            for row in verified:
+                _append_unique_person(semantic_invs, row, applicant=False)
+        elif role == "options":
+            temp = extract_application_information_rule_based([(source, block_text)])
+            option_updates.append((source, temp.get("filing_options") or {}))
+
+    # AI rolü içerisinde kaynakta doğrulanmış bir ad/unvan bulunduysa bu rol için
+    # semantik satırlar otoritedir. Eski parser'ın "ronik", "Sultan", açıklama vb.
+    # hayalet kayıtları taşınmaz; yalnız eşleşen eski satırdan boş alan tamamlanır.
+    if any(x.get("name") for x in semantic_apps):
+        merged["applicants"] = _semantic_enrich_from_existing(
+            semantic_apps, merged.get("applicants") or [], applicant=True
+        )
+    elif semantic_apps:
+        merged["applicants"] = _merge_ai_people(merged.get("applicants") or [], semantic_apps, applicant=True)
+
+    if any(x.get("name") for x in semantic_invs):
+        merged["inventors"] = _semantic_enrich_from_existing(
+            semantic_invs, merged.get("inventors") or [], applicant=False
+        )
+    elif semantic_invs:
+        merged["inventors"] = _merge_ai_people(merged.get("inventors") or [], semantic_invs, applicant=False)
+
+    # Başvuru tercihleri AI tarafından üretilmez. AI yalnız ilgili soru bloğunu
+    # işaretler; EVET/HAYIR yine blok metninden deterministik okunur.
+    opts = merged.get("filing_options") or {}
+    for _source, raw_opts in option_updates:
+        if not isinstance(raw_opts, dict):
+            continue
+        for key in ("inventor_hidden", "public_project", "early_publication"):
+            cand = raw_opts.get(key) if isinstance(raw_opts.get(key), dict) else {}
+            if not cand.get("explicit") or cand.get("status") not in {"Evet", "Hayır"}:
+                continue
+            cur = opts.get(key) if isinstance(opts.get(key), dict) else {}
+            # Mevcut açık cevap varsa koru; varsayılan cevabı ise açık kaynak cevabıyla yükselt.
+            if not cur.get("explicit"):
+                opts[key] = dict(cand)
+    merged["filing_options"] = opts
+
+    for row in merged.get("applicants") or []:
+        _sanitize_person_row(row, applicant=True)
+    for row in merged.get("inventors") or []:
+        _sanitize_person_row(row, applicant=False)
+    _reconcile_role_rows(merged)
+    return normalize_application_information(merged)

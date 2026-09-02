@@ -26,7 +26,7 @@ def minimal_draft():
 
 
 def test_versions_and_rule_text():
-    assert APP_VERSION == "v5.4.55"
+    assert APP_VERSION == "v5.4.57"
     assert RULESET_VERSION == "2026-09-01.v34"
     assert "İstem X’e uygun sistem olup, özelliği;" in TARIFNAME_RULES
     assert "İstem X’e uygun yöntem olup, özelliği;" in TARIFNAME_RULES

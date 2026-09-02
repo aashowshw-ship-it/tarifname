@@ -6,7 +6,7 @@ from rules import APP_VERSION
 
 
 def test_browser_ai_merge_repairs_roles_only_with_source_evidence():
-    assert APP_VERSION == "v5.4.55"
+    assert APP_VERSION == "v5.4.57"
     blocks = [("beyan.docx", """
 Hak sahibi / başvuru sahibi
 Unvanı: TT MOBİL İLETİŞİM HİZMETLERİ ANONİM ŞİRKETİ

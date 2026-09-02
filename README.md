@@ -1,4 +1,26 @@
-# Patent Atölyesi v5.4.55
+# Patent Atölyesi v5.4.57
+
+## v5.4.57 – Değişken beyan formu düzenleri için CPU semantik rol AI
+
+- Süreçler → Patent/Faydalı Model Başvurusu bilgi çıkarımında eski CPU NER yaklaşımı ana akıştan çıkarıldı.
+- Tarayıcıda GPU gerektirmeden WASM/CPU üzerinde çok dilli zero-shot anlam sınıflandırma modeli kullanılır.
+- Model doğrudan ad/unvan/telefon üretmez; yalnız kaynak metin bloklarını `hak sahibi / başvuru sahibi`, `buluş sahibi / buluşçu`, `başvuru tercihleri`, `yetkili / imza / iletişim` veya `diğer` olarak sınıflandırır.
+- Ad/unvan, TCKN/VKN, telefon, e-posta, adres ve doğum tarihi gibi gerçek değerler sınıflandırılan kaynak bloğundan deterministik çıkarılır ve tam kaynak dosyada yeniden doğrulanır.
+- Böylece beyan formunun tablo/alan konumu değişse bile rol bağlama sabit koordinatlara bağlı değildir; iletişim kişisi veya imza sahibinin buluşçu/hak sahibi yapılması riski azaltılır.
+- Semantik olarak güvenilir ad/unvan bulunduğunda önceki parser'ın `ronik`, `Sultan`, form başlığı veya açıklama satırı gibi hayalet kayıtları taşınmaz.
+- Maildeki buluşçu gizlilik, kamu destekli proje ve erken yayın cevapları AI tarafından üretilmez; AI yalnız ilgili soru bloğunu işaretler, EVET/HAYIR cevabı doğrudan kaynak gövdeden okunur.
+- Buluş başlığı yalnız Tarifname'den, DP referansı yalnız Tarifname dosya adından alınmaya devam eder.
+- OpenAI/API kredisi kullanılmaz; model kullanıcının tarayıcısında CPU/WASM ile çalışır.
+
+
+## v5.4.56 / 2026-09-02 — Süreçler / rol bağlama ve EPATS PDF artefakt düzeltmesi
+
+- Hak sahibi ve buluş sahibi kayıtları artık CPU NER tarafından sıfırdan oluşturulmaz; NER yalnız açık rol bloklarındaki mevcut ad/unvanı doğrular.
+- DOCX/OCR tablo başlığı + değer satırı sütun bazında eşleştirilir; VKN/TCKN, telefon, e-posta ve adres karşı role taşınmaz.
+- Telefon yalnız açık Telefon/Tel/Cep/GSM etiketiyle alınır; VKN/TCKN/dosya numarası telefon sayılmaz.
+- Güncel e-posta gövdesindeki başvuru tercihleri HAYIR/HAYIR/EVET dahil ok/à/HTML dönüşümü bozulsa da son açık cevap üzerinden okunur.
+- Buluş başlığı yalnız Tarifname'den, DP referansı yalnız Tarifname dosya adından alınır.
+- DOCX->PDF dönüşümünde üstbilgi PAGE alanı yalnız dönüştürme kopyasında kaldırılır; sol üstte görünen `1X / 2X ...` artefaktı ayrıca PDF temizliğinde engellenir.
 
 ## v5.4.55 / 2026-09-02 — Süreçler / CPU-WASM NER; WebGPU kaldırıldı
 

@@ -3,7 +3,7 @@ import { Streamlit } from "https://cdn.jsdelivr.net/npm/streamlit-component-lib@
 const root = document.getElementById("app");
 let lastRequestId = null;
 let running = false;
-let ner = null;
+let classifier = null;
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -25,67 +25,66 @@ function plain(s) {
     .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
     .replace(/ı/g,"i").replace(/ş/g,"s").replace(/ğ/g,"g").replace(/ü/g,"u").replace(/ö/g,"o").replace(/ç/g,"c");
 }
-const focusNeedles = [
+
+const needles = [
   "hak sahibi","başvuru sahibi","başvuru sahib","buluş sahibi","buluşçu","mucit","buluşu yapan",
   "unvan","ad soyad","adı soyadı","tckn","tc kimlik","vkn","vergi","adres","uyruk","ülke","ilçe",
-  "telefon","e-posta","eposta","email","doğum","gizlensin","erken yayın","erken yayım","tübitak","kosgeb","proje"
+  "telefon","e-posta","eposta","email","doğum","gizlensin","erken yayın","erken yayım","tübitak","kosgeb","proje",
+  "yetkili","imza","temsilci","irtibat"
 ].map(plain);
-function focusText(raw) {
-  const lines = String(raw || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-  if (!lines.length) return "";
-  const keep = new Set();
-  for (let i=0;i<lines.length;i++) {
-    const n = plain(lines[i]);
-    const relevant = focusNeedles.some(k => n.includes(k)) || /@/.test(lines[i]) || /\b\d{10,11}\b/.test(lines[i]) || /anonim\s+şirket|limited\s+şirket|a\.?\s*ş\.?|ltd\.?/i.test(lines[i]);
-    if (relevant) for (let j=Math.max(0,i-3); j<Math.min(lines.length,i+5); j++) keep.add(j);
+
+function relevantLine(line) {
+  const n = plain(line);
+  return needles.some(k => n.includes(k)) || /@/.test(line) || /\b\d{10,11}\b/.test(line) ||
+    /anonim\s+şirket|limited\s+şirket|a\.?\s*ş\.?|ltd\.?/i.test(line) || /\b(?:EVET|HAYIR)\b/i.test(line) || /\t/.test(line);
+}
+
+function makeBlocks(raw, maxBlocks = 16) {
+  const lines = String(raw || "").replace(/\r/g, "").split("\n");
+  const picks = [];
+  const seen = new Set();
+  const add = (start, end) => {
+    const text = lines.slice(Math.max(0,start), Math.min(lines.length,end)).map(x=>x.trimEnd()).filter(x=>x.trim()).join("\n").trim();
+    if (!text || text.length < 12) return;
+    const clipped = text.slice(0, 1500);
+    const key = plain(clipped).replace(/\s+/g," ").slice(0,1200);
+    if (!key || seen.has(key)) return;
+    seen.add(key); picks.push(clipped);
+  };
+  for (let i=0;i<lines.length && picks.length<maxBlocks;i++) {
+    if (!relevantLine(lines[i])) continue;
+    add(i-2, i+4);
   }
-  if (!keep.size) return lines.slice(0,55).join("\n").slice(0,5000);
-  return [...keep].sort((a,b)=>a-b).map(i=>lines[i]).join("\n").slice(0,6000);
-}
-function chunkText(text, maxChars=900) {
-  const lines = String(text || "").split(/\r?\n/);
-  const chunks = [];
-  let buf = [];
-  let len = 0;
-  for (const line of lines) {
-    const add = line.length + 1;
-    if (buf.length && len + add > maxChars) {
-      chunks.push(buf.join("\n"));
-      buf = buf.slice(-2); // iki satır bağlam üst üste kalsın
-      len = buf.reduce((a,x)=>a+x.length+1,0);
-    }
-    buf.push(line);
-    len += add;
+  // Hiç aday bulunamazsa belgenin başından birkaç kısa pencere ver; AI rolü kendisi seçsin.
+  if (!picks.length) {
+    for (let i=0;i<lines.length && picks.length<4;i+=6) add(i, i+7);
   }
-  if (buf.length) chunks.push(buf.join("\n"));
-  return chunks.filter(x=>x.trim());
+  return picks.slice(0,maxBlocks);
 }
-function normalizeLabel(x) {
-  let s = String(x || "").toUpperCase();
-  s = s.replace(/^[BI]-/, "");
-  if (s.includes("PER")) return "PER";
-  if (s.includes("ORG")) return "ORG";
-  if (s.includes("LOC")) return "LOC";
-  return s;
-}
-function dedupeEntities(rows) {
-  const out=[]; const seen=new Set();
-  for (const r of rows) {
-    const key = `${r.source}|${r.label}|${plain(r.word)}|${plain(r.before).slice(-80)}|${plain(r.after).slice(0,80)}`;
-    if (!r.word || seen.has(key)) continue;
-    seen.add(key); out.push(r);
-  }
-  return out;
-}
-async function ensureNer(modelId) {
-  if (ner) return ner;
-  paint("CPU AI hazırlanıyor", "İlk kullanımda yaklaşık 135 MB çok dilli NER modeli indirilir; GPU gerekmez.", 5);
+
+const ROLE_LABELS = [
+  "hak sahibi veya başvuru sahibi bilgileri",
+  "buluş sahibi, buluşçu veya mucit bilgileri",
+  "başvuru tercihleri veya beyan cevapları",
+  "yetkili, imza sahibi veya yalnız iletişim kişisi bilgileri",
+  "diğer bilgi"
+];
+const ROLE_KEYS = {
+  "hak sahibi veya başvuru sahibi bilgileri": "applicant",
+  "buluş sahibi, buluşçu veya mucit bilgileri": "inventor",
+  "başvuru tercihleri veya beyan cevapları": "options",
+  "yetkili, imza sahibi veya yalnız iletişim kişisi bilgileri": "contact",
+  "diğer bilgi": "other",
+};
+
+async function ensureClassifier(modelId) {
+  if (classifier) return classifier;
+  paint("CPU AI hazırlanıyor", "Türkçe dahil çok dilli anlam sınıflandırma modeli ilk kullanımda tarayıcıya indirilir. GPU gerekmez.", 5);
   const mod = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/+esm");
   mod.env.allowLocalModels = false;
-  // En geniş tarayıcı uyumluluğu için WASM tek iş parçacığı. WebGPU kullanılmaz.
   try { mod.env.backends.onnx.wasm.numThreads = 1; } catch (_) {}
-  ner = await withTimeout(
-    mod.pipeline("token-classification", modelId, {
+  classifier = await withTimeout(
+    mod.pipeline("zero-shot-classification", modelId, {
       dtype: "q8",
       device: "wasm",
       progress_callback: (p) => {
@@ -98,70 +97,66 @@ async function ensureNer(modelId) {
     180000,
     "CPU AI modeli 3 dakika içinde hazırlanamadı. İnternet bağlantısını kontrol edip tekrar deneyin."
   );
-  return ner;
+  return classifier;
 }
-async function analyzeSource(pipe, source, text, startIndex, totalChunks) {
-  const focused = focusText(text);
-  const chunks = chunkText(focused);
-  const rows = [];
-  let idx = startIndex;
-  for (const chunk of chunks) {
-    idx += 1;
-    const pct = 58 + Math.round((idx / Math.max(1,totalChunks)) * 36);
-    paint("Belge bilgileri CPU AI ile tanınıyor", `${source}: kişi / kurum adları belirleniyor (${idx}/${totalChunks})`, Math.min(94,pct));
-    const output = await pipe(chunk, {aggregation_strategy:"simple"});
-    for (const e of (output || [])) {
-      const label = normalizeLabel(e.entity_group || e.entity || e.label);
-      if (!["PER","ORG","LOC"].includes(label)) continue;
-      const score = Number(e.score || 0);
-      if (score < 0.55) continue;
-      const word = String(e.word || "").replace(/\s*##\s*/g, "").trim();
-      const start = Number.isFinite(e.start) ? Number(e.start) : Math.max(0, chunk.indexOf(word));
-      const end = Number.isFinite(e.end) ? Number(e.end) : start + word.length;
-      rows.push({
-        source,
-        label,
-        word,
-        score,
-        before: chunk.slice(Math.max(0,start-650), Math.max(0,start)),
-        after: chunk.slice(Math.max(0,end), Math.min(chunk.length,end+900)),
-      });
-    }
-  }
-  return {rows, consumed: chunks.length};
+
+async function classifyBlock(pipe, source, text, index, total) {
+  const pct = 58 + Math.round((index / Math.max(1,total)) * 36);
+  paint("Belge yapısı CPU AI ile yorumlanıyor", `${source}: bilgi bloğunun rolü belirleniyor (${index}/${total})`, Math.min(94,pct));
+  const out = await pipe(text, ROLE_LABELS, {
+    multi_label: false,
+    hypothesis_template: "Bu metin {} içeriyor."
+  });
+  const labels = Array.isArray(out?.labels) ? out.labels : [];
+  const scores = Array.isArray(out?.scores) ? out.scores.map(Number) : [];
+  if (!labels.length) return null;
+  const role = ROLE_KEYS[labels[0]] || "other";
+  const score = Number(scores[0] || 0);
+  const second = Number(scores[1] || 0);
+  return {source, text, role, score, margin: Math.max(0, score-second), labels, scores};
 }
+
 async function run(args) {
   running = true;
   try {
-    const modelId = args.model_id || "Xenova/distilbert-base-multilingual-cased-ner-hrl";
+    const modelId = args.model_id || "onnx-community/multilingual-MiniLMv2-L6-mnli-xnli-ONNX";
     const sources = Array.isArray(args.sources) ? args.sources.filter(x => x && x.source && x.text) : [];
     if (!sources.length) throw new Error("CPU AI için okunabilir başvuru bilgi kaynağı bulunamadı.");
-    const pipe = await ensureNer(modelId);
-    const prepared = sources.map(s => ({source:String(s.source), text:focusText(String(s.text||""))}));
-    const totalChunks = prepared.reduce((n,s)=>n+chunkText(s.text).length,0);
-    let consumed=0; let entities=[];
-    for (const s of prepared) {
-      const res = await withTimeout(
-        analyzeSource(pipe, s.source, s.text, consumed, totalChunks),
-        Number(args.inference_timeout_ms || 120000),
+    const pipe = await ensureClassifier(modelId);
+    const prepared = [];
+    for (const s of sources) {
+      for (const block of makeBlocks(String(s.text || ""), Number(args.max_blocks_per_source || 16))) {
+        prepared.push({source:String(s.source), text:block});
+      }
+    }
+    if (!prepared.length) throw new Error("Anlamlandırılabilecek bilgi bloğu bulunamadı.");
+    const blocks = [];
+    for (let i=0;i<prepared.length;i++) {
+      const r = await withTimeout(
+        classifyBlock(pipe, prepared[i].source, prepared[i].text, i+1, prepared.length),
+        Number(args.inference_timeout_ms || 90000),
         "CPU AI belge analizi zaman aşımına uğradı. Kurallı sonuç kullanılacak."
       );
-      consumed += res.consumed;
-      entities.push(...res.rows);
+      if (!r) continue;
+      // Contact/other bloklarını veri üretmek için kullanma. Rol için düşük güveni de dışla.
+      const threshold = r.role === "options" ? 0.40 : 0.46;
+      if (["applicant","inventor","options"].includes(r.role) && r.score >= threshold && (r.margin >= 0.015 || r.score >= 0.62)) {
+        blocks.push(r);
+      }
     }
-    entities = dedupeEntities(entities);
-    paint("CPU AI tamamlandı", `${entities.length} kişi/kurum/konum adayı bulundu; kaynak ilişkileri sunucuda doğrulanıyor.`, 100, "ok");
-    Streamlit.setComponentValue({request_id:args.request_id, ok:true, data:{entities}, model:`${modelId} (CPU/WASM q8)`});
+    paint("CPU AI tamamlandı", `${blocks.length} güvenilir başvuru bilgi bloğu rolüne göre ayrıldı; değerler kaynak metinde doğrulanıyor.`, 100, "ok");
+    Streamlit.setComponentValue({request_id:args.request_id, ok:true, data:{blocks}, model:`${modelId} (CPU/WASM q8)`});
   } catch (e) {
     const msg = e?.message || String(e);
     paint("CPU AI çalıştırılamadı", msg, null, "error");
     Streamlit.setComponentValue({request_id:args.request_id, ok:false, error:msg});
   } finally { running=false; }
 }
+
 function onRender(event) {
   const args = event.detail.args || {};
   Streamlit.setFrameHeight(92);
-  if (!args.request_id) { paint("CPU AI hazır", "Belge analizi başlatıldığında bu tarayıcının CPU'sunda çalışır."); return; }
+  if (!args.request_id) { paint("CPU AI hazır", "Belge analizi başlatıldığında form düzenini bu tarayıcının CPU'sunda anlamlandırır."); return; }
   if (args.request_id !== lastRequestId && !running) { lastRequestId=args.request_id; run(args); }
 }
 Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
