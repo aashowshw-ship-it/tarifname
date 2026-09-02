@@ -1962,6 +1962,18 @@ def _merge_local_ai_information(rule_data: dict[str, Any], ai_data: dict[str, An
     return normalize_application_information(merged)
 
 
+def merge_verified_ai_application_information(
+    rule_data: dict[str, Any], ai_data: dict[str, Any], source_blocks: list[tuple[str, str]]
+) -> dict[str, Any]:
+    """Tarayıcı/yerel AI çıktısını yalnız kaynakta doğrulanabilen değerlerle birleştirir."""
+    merged = _merge_local_ai_information(rule_data, ai_data if isinstance(ai_data, dict) else {}, source_blocks)
+    for row in merged.get("applicants") or []:
+        _sanitize_person_row(row, applicant=True)
+    for row in merged.get("inventors") or []:
+        _sanitize_person_row(row, applicant=False)
+    return normalize_application_information(merged)
+
+
 def extract_application_information_hybrid(
     source_blocks: list[tuple[str, str]], *, specification_text: str = "", specification_filename: str = "",
     local_ai_runner: Any | None = None,

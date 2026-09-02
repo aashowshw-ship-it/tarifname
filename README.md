@@ -1,4 +1,15 @@
-# Patent Atölyesi v5.4.51
+# Patent Atölyesi v5.4.52
+
+## v5.4.52 / 2026-09-02 — Süreçler / Tarayıcı WebGPU AI
+
+- Render Free üzerinde 512 MB RAM / 0.1 CPU nedeniyle sunucuda GGUF model çalıştırma kaldırıldı; Docker imajı artık yerel LLM indirmez.
+- `Süreçler → Patent / Faydalı Model Başvurusu` önce kurallı parser ile ön kontrolü üretir, ardından desteklenen Chrome/Edge tarayıcısında **Qwen2.5-0.5B-Instruct q4 + WebGPU** ile alanları ikinci kez yapılandırır.
+- Tarayıcı AI için OpenAI/Gemini/API anahtarı veya kredi gerekmez. Model ilk kullanımda tarayıcıya indirilir ve tarayıcı önbelleğinde tutulur.
+- Başvuru kaynak metni harici bir AI API'sine gönderilmez; model kullanıcının tarayıcısında çalışır.
+- AI çıktısı yine sunucudaki kaynak metinle doğrulanır. Kaynakta bulunmayan şirket adı, kişi adı, kimlik, e-posta, telefon vb. kabul edilmez.
+- WebGPU kullanılamazsa sistem bunu açıkça gösterir ve kurallı ön kontrolle devam eder.
+- Buluş başlığı daima Tarifname'den, DP referansı Tarifname dosya adından gelir.
+
 
 ## v5.4.51 / 2026-09-02 — Süreçler / Kredisiz Yerel AI Hibrit Çıkarım
 

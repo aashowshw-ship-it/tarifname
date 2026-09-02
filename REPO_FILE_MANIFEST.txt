@@ -9,6 +9,8 @@ __init__.py
 ai.py
 app.py
 app_core.py
+browser_ai_component/index.html
+browser_ai_component/main.js
 config.toml
 docgen.py
 gorus_audit.py
@@ -58,5 +60,6 @@ test_v5448_process_extraction_format.py
 test_v5449_process_real_form_multifile.py
 test_v5450_process_ocr_mail_options.py
 test_v5451_process_local_ai_hybrid.py
+test_v5452_browser_ai_merge.py
 validators.py
 word_math.py

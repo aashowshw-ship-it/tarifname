@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 import html as html_lib
 
 import streamlit as st
+import streamlit.components.v1 as components
 from docx import Document
 from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
@@ -82,6 +83,8 @@ from processes import (
     normalize_application_information,
     extract_application_information_rule_based,
     extract_application_information_hybrid,
+    build_local_ai_application_prompt,
+    merge_verified_ai_application_information,
 )
 
 from gorus_audit import (
@@ -105,6 +108,8 @@ from gorus_audit import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
+_BROWSER_AI_DIR = BASE_DIR / "browser_ai_component"
+_BROWSER_AI_COMPONENT = components.declare_component("patent_atolyesi_browser_ai", path=str(_BROWSER_AI_DIR)) if _BROWSER_AI_DIR.is_dir() else None
 TARIFNAME_TEMPLATE = BASE_DIR / "Tarifname_181176_template.docx"
 GORUS_TEMPLATE = BASE_DIR / "Gorus_metni_696809_template.docx"
 ARASTIRMA_TEMPLATE = BASE_DIR / "On_Arastirma_Raporu_181612_template.docx"
@@ -7315,10 +7320,10 @@ elif work_type == "Süreçler":
     if process_type == "Patent / Faydalı Model Başvurusu":
         st.markdown("### Patent / Faydalı Model Başvurusu")
         st.caption(
-            "Beyan formu, yazı veya e-posta gibi kaynakları yükleyin; başvuru bilgileri önce yerel kurallarla, ardından ücretsiz yerel AI ile çapraz okunup yapılandırılsın. "
+            "Beyan formu, yazı veya e-posta gibi kaynakları yükleyin; başvuru bilgileri önce yerel kurallarla çıkarılsın, ardından ücretsiz tarayıcı AI ile çapraz okunup yapılandırılsın. "
             "Tarifname DOC/DOCX/PDF kaynağı EPATS belgelerine ayrılsın, gerekli şablon/satır numarası temizliği yapılsın ve zorunlu ön kontrol uygulansın."
         )
-        st.success("Bu başvuru hazırlama ekranı OpenAI/API kredisi kullanmaz. Kurallı parser + sunucuda çalışan ücretsiz yerel Qwen modeli hibrit çalışır; model devreye giremezse sistem bunu açıkça bildirip kurallı sonuçla devam eder.")
+        st.success("Bu başvuru hazırlama ekranı OpenAI/API kredisi kullanmaz. AI, desteklenen Chrome/Edge tarayıcısında WebGPU ile kullanıcının cihazında çalışır; belge metni harici bir AI API'sine gönderilmez. İlk kullanımda model tarayıcıya indirilir ve önbelleğe alınır.")
 
         st.markdown("#### 1. Buluş / başvuru bilgisi kaynakları")
         info_sources = st.file_uploader(
@@ -7373,16 +7378,16 @@ elif work_type == "Süreçler":
 
                     specification_data = specification_upload.getvalue()
                     specification_text = extract_specification_text(specification_upload.name, specification_data)
-                    progress.progress(25, text="Hak sahibi, buluş sahibi ve diğer başvuru bilgileri kurallı parser + ücretsiz yerel AI ile çıkarılıyor...")
+                    progress.progress(25, text="Hak sahibi, buluş sahibi ve diğer başvuru bilgileri önce kurallı parser ile çıkarılıyor...")
 
-                    # Süreçler modülü OpenAI/API kredisi kullanmaz. Önce deterministik parser,
-                    # ardından küçük yerel Qwen modeli çalışır. AI yalnız kaynak metinde tekrar
-                    # doğrulanabilen değerleri doldurabilir; başlık/ref Tarifname otoritesindedir.
-                    extracted = extract_application_information_hybrid(
+                    # İlk geçiş deterministiktir. Tarayıcı AI sonucu asenkron olarak geldiğinde
+                    # yalnız kaynak metinde doğrulanabilen değerlerle bu sonuç iyileştirilir.
+                    extracted = extract_application_information_rule_based(
                         source_blocks,
                         specification_text=specification_text,
                         specification_filename=specification_upload.name,
                     )
+                    extracted["browser_ai"] = {"used": False, "pending": bool(source_blocks), "warning": ""}
 
                     progress.progress(50, text="Kırmızı/mavi şablon yazıları temizleniyor ve EPATS PDF'leri hazırlanıyor...")
                     figures_data = figures_upload.getvalue() if figures_upload is not None else None
@@ -7421,6 +7426,13 @@ elif work_type == "Süreçler":
                         "source_names": [name for name, _ in source_blocks],
                         "specification_name": specification_upload.name,
                         "figures_name": figures_upload.name if figures_upload is not None else "",
+                        "source_blocks": source_blocks,
+                        "specification_text": specification_text,
+                        "specification_data": specification_data,
+                        "figures_data": figures_data,
+                        "figures_file_name": figures_name,
+                        "browser_ai_request_id": datetime.now(timezone.utc).isoformat() if source_blocks else "",
+                        "browser_ai_processed_id": "",
                     }
                     progress.progress(100, text="Ön kontrol hazır")
                 except Exception as exc:
@@ -7428,6 +7440,82 @@ elif work_type == "Süreçler":
 
         precheck = st.session_state.get("proc_precheck")
         if precheck:
+            # Ücretsiz AI sunucuda değil, kullanıcının tarayıcısında WebGPU ile çalışır.
+            # Streamlit component sonucu daha sonra geri gönderdiği için ilk kurallı ön kontrol
+            # aynı oturum içinde doğrulanmış AI değerleriyle otomatik güncellenir.
+            browser_request_id = str(precheck.get("browser_ai_request_id") or "")
+            browser_processed_id = str(precheck.get("browser_ai_processed_id") or "")
+            source_blocks_for_ai = precheck.get("source_blocks") or []
+            if browser_request_id and browser_request_id != browser_processed_id and source_blocks_for_ai:
+                if _BROWSER_AI_COMPONENT is None:
+                    precheck["browser_ai_processed_id"] = browser_request_id
+                    md = precheck.get("metadata") or {}
+                    md["browser_ai"] = {"used": False, "pending": False, "warning": "Tarayıcı AI bileşeni bulunamadı; kurallı çıkarımla devam edildi."}
+                    precheck["metadata"] = md
+                    st.session_state.proc_precheck = precheck
+                else:
+                    browser_result = _BROWSER_AI_COMPONENT(
+                        request_id=browser_request_id,
+                        prompt=build_local_ai_application_prompt(source_blocks_for_ai),
+                        model_id="onnx-community/Qwen2.5-0.5B-Instruct",
+                        max_new_tokens=650,
+                        key="proc_browser_ai_component",
+                        default=None,
+                    )
+                    if isinstance(browser_result, dict) and browser_result.get("request_id") == browser_request_id:
+                        current_md = precheck.get("metadata") or {}
+                        if browser_result.get("ok") and isinstance(browser_result.get("data"), dict):
+                            merged_md = merge_verified_ai_application_information(
+                                current_md, browser_result.get("data") or {}, source_blocks_for_ai
+                            )
+                            # Buluş başlığı ve DP ref tek otorite olarak yine Tarifname'den kalır.
+                            spec_text = str(precheck.get("specification_text") or "")
+                            spec_name = str(precheck.get("specification_name") or "")
+                            deterministic = extract_application_information_rule_based(
+                                source_blocks_for_ai,
+                                specification_text=spec_text,
+                                specification_filename=spec_name,
+                            )
+                            if deterministic.get("invention_title"):
+                                merged_md["invention_title"] = deterministic["invention_title"]
+                                merged_md.setdefault("field_sources", {})["invention_title"] = "Tarifname"
+                            if deterministic.get("reference"):
+                                merged_md["reference"] = deterministic["reference"]
+                                merged_md.setdefault("field_sources", {})["reference"] = "Tarifname dosya adı"
+                            merged_md["browser_ai"] = {
+                                "used": True, "pending": False,
+                                "model": browser_result.get("model") or "Qwen2.5-0.5B-Instruct (WebGPU)",
+                                "warning": "",
+                            }
+                            package, pdfs = build_epats_application_package(
+                                precheck.get("specification_data") or b"",
+                                specification_name=spec_name,
+                                figures_data=precheck.get("figures_data"),
+                                figures_name=precheck.get("figures_file_name"),
+                                metadata=merged_md,
+                            )
+                            metrics = epats_document_metrics(
+                                precheck.get("specification_data") or b"", pdfs, specification_name=spec_name
+                            )
+                            missing = application_precheck_missing(
+                                merged_md, metrics, figures_required=bool(precheck.get("figures_required"))
+                            )
+                            conflicts = list(merged_md.get("conflicts") or [])
+                            blocking_issues = list(missing) + [f"Çelişkili bilgi: {x}" for x in conflicts]
+                            precheck.update({
+                                "metadata": merged_md, "package": package, "pdfs": pdfs, "metrics": metrics,
+                                "missing": missing, "conflicts": conflicts, "blocking_issues": blocking_issues,
+                            })
+                        else:
+                            current_md["browser_ai"] = {
+                                "used": False, "pending": False,
+                                "warning": "Tarayıcı AI çalıştırılamadı; kurallı çıkarımla devam edildi. " + str(browser_result.get("error") or ""),
+                            }
+                            precheck["metadata"] = current_md
+                        precheck["browser_ai_processed_id"] = browser_request_id
+                        st.session_state.proc_precheck = precheck
+                        st.rerun()
+
             metadata = precheck.get("metadata") or {}
             metrics = precheck.get("metrics") or {}
             pdfs = precheck.get("pdfs") or {}
@@ -7435,11 +7523,13 @@ elif work_type == "Süreçler":
 
             st.markdown("---")
             st.markdown("### Zorunlu Ön Kontrol")
-            local_ai = metadata.get("local_ai") or {}
-            if local_ai.get("used"):
-                st.success(f"Yerel AI doğrulaması çalıştı: {local_ai.get('model') or 'yerel model'} — OpenAI/API kredisi kullanılmadı.")
-            elif local_ai.get("warning"):
-                st.warning(str(local_ai.get("warning")))
+            browser_ai = metadata.get("browser_ai") or {}
+            if browser_ai.get("used"):
+                st.success(f"Tarayıcı AI doğrulaması çalıştı: {browser_ai.get('model') or 'Qwen WebGPU'} — OpenAI/API kredisi kullanılmadı ve belge metni harici AI API'sine gönderilmedi.")
+            elif browser_ai.get("pending"):
+                st.info("Tarayıcı AI hazırlanıyor. İlk kullanımda model indirme/yükleme biraz sürebilir; bu sırada kurallı ön kontrol aşağıda görüntülenebilir.")
+            elif browser_ai.get("warning"):
+                st.warning(str(browser_ai.get("warning")))
             if blocking_issues:
                 st.error("Eksik veya çelişkili bilgi bulundu. Bu bilgiler tamamlanmadan EPATS aşamasına geçilemez.")
             else:
