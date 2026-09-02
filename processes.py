@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Any
 
 from docx import Document
-from pypdf import PdfReader
+from pypdf import PdfReader, PdfWriter
+from PIL import Image, ImageOps
 
 _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _W = f"{{{_W_NS}}}"
@@ -155,6 +156,31 @@ def parent_map_chain(node: ET.Element, parent_map: dict[ET.Element, ET.Element])
         yield current
 
 
+def remove_word_line_numbering(data: bytes) -> bytes:
+    """EPATS PDF'lerinde sol kenarda görünen Word otomatik satır numaralarını kaldırır.
+
+    Yalnız section property içindeki w:lnNumType düğümünü siler. Font, stil,
+    paragraf, numaralandırma, header/footer, margin ve teknik metne dokunmaz.
+    """
+    src = io.BytesIO(data)
+    out = io.BytesIO()
+    with zipfile.ZipFile(src, "r") as zin:
+        document_xml = zin.read("word/document.xml")
+        root = ET.fromstring(document_xml)
+        changed = False
+        for sect_pr in root.iter(_W + "sectPr"):
+            for node in list(sect_pr):
+                if node.tag == _W + "lnNumType":
+                    sect_pr.remove(node)
+                    changed = True
+        new_xml = ET.tostring(root, encoding="utf-8", xml_declaration=True) if changed else document_xml
+        with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                payload = new_xml if item.filename == "word/document.xml" else zin.read(item.filename)
+                zout.writestr(item, payload)
+    return out.getvalue()
+
+
 def _paragraph_numbering(paragraph: ET.Element) -> tuple[str, str] | None:
     ppr = paragraph.find(_W + "pPr")
     if ppr is None:
@@ -176,6 +202,14 @@ def count_claims_from_docx(data: bytes) -> int:
     """İSTEMLER bölümündeki gerçek istem sayısını Word liste yapısından belirler."""
     with zipfile.ZipFile(io.BytesIO(data), "r") as zin:
         root = ET.fromstring(zin.read("word/document.xml"))
+        numbering_root = ET.fromstring(zin.read("word/numbering.xml")) if "word/numbering.xml" in zin.namelist() else None
+    num_to_abstract: dict[str, str] = {}
+    if numbering_root is not None:
+        for num in numbering_root.findall(_W + "num"):
+            num_id = num.attrib.get(_W + "numId", "")
+            abs_node = num.find(_W + "abstractNumId")
+            if num_id and abs_node is not None:
+                num_to_abstract[num_id] = abs_node.attrib.get(_W + "val", "")
     body = root.find(_W + "body")
     if body is None:
         return 0
@@ -198,6 +232,19 @@ def count_claims_from_docx(data: bytes) -> int:
             claim_num_id = numbering[0]
             break
     if claim_num_id:
+        claim_abstract = num_to_abstract.get(claim_num_id, "")
+        if claim_abstract:
+            count = 0
+            for node in claim_nodes:
+                if node.tag != _W + "p" or not _block_text(node).strip():
+                    continue
+                numbering = _paragraph_numbering(node)
+                if not numbering or numbering[1] != "0":
+                    continue
+                if num_to_abstract.get(numbering[0], "") == claim_abstract:
+                    count += 1
+            if count:
+                return count
         count = sum(
             1
             for node in claim_nodes
@@ -213,9 +260,18 @@ def count_claims_from_docx(data: bytes) -> int:
     explicit = re.findall(r"(?mi)^\s*(\d+)\s*[.\-)]+\s+", text)
     if explicit:
         return len(set(explicit))
-    dependent = re.findall(r"(?mi)^\s*İstem\s+\d+['’`]?e\s+uygun", text)
+    dependent = re.findall(r"(?mi)^\s*İstem\s+\d+(?:['’`]?e|['’`]?a)\s+uygun", text)
     if dependent:
         return 1 + len(dependent)
+    # Bazı Word/PDF dönüşümlerinde liste numarası metne düşmez ancak her bağımlı
+    # istem ayrı paragrafta "İstem X..." diye başlar. Aynı paragrafı iki kez sayma.
+    claimish = [
+        _block_text(n).strip() for n in claim_nodes
+        if n.tag == _W + "p" and _block_text(n).strip()
+    ]
+    dep_count = sum(1 for t in claimish if re.match(r"(?i)^istem\s+\d+", t))
+    if dep_count:
+        return 1 + dep_count
     return 0
 
 
@@ -223,10 +279,21 @@ def pdf_page_count(data: bytes) -> int:
     return len(PdfReader(io.BytesIO(data)).pages)
 
 
-def epats_document_metrics(specification_docx: bytes, pdfs: dict[str, bytes]) -> dict[str, Any]:
-    cleaned = strip_template_colored_text(specification_docx)
-    split_docs = split_patent_docx(cleaned, clean_template_colors=False)
-    claims = count_claims_from_docx(split_docs["Istemler.docx"])
+def epats_document_metrics(
+    specification_data: bytes,
+    pdfs: dict[str, bytes],
+    *,
+    specification_name: str = "Tarifname.docx",
+) -> dict[str, Any]:
+    suffix = Path(specification_name).suffix.lower()
+    claims = 0
+    if suffix in {".docx", ".doc"}:
+        docx = specification_data if suffix == ".docx" else _libreoffice_to_docx(specification_data, specification_name)
+        cleaned = strip_template_colored_text(docx)
+        split_docs = split_patent_docx(cleaned, clean_template_colors=False)
+        claims = count_claims_from_docx(split_docs["Istemler.docx"])
+    elif suffix == ".pdf" and pdfs.get("Istemler.pdf"):
+        claims = count_claims_from_pdf(pdfs["Istemler.pdf"])
     spec_pages = pdf_page_count(pdfs["Tarifname.pdf"]) if pdfs.get("Tarifname.pdf") else 0
     figures_pages = pdf_page_count(pdfs["Sekiller.pdf"]) if pdfs.get("Sekiller.pdf") else 0
     abstract_ok = bool(pdfs.get("Ozet.pdf")) and pdf_page_count(pdfs["Ozet.pdf"]) > 0
@@ -245,32 +312,35 @@ def epats_document_metrics(specification_docx: bytes, pdfs: dict[str, bytes]) ->
 
 
 def _docx_source_text(data: bytes) -> str:
-    """DOCX metnini tablo yapısını kaybetmeden çıkarır.
+    """DOCX metnini paragraf/tablo sırasını ve tablo hücrelerini koruyarak çıkarır."""
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
 
-    Özellikle TÜRKPATENT/beyan formlarında sık görülen birleştirilmiş hücreler ve
-    çok hücreli satırlar için her hücreyi ayrı token olarak korur. Böylece daha
-    sonra etiket/değer eşleştirmesi yalnız görsel satır düzenine bağımlı kalmaz.
-    """
     doc = Document(io.BytesIO(data))
     parts: list[str] = []
-    for p in doc.paragraphs:
-        text = p.text.strip()
-        if text:
-            parts.append(text)
-    for table_index, table in enumerate(doc.tables, 1):
-        parts.append(f"[[TABLO {table_index}]]")
-        for row in table.rows:
-            vals: list[str] = []
-            for cell in row.cells:
-                value = re.sub(r"\s*\n\s*", " / ", cell.text or "").strip()
-                # python-docx birleşik hücrelerde aynı hücre metnini birden fazla
-                # kez döndürebilir. Yan yana birebir tekrarları at.
-                if value and (not vals or _plain_norm(value) != _plain_norm(vals[-1])):
-                    vals.append(value)
-                elif not value and not vals:
-                    vals.append("")
-            if any(v for v in vals):
-                parts.append("\t".join(vals))
+    table_index = 0
+    for child in doc.element.body.iterchildren():
+        local = child.tag.rsplit("}", 1)[-1]
+        if local == "p":
+            p = Paragraph(child, doc)
+            text = p.text.strip()
+            if text:
+                parts.append(text)
+        elif local == "tbl":
+            table_index += 1
+            table = Table(child, doc)
+            parts.append(f"[[TABLO {table_index}]]")
+            for row in table.rows:
+                vals: list[str] = []
+                for cell in row.cells:
+                    value = re.sub(r"\s*\n\s*", " / ", cell.text or "").strip()
+                    # Birleşik hücrelerde python-docx aynı hücreyi birden çok kez döndürebilir.
+                    if value and (not vals or _plain_norm(value) != _plain_norm(vals[-1])):
+                        vals.append(value)
+                    elif not value and not vals:
+                        vals.append("")
+                if any(v for v in vals):
+                    parts.append("\t".join(vals))
     return "\n".join(parts)
 
 
@@ -289,7 +359,7 @@ def _html_to_text(value: str) -> str:
 def _attachment_text(filename: str, data: bytes) -> str:
     """E-posta eklerindeki desteklenen metin belgelerini güvenli biçimde oku."""
     suffix = Path(filename or "").suffix.lower()
-    if suffix in {".docx", ".doc", ".pdf", ".txt", ".md"}:
+    if suffix in {".docx", ".doc", ".pdf", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp"}:
         try:
             return extract_application_source_text(filename, data)
         except Exception:
@@ -377,7 +447,7 @@ def extract_application_source_text(filename: str, data: bytes) -> str:
                 f"Tarih: {getattr(msg, 'date', '') or ''}",
                 getattr(msg, "body", "") or "",
             ]
-            # Outlook mesajının içindeki Word/PDF/TXT eklerini de bilgi kaynağına kat.
+            # Outlook mesajının içindeki Word/PDF/TXT ve görsel ekleri de bilgi kaynağına kat.
             for att in getattr(msg, "attachments", []) or []:
                 att_name = str(getattr(att, "longFilename", None) or getattr(att, "shortFilename", None) or "")
                 att_data = getattr(att, "data", None)
@@ -390,8 +460,21 @@ def extract_application_source_text(filename: str, data: bytes) -> str:
                 msg.close()
             except Exception:
                 pass
+    elif suffix in {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp"}:
+        try:
+            import pytesseract  # type: ignore
+        except ImportError as exc:
+            raise ValueError("Resimden metin okuyabilmek için yerel OCR bileşeni kurulu değildir.") from exc
+        try:
+            image = Image.open(io.BytesIO(data))
+            image = ImageOps.exif_transpose(image).convert("L")
+            image = ImageOps.autocontrast(image)
+            # Türkçe + İngilizce OCR yerel çalışır; OpenAI/API kredisi tüketmez.
+            text = pytesseract.image_to_string(image, lang="tur+eng", config="--psm 6")
+        except Exception as exc:
+            raise ValueError(f"Resim OCR ile okunamadı: {exc}") from exc
     else:
-        raise ValueError("Bilgi kaynağı için desteklenen türler: .docx, .doc, .pdf, .txt, .md, .eml, .msg")
+        raise ValueError("Bilgi kaynağı için desteklenen türler: .docx, .doc, .pdf, .txt, .md, .eml, .msg, .png, .jpg, .jpeg, .webp, .tif, .tiff, .bmp")
     text = (text or "").replace("\x00", " ").strip()
     if not text:
         raise ValueError(f"{filename} dosyasından metin çıkarılamadı.")
@@ -454,7 +537,8 @@ def _canonical_label(label: str) -> str:
         "adi unvani", "ad unvan", "adi ve unvani", "unvani", "unvan", "isim", "name",
     ]
     identity_terms = [
-        "tckn", "t c kimlik", "tc kimlik", "vkn", "vergi no", "vergi numarasi",
+        "tckn", "t c kimlik", "tc kimlik", "tc kimlik no", "tc kimlik numarasi", "t c kimlik numarasi",
+        "vkn", "vergi no", "vergi numarasi", "vergi kimlik no", "vergi kimlik numarasi",
         "kimlik no", "kimlik numarasi", "identity", "tax number",
     ]
 
@@ -466,10 +550,20 @@ def _canonical_label(label: str) -> str:
             return role + "_address"
         if any(x in n for x in ["ulke", "uyruk", "tabiyet", "country", "milliyet"]):
             return role + "_country"
+        if any(x in n for x in ["il ilce", "il ilçe", "il/ilce", "il/ilçe"]):
+            return role + "_location"
+        if re.search(r"\bilce\b", n):
+            return role + "_district"
         if re.search(r"\b(il|sehir|city)\b", n):
             return role + "_city"
         if any(x in n for x in identity_terms):
             return role + "_identity"
+        if any(x in n for x in ["dogum tarihi", "birth date"]):
+            return role + "_birth_date"
+        if any(x in n for x in ["e posta", "eposta", "email", "e mail"]):
+            return role + "_email"
+        if any(x in n for x in ["telefon", "gsm", "cep telefonu", "phone"]):
+            return role + "_phone"
         if any(x in n for x in name_terms):
             return role + "_name"
         if applicant_role and any(x in n for x in ["kisi turu", "tuzel", "gercek", "entity type", "hukuki nitelik"]):
@@ -503,15 +597,21 @@ def _canonical_label(label: str) -> str:
             "adres", "adresi", "tebligat adresi", "ikamet adresi", "ikametgah", "merkez adresi",
             "yazisma adresi", "address",
         ],
-        "country": ["ulke", "uyruk", "tabiyet", "milliyet", "country"],
-        "city": ["il", "sehir", "city"],
-        "district": ["ilce", "district"],
+        "country": ["ulke", "ulkesi", "uyruk", "uyrugu", "tabiyet", "tabiyeti", "milliyet", "milliyeti", "country"],
+        "location": ["il ilce", "il/ilce", "il / ilce", "il ilçe", "il/ilçe", "il / ilçe", "il ve ilce", "city district"],
+        "city": ["il", "ili", "sehir", "sehri", "city"],
+        "district": ["ilce", "ilcesi", "ilçe", "ilçesi", "district"],
+        "birth_date": ["dogum tarihi", "doğum tarihi", "birth date", "date of birth"],
+        "fax": ["faks", "fax", "faks no", "fax no"],
+        "postal_code": ["posta kodu", "postal code", "zip code"],
+        "authorized_person": ["yetkili", "yetkili kisi", "yetkili kişi", "temsilci", "contact person"],
+        "website": ["web", "web sitesi", "internet adresi", "website"],
         "entity_type": [
             "kisi turu", "hak sahibi turu", "basvuru sahibi turu", "tuzel gercek kisi",
             "gercek tuzel", "hukuki nitelik", "entity type",
         ],
         "email": ["e posta", "eposta", "e mail", "email", "mail adresi", "elektronik posta"],
-        "phone": ["telefon", "telefon no", "telefon numarasi", "gsm", "cep telefonu", "phone"],
+        "phone": ["telefon", "telefonu", "telefon no", "telefon numarasi", "gsm", "cep telefonu", "ev telefonu", "is telefonu", "ev is telefonu", "phone"],
         "priority": ["ruchan", "ruchan durumu", "ruchan talebi", "priority", "priority claim"],
         "priority_country": ["ruchan ulkesi", "priority country"],
         "priority_number": ["ruchan numarasi", "ruchan no", "ruchan basvuru no", "priority number"],
@@ -520,7 +620,7 @@ def _canonical_label(label: str) -> str:
     order = (
         "priority_country", "priority_number", "priority_date", "application_kind", "invention_title",
         "reference", "entity_type", "applicant", "inventor", "name", "identity", "address", "country",
-        "city", "district", "email", "phone", "priority",
+        "location", "city", "district", "birth_date", "authorized_person", "postal_code", "email", "phone", "fax", "website", "priority",
     )
     for key in order:
         for alias in aliases[key]:
@@ -531,11 +631,28 @@ def _canonical_label(label: str) -> str:
 
 
 
+def _is_instruction_text(value: str) -> bool:
+    n = _plain_norm(value)
+    if not n:
+        return False
+    markers = [
+        "not basvuru sahibinin", "birden fazla olmasi durumunda", "ayri ayri duzenlenmelidir",
+        "bu alan", "doldurulmalidir", "zorunlu alan", "gerekiyorsa", "aciklama", "ornek",
+        "basvuru sahibinin birden fazla", "bulusu yapan birden fazla", "her bir basvuru sahibi",
+    ]
+    return any(x in n for x in markers)
+
+
 def _is_role_section_heading(raw_label: str, canonical: str) -> bool:
     n = _plain_norm(raw_label)
     if canonical not in {"applicant", "inventor"}:
         return False
-    return any(x in n for x in ["bilgi", "bilgileri", "bilgisi", "information", "detay", "detaylari"])
+    # Resmî beyan formlarında bölüm başlığı bazen yalnız "... SAHİBİ(LERİ)"
+    # biçimindedir ve hemen yanında açıklama/not bulunur. Bu da bölüm başlığıdır.
+    return any(x in n for x in [
+        "bilgi", "bilgileri", "bilgisi", "information", "detay", "detaylari",
+        "sahipleri", "yapanlar", "mucitler", "buluscular",
+    ])
 
 
 def _line_label_value_pairs(line: str) -> list[tuple[str, str, str]]:
@@ -562,7 +679,10 @@ def _line_label_value_pairs(line: str) -> list[tuple[str, str, str]]:
                 while j < len(tokens) and not _canonical_label(tokens[j]):
                     vals.append(tokens[j])
                     j += 1
-                pairs.append((tokens[i], label, _clean_value(" / ".join(vals))))
+                value = _clean_value(" / ".join(vals))
+                if label in {"applicant", "inventor"} and _is_instruction_text(value):
+                    value = ""
+                pairs.append((tokens[i], label, value))
                 i = max(j, i + 1)
             else:
                 i += 1
@@ -574,7 +694,10 @@ def _line_label_value_pairs(line: str) -> list[tuple[str, str, str]]:
         raw_label = m.group(1)
         label = _canonical_label(raw_label)
         if label:
-            return [(raw_label, label, _clean_value(m.group(2)))]
+            value = _clean_value(m.group(2))
+            if label in {"applicant", "inventor"} and _is_instruction_text(value):
+                value = ""
+            return [(raw_label, label, value)]
     # PDF/antiword çıktısında tablo sütunları bazen ayraçsız tek satıra
     # düşer: "Hak Sahibi ABC A.Ş." gibi. Yalnız açık ve sabit etiket
     # başlangıçlarında ayraçsız geri dönüş uygula.
@@ -633,7 +756,13 @@ def _extract_contact_information(result: dict[str, Any], text: str, source: str)
     """Serbest mail/yazı içindeki açık iletişim bilgilerini 'diğer bilgiler'e al."""
     for email in sorted(set(re.findall(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", text or ""))):
         _add_other_information(result, "E-posta", email, source)
-    for phone in sorted(set(re.findall(r"(?<!\d)(?:\+?90\s*)?(?:\(?0?\d{3}\)?[ .-]*)\d{3}[ .-]*\d{2}[ .-]*\d{2}(?!\d)", text or ""))):
+    phone_re = re.compile(r"(?<!\d)(?:\+?90\s*)?(?:\(?0?\d{3}\)?[ .-]*)\d{3}[ .-]*\d{2}[ .-]*\d{2}(?!\d)")
+    for match in phone_re.finditer(text or ""):
+        phone = match.group(0)
+        context = _plain_norm((text or "")[max(0, match.start()-24):match.end()+24])
+        # VKN/TCKN gibi 10/11 haneli kimlikleri telefon sanma.
+        if any(x in context for x in ["vkn", "vergi no", "vergi numarasi", "tckn", "tc kimlik", "kimlik no"]):
+            continue
         _add_other_information(result, "Telefon", phone, source)
 
 def _split_people_value(value: str) -> list[str]:
@@ -655,12 +784,73 @@ def _new_person(name: str, source: str, *, applicant: bool) -> dict[str, str]:
         "name": _clean_value(name),
         "country": "",
         "city": "",
+        "district": "",
         "address": "",
+        "email": "",
+        "phone": "",
+        "birth_date": "",
         "source": source,
     }
     if applicant:
         row["entity_type"] = _entity_type(name)
     return row
+
+
+def _split_city_district(value: str) -> tuple[str, str]:
+    value = _clean_value(value)
+    if not value:
+        return "", ""
+    parts = [x.strip() for x in re.split(r"[/|,]", value, maxsplit=1)]
+    if len(parts) == 2 and all(parts):
+        return parts[0], parts[1]
+    return "", value
+
+
+def _apply_person_field(row: dict[str, str], field: str, value: str, *, applicant: bool) -> None:
+    value = _clean_value(value)
+    if not value:
+        return
+    if field == "identity":
+        row["identity"] = _valid_identity(value)
+    elif field == "entity_type" and applicant:
+        row["entity_type"] = _entity_type(row.get("name", ""), value)
+    elif field == "location":
+        city, district = _split_city_district(value)
+        if city and not row.get("city"):
+            row["city"] = city
+        if district and not row.get("district"):
+            row["district"] = district
+    elif field == "district":
+        city, district = _split_city_district(value)
+        if city and _plain_norm(city) in _TURKEY_PROVINCES and not row.get("city"):
+            row["city"] = city
+        if not row.get("district"):
+            row["district"] = district or value
+    elif field == "birth_date":
+        # Form başlığıyla komşu hücre numaralarını doğum tarihi sanma.
+        if re.search(r"(?<!\d)(?:0?[1-9]|[12]\d|3[01])[./-](?:0?[1-9]|1[0-2])[./-](?:19|20)\d{2}(?!\d)", value):
+            row["birth_date"] = value
+    elif field in {"address", "country", "city", "email", "phone"}:
+        if not row.get(field):
+            row[field] = value
+
+
+_TURKEY_PROVINCES = {
+    _plain_norm(x) for x in """Adana Adıyaman Afyonkarahisar Ağrı Aksaray Amasya Ankara Antalya Ardahan Artvin Aydın Balıkesir Bartın Batman Bayburt Bilecik Bingöl Bitlis Bolu Burdur Bursa Çanakkale Çankırı Çorum Denizli Diyarbakır Düzce Edirne Elazığ Erzincan Erzurum Eskişehir Gaziantep Giresun Gümüşhane Hakkari Hatay Iğdır Isparta İstanbul İzmir Kahramanmaraş Karabük Karaman Kars Kastamonu Kayseri Kırıkkale Kırklareli Kırşehir Kilis Kocaeli Konya Kütahya Malatya Manisa Mardin Mersin Muğla Muş Nevşehir Niğde Ordu Osmaniye Rize Sakarya Samsun Siirt Sinop Sivas Şanlıurfa Şırnak Tekirdağ Tokat Trabzon Tunceli Uşak Van Yalova Yozgat Zonguldak""".split()
+}
+
+
+def _fill_country_from_explicit_location(row: dict[str, str]) -> None:
+    if row.get("country"):
+        return
+    naddr = _plain_norm(row.get("address", ""))
+    if "turkiye" in naddr or re.search(r"\bturkey\b", naddr):
+        row["country"] = "Türkiye"
+        return
+    city = _plain_norm(row.get("city", ""))
+    if city in _TURKEY_PROVINCES:
+        row["country"] = "Türkiye"
+
 
 
 def _append_unique_person(target: list[dict[str, str]], row: dict[str, str], *, applicant: bool) -> dict[str, str]:
@@ -669,7 +859,7 @@ def _append_unique_person(target: list[dict[str, str]], row: dict[str, str], *, 
     for existing in target:
         existing_id = re.sub(r"\D", "", existing.get("identity", ""))
         if (id_key and existing_id and id_key == existing_id) or (name_key and name_key == _plain_norm(existing.get("name", ""))):
-            for key in ("identity", "country", "city", "address"):
+            for key in ("identity", "country", "city", "district", "address", "email", "phone", "birth_date"):
                 if not existing.get(key) and row.get(key):
                     existing[key] = row[key]
             if applicant and not existing.get("entity_type"):
@@ -874,44 +1064,45 @@ def extract_application_information_rule_based(
                     current_role = role
                     target = result["applicants"] if role == "applicant" else result["inventors"]
                     if field == "name":
-                        # Aynı rol bölümünde ikinci kez dolu ad görülürse yeni kişi kabul et.
-                        if current_person is not None and current_person.get("name") and _plain_norm(current_person.get("name", "")) != _plain_norm(value):
-                            current_person = None
-                        row = _new_person(value, source, applicant=role == "applicant")
-                        current_person = _append_unique_person(target, row, applicant=role == "applicant")
+                        # Önce TCKN/doğum tarihi gibi alanları gelen aynı kişinin boş adını
+                        # yeni satır açmadan tamamla. Ancak dolu ve farklı bir ad varsa yeni kişi başlat.
+                        if current_person is not None and current_person in target and not current_person.get("name"):
+                            current_person["name"] = _clean_value(value)
+                            if role == "applicant" and not current_person.get("entity_type"):
+                                current_person["entity_type"] = _entity_type(value)
+                        else:
+                            if current_person is not None and current_person.get("name") and _plain_norm(current_person.get("name", "")) != _plain_norm(value):
+                                current_person = None
+                            row = _new_person(value, source, applicant=role == "applicant")
+                            current_person = _append_unique_person(target, row, applicant=role == "applicant")
                     else:
                         if current_person is None or current_person not in target:
                             current_person = target[-1] if target else ensure_person(role, source)
-                        if field == "identity":
-                            current_person["identity"] = _valid_identity(value)
-                        elif field == "entity_type" and role == "applicant":
-                            current_person["entity_type"] = _entity_type(current_person.get("name", ""), value)
-                        elif field in {"address", "country", "city"}:
-                            current_person[field] = value
+                        _apply_person_field(current_person, field, value, applicant=role == "applicant")
                     continue
 
-                if label in {"name", "identity", "address", "country", "city", "entity_type"} and current_role in {"applicant", "inventor"}:
+                if label in {"name", "identity", "address", "country", "location", "city", "district", "email", "phone", "birth_date", "entity_type"} and current_role in {"applicant", "inventor"}:
                     target = result["applicants"] if current_role == "applicant" else result["inventors"]
                     if label == "name":
-                        if current_person is not None and current_person.get("name") and _plain_norm(current_person.get("name", "")) != _plain_norm(value):
-                            current_person = None
-                        row = _new_person(value, source, applicant=current_role == "applicant")
-                        current_person = _append_unique_person(target, row, applicant=current_role == "applicant")
+                        if current_person is not None and current_person in target and not current_person.get("name"):
+                            current_person["name"] = _clean_value(value)
+                            if current_role == "applicant" and not current_person.get("entity_type"):
+                                current_person["entity_type"] = _entity_type(value)
+                        else:
+                            if current_person is not None and current_person.get("name") and _plain_norm(current_person.get("name", "")) != _plain_norm(value):
+                                current_person = None
+                            row = _new_person(value, source, applicant=current_role == "applicant")
+                            current_person = _append_unique_person(target, row, applicant=current_role == "applicant")
                     else:
                         if current_person is None or current_person not in target:
                             current_person = target[-1] if target else ensure_person(current_role, source)
-                        if label == "identity":
-                            current_person["identity"] = _valid_identity(value)
-                        elif label == "entity_type" and current_role == "applicant":
-                            current_person["entity_type"] = _entity_type(current_person.get("name", ""), value)
-                        elif label in {"address", "country", "city"}:
-                            current_person[label] = value
+                        _apply_person_field(current_person, label, value, applicant=current_role == "applicant")
                     continue
 
-                # İletişim, ilçe ve tanınan fakat çekirdek şemaya dahil olmayan alanları kaybetme.
-                if label in {"email", "phone", "district"}:
+                # Tanınan fakat çekirdek kişi şemasına dahil olmayan alanları kaybetme.
+                if label in {"fax", "postal_code", "authorized_person", "website"}:
                     prefix = "Hak sahibi" if current_role == "applicant" else "Buluş sahibi" if current_role == "inventor" else ""
-                    nice = {"email": "E-posta", "phone": "Telefon", "district": "İlçe"}[label]
+                    nice = {"fax": "Faks", "postal_code": "Posta kodu", "authorized_person": "Yetkili", "website": "Web sitesi"}[label]
                     _add_other_information(result, f"{prefix} {nice}".strip(), value, source)
                     continue
 
@@ -955,25 +1146,24 @@ def extract_application_information_rule_based(
             result["reference"] = file_ref
             result["field_sources"]["reference"] = "Tarifname dosya adı"
 
-    # Tarifname yalnız başlık teyidi/geri dönüş kaynağıdır.
+    # Buluş başlığının tek otoritesi başvuru için yüklenen TARİFNAME'dir.
+    # Beyan formu/e-posta içindeki eski veya kısa başlık hiçbir zaman çatışma
+    # üretmez ve EPATS başlığını değiştiremez.
     spec_title = _specification_title(specification_text)
     if spec_title:
-        if result["invention_title"]:
-            if _plain_norm(result["invention_title"]) != _plain_norm(spec_title):
-                result["conflicts"].append(
-                    f"Buluş başlığı: '{result['invention_title']}' (başvuru kaynağı) / '{spec_title}' (Tarifname)"
-                )
-        else:
-            result["invention_title"] = spec_title
-            result["field_sources"]["invention_title"] = "Tarifname"
+        source_title = result.get("invention_title", "")
+        if source_title and _plain_norm(source_title) != _plain_norm(spec_title):
+            _add_other_information(result, "Bilgi kaynağındaki buluş başlığı", source_title, result.get("field_sources", {}).get("invention_title", "Başvuru bilgi kaynağı"))
+        result["invention_title"] = spec_title
+        result["field_sources"]["invention_title"] = "Tarifname"
+        # Daha önce singleton izleme tablosuna bilgi kaynağından yazılmış başlık
+        # varsa aşağıdaki field_sources döngüsünün bunu ezmesini engelle.
+        seen.pop("invention_title", None)
 
-    # Adresin içinde ülke açıkça yazıyorsa ayrıca ülke alanını doldur; tahmin yok.
+    # Adreste Türkiye açıkça yazıyorsa veya il alanı 81 Türkiye ilinden biriyse ülkeyi doldur.
     for rows in (result["applicants"], result["inventors"]):
         for row in rows:
-            if not row.get("country"):
-                naddr = _plain_norm(row.get("address", ""))
-                if "turkiye" in naddr or re.search(r"\bturkey\b", naddr):
-                    row["country"] = "Türkiye"
+            _fill_country_from_explicit_location(row)
 
     for field_name in ("application_kind", "reference", "invention_title"):
         if field_name in seen and field_name not in result["field_sources"]:
@@ -1056,7 +1246,11 @@ def normalize_application_information(data: dict[str, Any] | None) -> dict[str, 
                 "name": str(item.get("name") or "").strip(),
                 "country": str(item.get("country") or "").strip(),
                 "city": str(item.get("city") or "").strip(),
+                "district": str(item.get("district") or "").strip(),
                 "address": str(item.get("address") or "").strip(),
+                "email": str(item.get("email") or "").strip(),
+                "phone": str(item.get("phone") or "").strip(),
+                "birth_date": str(item.get("birth_date") or "").strip(),
                 "source": str(item.get("source") or "").strip(),
             }
             if applicant:
@@ -1148,6 +1342,10 @@ def split_patent_docx(data: bytes, *, clean_template_colors: bool = True) -> dic
     """Tek tarifname DOCX'ini EPATS için Tarifname / İstemler / Özet DOCX bölümlerine ayırır."""
     if clean_template_colors:
         data = strip_template_colored_text(data)
+    # LibreOffice bazı Word satır numaralarını sol kenarda "5, 10, 15..."
+    # şeklinde EPATS PDF'ine taşır. Başvuru paketinde bunlar istenmediği için
+    # yalnız bu otomatik section özelliğini kaldırıyoruz.
+    data = remove_word_line_numbering(data)
     with zipfile.ZipFile(io.BytesIO(data), "r") as zin:
         root = ET.fromstring(zin.read("word/document.xml"))
     body = root.find(_W + "body")
@@ -1165,26 +1363,187 @@ def split_patent_docx(data: bytes, *, clean_template_colors: bool = True) -> dic
     }
 
 
-def _libreoffice_to_pdf(data: bytes, filename: str) -> bytes:
+def _libreoffice_convert(data: bytes, filename: str, target_ext: str) -> bytes:
     if shutil.which("libreoffice") is None:
-        raise RuntimeError("PDF üretimi için LibreOffice kurulu değil.")
+        raise RuntimeError("Belge dönüşümü için LibreOffice kurulu değil.")
+    target_ext = target_ext.lstrip(".").lower()
     with tempfile.TemporaryDirectory() as td:
         td_path = Path(td)
-        src = td_path / filename
+        src = td_path / Path(filename).name
         src.write_bytes(data)
-        outdir = td_path / "pdf"
+        outdir = td_path / "converted"
         outdir.mkdir()
         proc = subprocess.run(
-            ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", str(outdir), str(src)],
+            ["libreoffice", "--headless", "--convert-to", target_ext, "--outdir", str(outdir), str(src)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=120,
         )
-        pdfs = list(outdir.glob("*.pdf"))
-        if proc.returncode != 0 or not pdfs:
+        outputs = list(outdir.glob(f"*.{target_ext}"))
+        if proc.returncode != 0 or not outputs:
             err = proc.stderr.decode("utf-8", errors="replace").strip()
-            raise RuntimeError(f"PDF üretilemedi. {err}".strip())
-        return pdfs[0].read_bytes()
+            raise RuntimeError(f"Belge {target_ext.upper()} biçimine dönüştürülemedi. {err}".strip())
+        return outputs[0].read_bytes()
+
+
+def _libreoffice_to_pdf(data: bytes, filename: str) -> bytes:
+    return _libreoffice_convert(data, filename, "pdf")
+
+
+def _libreoffice_to_docx(data: bytes, filename: str) -> bytes:
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".docx":
+        return data
+    return _libreoffice_convert(data, filename, "docx")
+
+
+def extract_specification_text(filename: str, data: bytes) -> str:
+    """Tarifname kaynağından başlık/şekil kontrolünde kullanılacak düz metni çıkarır."""
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".docx":
+        doc = Document(io.BytesIO(data))
+        return "\n".join(p.text for p in doc.paragraphs if p.text).strip()
+    if suffix == ".doc":
+        # DOC'u DOCX'e dönüştürmek antiword'e göre Unicode/tablo biçimini daha iyi korur.
+        docx = _libreoffice_to_docx(data, filename)
+        return extract_specification_text(Path(filename).with_suffix(".docx").name, docx)
+    if suffix == ".pdf":
+        return "\n".join((p.extract_text() or "") for p in PdfReader(io.BytesIO(data)).pages).strip()
+    raise ValueError("Tarifname dosyası DOC, DOCX veya PDF olmalıdır.")
+
+
+def _fitz_span_rgb(color: int) -> tuple[int, int, int]:
+    return ((int(color) >> 16) & 255, (int(color) >> 8) & 255, int(color) & 255)
+
+
+def _pdf_epats_cleanup(data: bytes) -> bytes:
+    """PDF'de kırmızı/mavi şablon metnini ve sol marj satır numaralarını görsel olarak kaldırır.
+
+    Sayfa boyutu, fontlar ve kalan içerik yeniden dizilmez. PDF kaynaklarında DOCX gibi
+    reflow yapılamayacağından kaldırılan alanlar beyaz boşluk olarak kalabilir.
+    """
+    import fitz  # pymupdf
+
+    doc = fitz.open(stream=data, filetype="pdf")
+    changed = False
+    for page in doc:
+        page_dict = page.get_text("dict")
+        for block in page_dict.get("blocks", []):
+            for line in block.get("lines", []):
+                for span in line.get("spans", []):
+                    text = (span.get("text") or "").strip()
+                    if not text:
+                        continue
+                    bbox = fitz.Rect(span.get("bbox"))
+                    r, g, b = _fitz_span_rgb(span.get("color", 0))
+                    is_template_color = (r >= 150 and g <= 130 and b <= 130) or (b >= 150 and r <= 130 and g <= 160)
+                    is_left_line_number = (
+                        bool(re.fullmatch(r"\d{1,3}", text))
+                        and bbox.x0 < page.rect.width * 0.10
+                        and 25 < bbox.y0 < page.rect.height - 25
+                        and int(text) % 5 == 0
+                    )
+                    if is_template_color or is_left_line_number:
+                        page.add_redact_annot(bbox + (-1, -1, 1, 1), fill=(1, 1, 1))
+                        changed = True
+        if changed:
+            try:
+                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+            except TypeError:
+                page.apply_redactions()
+    if not changed:
+        out = data
+    else:
+        out = doc.tobytes(garbage=4, deflate=True)
+    doc.close()
+    return out
+
+
+def _find_pdf_heading(data: bytes, heading: str) -> tuple[int, float] | None:
+    import fitz
+
+    doc = fitz.open(stream=data, filetype="pdf")
+    target = _norm(heading)
+    try:
+        for page_index, page in enumerate(doc):
+            info = page.get_text("dict")
+            for block in info.get("blocks", []):
+                for line in block.get("lines", []):
+                    spans = line.get("spans", [])
+                    text = "".join((sp.get("text") or "") for sp in spans).strip()
+                    if _norm(text) == target and spans:
+                        y0 = min(float(sp.get("bbox", [0, 0, 0, 0])[1]) for sp in spans)
+                        return page_index, y0
+    finally:
+        doc.close()
+    return None
+
+
+def _copy_pdf_vertical_range(src_doc, out_doc, page_index: int, y0: float, y1: float) -> None:
+    import fitz
+
+    page = src_doc[page_index]
+    y0 = max(0.0, min(float(y0), page.rect.height))
+    y1 = max(0.0, min(float(y1), page.rect.height))
+    if y1 - y0 < 2:
+        return
+    new_page = out_doc.new_page(width=page.rect.width, height=page.rect.height)
+    clip = fitz.Rect(0, y0, page.rect.width, y1)
+    # İçeriği kaynak sayfadaki aynı koordinatlarda tut; yalnız diğer bölümün
+    # bulunduğu alanı taşımayarak biçimi değiştirmeden ayır.
+    new_page.show_pdf_page(clip, src_doc, page_index, clip=clip)
+
+
+def split_patent_pdf(data: bytes) -> dict[str, bytes]:
+    """Birleşik Tarifname/İstemler/Özet PDF'ini görsel biçimi bozmadan ayırır."""
+    import fitz
+
+    cleaned = _pdf_epats_cleanup(data)
+    claims_pos = _find_pdf_heading(cleaned, "İSTEMLER")
+    abstract_pos = _find_pdf_heading(cleaned, "ÖZET")
+    if not claims_pos or not abstract_pos:
+        raise ValueError("PDF içinde İSTEMLER ve ÖZET başlıkları bulunamadı.")
+    if claims_pos[0] > abstract_pos[0] or (claims_pos[0] == abstract_pos[0] and claims_pos[1] >= abstract_pos[1]):
+        raise ValueError("PDF içindeki İSTEMLER / ÖZET sırası beklenen yapıda değil.")
+
+    src = fitz.open(stream=cleaned, filetype="pdf")
+    outputs: dict[str, bytes] = {}
+    sections = {
+        "Tarifname.pdf": ((0, 0.0), claims_pos),
+        "Istemler.pdf": (claims_pos, abstract_pos),
+        "Ozet.pdf": (abstract_pos, (len(src) - 1, src[-1].rect.height)),
+    }
+    try:
+        for name, (start, end) in sections.items():
+            out = fitz.open()
+            start_page, start_y = start
+            end_page, end_y = end
+            for page_index in range(start_page, end_page + 1):
+                page = src[page_index]
+                y0 = start_y if page_index == start_page else 0.0
+                y1 = end_y if page_index == end_page else page.rect.height
+                _copy_pdf_vertical_range(src, out, page_index, y0, y1)
+            if len(out) == 0:
+                raise ValueError(f"PDF içindeki {name} bölümü boş bulundu.")
+            outputs[name] = out.tobytes(garbage=4, deflate=True)
+            out.close()
+    finally:
+        src.close()
+    return outputs
+
+
+def count_claims_from_pdf(data: bytes) -> int:
+    text = "\n".join((p.extract_text() or "") for p in PdfReader(io.BytesIO(data)).pages)
+    explicit = [int(x) for x in re.findall(r"(?mi)^\s*(\d{1,3})\s*[.\-)]+\s+", text)]
+    if explicit:
+        # 1..N dizisi varsa maksimum istem numarası en güvenilir sayımdır.
+        seq = sorted(set(x for x in explicit if 1 <= x <= 999))
+        if seq and seq[0] == 1:
+            return max(seq)
+    deps = re.findall(r"(?mi)^\s*İstem\s+\d+(?:['’`]?e|['’`]?a)\s+uygun", text)
+    if deps:
+        return 1 + len(deps)
+    return 0
 
 
 def _ensure_pdf(data: bytes, filename: str) -> bytes:
@@ -1192,24 +1551,36 @@ def _ensure_pdf(data: bytes, filename: str) -> bytes:
     if suffix == ".pdf":
         PdfReader(io.BytesIO(data))  # temel bütünlük doğrulaması
         return data
-    if suffix == ".docx":
+    if suffix in {".docx", ".doc"}:
         return _libreoffice_to_pdf(data, Path(filename).name)
-    raise ValueError("Şekiller dosyası PDF veya DOCX olmalıdır.")
+    raise ValueError("Şekiller dosyası DOC, DOCX veya PDF olmalıdır.")
 
 
 def build_epats_application_package(
-    specification_docx: bytes,
+    specification_data: bytes,
     *,
+    specification_name: str = "Tarifname.docx",
     figures_data: bytes | None = None,
     figures_name: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> tuple[bytes, dict[str, bytes]]:
-    """EPATS'a yüklenmeye hazır PDF'leri üretip ZIP paket olarak döndürür."""
-    split_docs = split_patent_docx(specification_docx)
+    """EPATS'a yüklenmeye hazır PDF'leri üretip ZIP paket olarak döndürür.
+
+    Tarifname kaynağı DOC/DOCX/PDF olabilir. DOC önce DOCX'e dönüştürülür;
+    PDF ise görsel biçimi korunarak İSTEMLER/ÖZET sınırlarından ayrılır.
+    """
+    suffix = Path(specification_name).suffix.lower()
     pdfs: dict[str, bytes] = {}
-    for docx_name, docx_data in split_docs.items():
-        pdf_name = Path(docx_name).with_suffix(".pdf").name
-        pdfs[pdf_name] = _libreoffice_to_pdf(docx_data, docx_name)
+    if suffix in {".docx", ".doc"}:
+        docx = specification_data if suffix == ".docx" else _libreoffice_to_docx(specification_data, specification_name)
+        split_docs = split_patent_docx(docx)
+        for docx_name, docx_data in split_docs.items():
+            pdf_name = Path(docx_name).with_suffix(".pdf").name
+            pdfs[pdf_name] = _libreoffice_to_pdf(docx_data, docx_name)
+    elif suffix == ".pdf":
+        pdfs.update(split_patent_pdf(specification_data))
+    else:
+        raise ValueError("Tarifname dosyası DOC, DOCX veya PDF olmalıdır.")
 
     if figures_data is not None:
         safe_name = figures_name or "Sekiller.docx"

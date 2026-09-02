@@ -19,7 +19,7 @@ def _docx_bytes(text: str) -> bytes:
 
 
 def test_v5435_versions_and_visibility_rule():
-    assert APP_VERSION == "v5.4.48"
+    assert APP_VERSION == "v5.4.49"
     assert RULESET_VERSION == "2026-09-01.v34"
     assert "zaten semantik olarak var" in tarifname_update_analysis_prompt(
         TARIFNAME_DUZENLEME_RULES,

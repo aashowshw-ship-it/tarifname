@@ -13,7 +13,7 @@ RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
  && apt-get update \
  && echo 'ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true' | debconf-set-selections \
  && apt-get install -y --no-install-recommends \
-      antiword libreoffice libcairo2 fontconfig cabextract wget xfonts-utils ttf-mscorefonts-installer \
+      antiword libreoffice libcairo2 fontconfig cabextract wget xfonts-utils ttf-mscorefonts-installer tesseract-ocr tesseract-ocr-tur tesseract-ocr-eng \
  && fc-cache -f \
  && fc-match Arial | grep -qi 'Arial' \
  && rm -rf /var/lib/apt/lists/*

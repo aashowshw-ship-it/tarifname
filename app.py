@@ -78,6 +78,7 @@ from processes import (
     build_epats_application_package,
     epats_document_metrics,
     extract_application_source_text,
+    extract_specification_text,
     normalize_application_information,
     extract_application_information_rule_based,
 )
@@ -7314,17 +7315,17 @@ elif work_type == "Süreçler":
         st.markdown("### Patent / Faydalı Model Başvurusu")
         st.caption(
             "Beyan formu, yazı veya e-posta gibi kaynakları yükleyin; başvuru bilgileri yapay zekâ/API kullanılmadan otomatik çıkarılsın. "
-            "Tarifname Word dosyası kırmızı/mavi şablon açıklamalarından temizlenerek EPATS belgelerine ayrılsın ve zorunlu ön kontrol yapılsın."
+            "Tarifname DOC/DOCX/PDF kaynağı EPATS belgelerine ayrılsın, gerekli şablon/satır numarası temizliği yapılsın ve zorunlu ön kontrol uygulansın."
         )
         st.success("Bu başvuru hazırlama ekranı OpenAI/API kredisi kullanmaz; belge okuma ve ön kontrol yerel yazılım kurallarıyla çalışır.")
 
         st.markdown("#### 1. Buluş / başvuru bilgisi kaynakları")
         info_sources = st.file_uploader(
-            "Beyan formu, müşteri yazısı, e-posta veya diğer bilgi belgeleri",
-            type=["docx", "doc", "pdf", "txt", "md", "eml", "msg"],
+            "Beyan formu, müşteri yazısı, e-posta, ekran görüntüsü/resim veya diğer bilgi belgeleri",
+            type=["docx", "doc", "pdf", "txt", "md", "eml", "msg", "png", "jpg", "jpeg", "webp", "tif", "tiff", "bmp"],
             accept_multiple_files=True,
             key="proc_info_sources",
-            help="Birden fazla dosya yükleyebilirsiniz. Sistem hak sahibi, buluş sahibi, adres, buluş başlığı, rüçhan ve bulabildiği diğer başvuru bilgilerini kaynaklardan çıkarır.",
+            help="Birden fazla dosya yükleyebilirsiniz. DOC/DOCX/PDF/e-posta/metin ve resimler yerel olarak okunur. Sistem hak sahibi, buluş sahibi, adres, rüçhan ve bulabildiği diğer başvuru bilgilerini kaynaklardan çıkarır. Buluş başlığı ise her zaman Tarifname'den alınır.",
         )
         pasted_source = st.text_area(
             "E-posta / yazı metni (isteğe bağlı)",
@@ -7337,25 +7338,25 @@ elif work_type == "Süreçler":
         d1, d2 = st.columns(2)
         with d1:
             specification_upload = st.file_uploader(
-                "Tarifname Word dosyası",
-                type=["docx"],
+                "Tarifname dosyası",
+                type=["doc", "docx", "pdf"],
                 key="proc_spec_docx",
                 help=(
-                    "Kırmızı ve mavi şablon açıklamaları otomatik kaldırılır. Ardından TARİFNAME / İSTEMLER / ÖZET yapısı "
-                    "EPATS için ayrı PDF'lere dönüştürülür."
+                    "DOC/DOCX/PDF kabul edilir. Kırmızı ve mavi şablon açıklamaları otomatik kaldırılır. "
+                    "Ardından TARİFNAME / İSTEMLER / ÖZET yapısı EPATS için ayrı PDF'lere dönüştürülür."
                 ),
             )
         with d2:
             figures_upload = st.file_uploader(
                 "Şekiller dosyası (varsa)",
-                type=["docx", "pdf"],
+                type=["doc", "docx", "pdf"],
                 key="proc_figures",
-                help="Şekiller Word ise PDF'ye çevrilir; PDF ise aynen kullanılır.",
+                help="Şekiller DOC/DOCX ise PDF'ye çevrilir; PDF ise aynen kullanılır.",
             )
 
         if st.button("Belgeleri analiz et ve ön kontrolü oluştur", type="primary", use_container_width=True, key="proc_analyze_precheck"):
             if specification_upload is None:
-                st.error("Ön kontrol için Tarifname Word dosyası yüklenmelidir.")
+                st.error("Ön kontrol için Tarifname DOC, DOCX veya PDF dosyası yüklenmelidir.")
             else:
                 try:
                     progress = st.progress(0, text="Başvuru bilgi kaynakları okunuyor...")
@@ -7370,7 +7371,7 @@ elif work_type == "Süreçler":
                         source_blocks.append(("Yapıştırılan metin", pasted_source.strip()))
 
                     specification_data = specification_upload.getvalue()
-                    specification_text = docx_text(specification_data)
+                    specification_text = extract_specification_text(specification_upload.name, specification_data)
                     progress.progress(25, text="Hak sahibi, buluş sahibi ve diğer başvuru bilgileri yerel kurallarla çıkarılıyor...")
 
                     # Süreçler modülü OpenAI/API kullanmaz. Tüm başvuru bilgileri
@@ -7387,11 +7388,14 @@ elif work_type == "Süreçler":
                     figures_name = figures_upload.name if figures_upload is not None else None
                     package, pdfs = build_epats_application_package(
                         specification_data,
+                        specification_name=specification_upload.name,
                         figures_data=figures_data,
                         figures_name=figures_name,
                         metadata=extracted,
                     )
-                    metrics = epats_document_metrics(specification_data, pdfs)
+                    metrics = epats_document_metrics(
+                        specification_data, pdfs, specification_name=specification_upload.name
+                    )
 
                     # Tarifnamede şekil referansı bulunuyorsa şekiller belgesi zorunlu kabul edilir.
                     figures_required = bool(re.search(r"\bŞekil\s*[-:]?\s*\d+", specification_text, flags=re.IGNORECASE))
@@ -7468,7 +7472,10 @@ elif work_type == "Süreçler":
                         "Unvan / Ad Soyad": a.get("name") or "EKSİK",
                         "Ülke": a.get("country") or "EKSİK",
                         "İl": a.get("city") or "-",
+                        "İlçe": a.get("district") or "-",
                         "Adres": a.get("address") or "EKSİK",
+                        "E-posta": a.get("email") or "-",
+                        "Telefon": a.get("phone") or "-",
                         "Kaynak": a.get("source") or "-",
                     }
                     for idx, a in enumerate(applicants, 1)
@@ -7486,7 +7493,11 @@ elif work_type == "Süreçler":
                         "Ad Soyad": inv.get("name") or "EKSİK",
                         "Ülke": inv.get("country") or "-",
                         "İl": inv.get("city") or "-",
+                        "İlçe": inv.get("district") or "-",
                         "Adres": inv.get("address") or "-",
+                        "E-posta": inv.get("email") or "-",
+                        "Telefon": inv.get("phone") or "-",
+                        "Doğum tarihi": inv.get("birth_date") or "-",
                         "Kaynak": inv.get("source") or "-",
                     }
                     for idx, inv in enumerate(inventors, 1)

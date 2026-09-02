@@ -1,7 +1,15 @@
-# Patent Atölyesi v5.4.48
+# Patent Atölyesi v5.4.49
 
 
-## v5.4.48 / 2026-09-02 — Süreçler / Belge Yakalama + Biçim Koruma
+## v5.4.49 / 2026-09-02 — Süreçler / Gerçek Beyan Formu + Çoklu Dosya Desteği
+
+- Başlık artık daima yüklenen Tarifname kaynağından alınır; beyan formu/e-posta başlığı çatışma oluşturmaz.
+- Beyan formu tablo parser'ı rol bazlı çalışır; açıklama/not satırları kişi adı kabul edilmez, TCKN/VKN/adres/il-ilçe/telefon/e-posta aynı kişiye bağlanır.
+- Bilgi kaynağı olarak PNG/JPG/JPEG/WEBP/TIF/TIFF/BMP yerel Tesseract OCR ile desteklenir; OpenAI/API kullanılmaz.
+- Tarifname ve Şekiller alanları DOC/DOCX/PDF kabul eder.
+- EPATS PDF üretiminde Word otomatik satır numaraları kaldırılır; font/stil/kenar boşluğu/header-footer ve teknik içerik korunur.
+- İstem sayımı farklı Word numId'lerinin aynı abstract numbering şemasına bağlı olduğu dosyalarda da doğru sayım yapar.
+
 
 - Süreçler bölümü AI/API kullanmadan çalışmaya devam eder.
 - Beyan formu tablolarında birleşik hücreler, çok hücreli satırlar ve `Adı Soyadı/Unvanı`, `Başvuru Sahibinin`, `Buluşu Yapan`, `Mucit` gibi gerçek form varyasyonları desteklenir.
