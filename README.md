@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.50
+# Patent Atölyesi v5.4.51
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 04.09.2026 tarihli güncel tam sürümüdür.
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-09-04.v40`
+Kural sürümü: `2026-09-04.v41`
 
 ## Yerel çalıştırma
 
@@ -526,3 +526,11 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 - `high` teknik katkılar nihai savunmada görünür biçimde öne çıkarılır. Özellikle unsur ilişkisi, teknik girdi→işlem→çıktı zinciri, ölçüm/sinyal kararlılığı ve güçlü bağımlı istem fallback'leri sessizce geçilemez.
 - Yalnız X kategorisi dokümanlar bulunan raporda `D1 ve D2 ... Birlikte Değerlendirildiğinde` bölümü yasaktır. Her X dokümanı ayrı savunulur. Birleşik bölüm yalnız gerçek Y veya uzmanın açık çoklu-doküman kombinasyonu varsa oluşturulur.
 - Savunma D dokümanları yüklendiğinde ikinci teknik analiz ayrı bir buton/onay istemeden otomatik başlar.
+
+
+## v5.4.51 / 2026-09-04.v41 — Görüşte özgün şekil zorunluluğu ve Çince yazı filtresi
+- Savunmaya alınan D dokümanının yüklenen özgün kaynağında kullanılabilir teknik şekil varsa, şekil artık isteğe bağlı değildir. Çince/Han yazı içermeyen en az bir özgün teknik şekil görüşe zorunlu olarak eklenir.
+- Seçilen şekil dokümanın gerçek teknik öğretisini göstermeye elverişli olmalıdır. Şekil sırf görsel doldurmak için rastgele seçilmez.
+- Şeklin üzerinde Çince/Han karakterli açıklama veya etiket varsa o şekil kullanılmaz. Aynı kaynakta Çince yazı içermeyen başka uygun şekil varsa sistem onu seçer. Yalnız hiç kullanılabilir şekil bulunmaması veya uygun şekillerin tamamının Çince yazı içermesi şekilsiz D bölümüne izin verir.
+- Belirli bir alt şekil seçilmişse yalnız o alt şeklin tamamı kırpılır ve büyütülür. Teknik etiket, çağrı, ok, eksen veya şeklin herhangi bir teknik bölümü kesilemez. Yalnız dış beyaz boşluk ve seçilmeyen diğer alt şekiller kırpılabilir.
+- Nihai Word kalite kapısı, uygun ve Çince yazı içermeyen özgün şekli bulunan bir D dokümanının `use_figure=false` bırakılmasını engeller.

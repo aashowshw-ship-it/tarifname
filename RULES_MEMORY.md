@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-09-04.v40**
+Kural sürümü: **2026-09-04.v41**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -590,3 +590,10 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - High öncelikli, istemde gerçekten bulunan teknik katkılar görüşte ana savunma noktası yapılır. Teknik katkının nasıl oluştuğu ve D dokümanının gerçek öğretisinin neden aynı katkıyı vermediği açıklanır. Güçlü bağımlı istem katkıları topluca geçiştirilemez.
 - Sadece X dokümanları varsa birleşik D1+D2 bölümü oluşturulmaz. Her X kendi başlığında ayrı yenilik+buluş basamağı savunması alır. Birleşik bölüm yalnız Y veya uzmanın açık kombinasyon gerekçesinde açılır.
 - D dokümanları yüklenince ikinci teknik analiz otomatik başlar, ayrı `2. analiz` düğmesi normal akıştan kaldırılır.
+
+
+## v5.4.51 / 2026-09-04.v41 — Görüşte şekil varsa zorunlu kullanım
+- Savunmaya alınan D dokümanının yüklenen özgün kaynağında kullanılabilir teknik şekil bulunuyorsa, Çince/Han yazı içermeyen en az bir özgün şekil görüşe zorunlu olarak eklenir.
+- Çince/Han karakterli açıklama veya etiket içeren şekil kullanılmaz. Aynı dokümanda Çince yazı içermeyen uygun alternatif varsa o seçilir. Yalnız hiç kullanılabilir şekil bulunmaması veya tüm kullanılabilir şekillerin Çince yazı içermesi şekilsiz bölüme izin verir.
+- Seçilen şeklin teknik içeriği eksiksiz korunur. Alt şekil seçildiyse ilgili alt şeklin tamamı kullanılır; yalnız dış beyaz boşluk ve seçilmeyen diğer alt şekiller kırpılabilir.
+- Bu kural v5.4.46'daki `şekil isteğe bağlıdır` yaklaşımını görüş çalışmaları bakımından yürürlükten kaldırır. Nihai Word kalite kapısı uygun şekli bulunan D bölümünde şekil yoksa FAIL verir.

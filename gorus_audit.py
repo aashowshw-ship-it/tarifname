@@ -836,7 +836,7 @@ def build_gorus_quality_report() -> dict[str, Any]:
         "Giriş sadeliği",
         "Paragraf devamlılığı + inline dayanak",
         "Noktalı virgül + hindsight kalıbı + iç süreç/BBF/müşteri-form ifadesi temizliği",
-        "696809 şablon + normal dayanak lead / kalın quote + seçilmiş şekillerde kalın caption + şekil öncesi/sonrası boşluk + render",
+        "696809 şablon + normal dayanak lead / kalın quote + kullanılabilir Çince-yazısız özgün şekillerin zorunlu kullanımı + kalın caption + şekil öncesi/sonrası boşluk + render",
         "X/Y savunma ayrımı + bireysel D bölümünde ara başlıksız akış + birleşik bölüm yalnız gerçek Y/açık kombinasyon itirazında",
         "Görüş dili: devralma/mimari soyut kalıp yasağı + paragraf devamlılığı",
         "Kapanış: Saygılarımızla + DESTEK PATENT A.Ş. iki satır kalın",
@@ -860,33 +860,88 @@ def _publication_key(text: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", str(text or "").upper())
 
 
-def _best_figure_page_png(pdf_data: bytes) -> bytes:
-    pdf = fitz.open(stream=pdf_data, filetype="pdf")
-    if not pdf.page_count:
-        raise ValueError("Patent PDF boş.")
-    scored: list[tuple[float, int]] = []
+def _contains_han_text(text: str) -> bool:
+    """Conservative visible-Chinese/Han script detector for patent figure pages."""
+    return bool(re.search(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]", str(text or "")))
+
+
+def _figure_marker_count(text: str) -> int:
     pats = [
-        re.compile(r"(?i)\bFIG(?:URE)?\.?\s*\d+"),
+        re.compile(r"(?i)\bFIG(?:URE)?\.?\s*\d+[A-Z]?"),
         re.compile(r"【\s*図\s*\d+\s*】"),
         re.compile(r"图\s*\d+"),
     ]
+    return sum(len(p.findall(str(text or ""))) for p in pats)
+
+
+def _target_figure_key(figure_reference: str) -> str:
+    ref = re.sub(r"[^A-Z0-9]", "", str(figure_reference or "").upper())
+    ref = re.sub(r"^(?:FIGURE|FIG|ŞEKİL|SEKIL)", "FIG", ref)
+    return ref
+
+
+def _matching_pdf_assets(number: str, assets: Iterable[Any]) -> list[Any]:
+    key = _publication_key(number)
+    candidates: list[tuple[int, int, Any]] = []
+    for a in list(assets or []):
+        name = _asset_name(a)
+        if Path(name).suffix.lower() != ".pdf":
+            continue
+        name_key = _publication_key(name)
+        tokens = re.findall(r"[A-Z]{2}[0-9A-Z]{6,}", name_key) or [name_key]
+        if key and (key in name_key or any(_edit_distance_le1(key, tok) for tok in tokens)):
+            penalty = 1 if re.search(r"(?i)(?:^|[-_ ])EN(?:[-_ .]|$)", Path(name).stem) else 0
+            candidates.append((penalty, len(name), a))
+    candidates.sort(key=lambda x: (x[0], x[1]))
+    return [x[2] for x in candidates]
+
+
+def has_usable_non_chinese_figure(number: str, assets: Iterable[Any]) -> bool:
+    """True when a matching uploaded source has at least one figure page without visible Han text."""
+    for asset in _matching_pdf_assets(number, assets):
+        try:
+            pdf = fitz.open(stream=_asset_data(asset), filetype="pdf")
+        except Exception:
+            continue
+        for page in pdf:
+            text = page.get_text("text") or ""
+            if _contains_han_text(text):
+                continue
+            if _figure_marker_count(text) > 0:
+                return True
+    return False
+
+
+def _best_figure_page_png(pdf_data: bytes, figure_reference: str = "") -> bytes:
+    pdf = fitz.open(stream=pdf_data, filetype="pdf")
+    if not pdf.page_count:
+        raise ValueError("Patent PDF boş.")
+    target = _target_figure_key(figure_reference)
+    scored: list[tuple[float, int]] = []
     for i, page in enumerate(pdf):
         text = page.get_text("text") or ""
-        markers = sum(len(p.findall(text)) for p in pats)
-        # Figure sheets tend to have many figure labels and relatively little prose.
+        # User rule: a figure page carrying visible Chinese/Han writing is not eligible.
+        if _contains_han_text(text):
+            continue
+        markers = _figure_marker_count(text)
+        if not markers:
+            continue
         score = markers * 100.0 - min(len(text), 6000) / 800.0
-        if markers:
-            score += i * 0.01
+        if target:
+            page_key = re.sub(r"[^A-Z0-9]", "", text.upper())
+            # FIG6A / FIGURE6A / ŞEKİL6A variants normalize to a compact target.
+            target_tail = re.sub(r"^FIG", "", target)
+            if ("FIG" + target_tail) in page_key or ("FIGURE" + target_tail) in page_key:
+                score += 1000.0
+        score += i * 0.01
         scored.append((score, i))
-    score, idx = max(scored)
-    if score <= 0:
-        # Safe fallback: choose page with least text after bibliographic first page.
-        candidates = [(len((pdf[i].get_text("text") or "")), i) for i in range(min(1, pdf.page_count - 1), pdf.page_count)]
-        idx = min(candidates)[1]
+    if not scored:
+        raise ValueError("Çince/Han yazı içermeyen kullanılabilir özgün teknik şekil bulunamadı.")
+    _, idx = max(scored)
     page = pdf[idx]
     pix = page.get_pixmap(matrix=fitz.Matrix(2.2, 2.2), alpha=False)
     png = pix.tobytes("png")
-    # Crop only uniform outer whitespace; no technical geometry is altered.
+    # Preserve the COMPLETE selected figure content. Crop only uniform outer whitespace.
     try:
         from PIL import Image, ImageChops
         im = Image.open(io.BytesIO(png)).convert("RGB")
@@ -911,22 +966,16 @@ def extract_cited_original_figure_pages(cited_documents: list[dict[str, Any]], a
         number = str(d.get("number", "")).strip()
         if not label or not number:
             continue
-        key = _publication_key(number)
-        candidates = []
-        for a in asset_list:
-            name = _asset_name(a)
-            if Path(name).suffix.lower() != ".pdf":
-                continue
-            name_key = _publication_key(name)
-            tokens = re.findall(r"[A-Z]{2}[0-9A-Z]{6,}", name_key) or [name_key]
-            if key and (key in name_key or any(_edit_distance_le1(key, tok) for tok in tokens)):
-                # Prefer original-language patent PDFs over browser EN exports for figures.
-                penalty = 1 if re.search(r"(?i)(?:^|[-_ ])EN(?:[-_ .]|$)", Path(name).stem) else 0
-                candidates.append((penalty, len(name), a))
+        candidates = _matching_pdf_assets(number, asset_list)
         if not candidates:
             continue
-        candidates.sort(key=lambda x: (x[0], x[1]))
-        out[label] = _best_figure_page_png(_asset_data(candidates[0][2]))
+        figure_reference = str(d.get("figure_reference", "")).strip()
+        for candidate in candidates:
+            try:
+                out[label] = _best_figure_page_png(_asset_data(candidate), figure_reference=figure_reference)
+                break
+            except ValueError:
+                continue
     return out
 
 
