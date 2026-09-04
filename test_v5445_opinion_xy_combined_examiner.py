@@ -36,7 +36,7 @@ def _long_combined():
         "The distinguishing technical difference is the claimed functional relationship between the processing stages. "
         "The technical effect is that the claimed data representation is used by the following processing stage in the defined sequence. "
         "The objective technical problem is therefore how to implement that processing relationship without changing the claimed data flow. "
-        "D1 teaches a first architecture and D2 teaches a different operation, but neither document provides a motivation, teaching or suggestion to alter its disclosed structure in the additional manner required by the claim. "
+        "D1 teaches a first structure and D2 teaches a different operation, but neither document provides a motivation, teaching or suggestion to alter its disclosed structure in the additional manner required by the claim. "
         "Combining the documents would require additional structural and functional modification of the data path, the processing order and the interaction of the claimed components. "
         "Those additional modifications are not disclosed as a coordinated solution in either document and are not presented as an adaptation for solving the stated technical problem. "
     )
@@ -57,9 +57,9 @@ def _opinion():
             {
                 "label": "D1",
                 "blocks": [{"type": "paragraph", "text": "D1 is briefly explained and the distinguishing technical difference is identified together with its technical contribution."}],
-                "novelty_heading": "Novelty over D1",
+                "novelty_heading": "",
                 "novelty_paragraphs": ["D1 does not directly and unambiguously disclose the complete claimed technical combination."],
-                "inventive_step_heading": "Inventive step over D1",
+                "inventive_step_heading": "",
                 "inventive_step_paragraphs": ["The technical effect and objective technical problem are addressed, and D1 provides no motivation or teaching for the additional technical modification required by the claim."],
             },
             {
@@ -67,7 +67,7 @@ def _opinion():
                 "blocks": [{"type": "paragraph", "text": "D2 is briefly explained and its technical teaching is distinguished from the claimed arrangement."}],
                 "novelty_heading": "",
                 "novelty_paragraphs": [],
-                "inventive_step_heading": "Inventive step over D2",
+                "inventive_step_heading": "",
                 "inventive_step_paragraphs": ["The technical effect and objective technical problem are addressed, and D2 provides no motivation or suggestion for the additional structural modification required by the claim."],
             },
         ],
@@ -79,9 +79,9 @@ def _opinion():
     }
 
 
-def test_version_v545_and_binding_rules_present():
-    assert APP_VERSION == "v5.4.45"
-    assert RULESET_VERSION == "2026-09-04.v35"
+def test_version_v546_and_binding_rules_present():
+    assert APP_VERSION == "v5.4.49"
+    assert RULESET_VERSION == "2026-09-04.v39"
     low = GORUS_RULES.casefold()
     for phrase in [
         "x kategorisindeki", "y kategorisindeki", "considered together",
@@ -100,7 +100,6 @@ def test_xy_structure_x_has_novelty_y_must_not_have_novelty():
     op = _opinion()
     validate_opinion_narrative_rules(op, "Inventive step objection", "technical specification")
     bad = _opinion()
-    bad["sections"][1]["novelty_heading"] = "Novelty over D2"
     bad["sections"][1]["novelty_paragraphs"] = ["Not disclosed."]
     with pytest.raises(ValueError, match="Y dokümanı"):
         validate_opinion_narrative_rules(bad, "Inventive step objection", "technical specification")
@@ -145,11 +144,11 @@ def test_examiner_persuasion_is_not_quality_score_and_is_validated():
 
 def test_app_runs_examiner_simulation_after_word_gates_and_one_strengthening_cycle():
     src = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert "data = _build_and_gate_current_opinion(opinion)" in src
+    assert "data = build_and_gate_gorus_opinion(opinion, final_spec_name, final_spec_bytes, source_state)" in src
     assert "gorus_examiner_persuasion_prompt(" in src
     assert 'int(examiner_assessment.get("persuasion_probability", 0)) < 75' in src
     assert "gorus_examiner_strengthen_prompt(" in src
-    assert "data = _build_and_gate_current_opinion(opinion)" in src
+    assert "data = build_and_gate_gorus_opinion(opinion, final_spec_name, final_spec_bytes, source_state)" in src
     assert "Mevcut uzman itirazını geri çektirme olasılığı (tahmini)" in src
     assert "genel kalite puanı" in src
 

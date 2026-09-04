@@ -506,8 +506,25 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
     """Deterministic style/flow/source-scope rules independent from the model's own grading."""
     intro = _norm(opinion.get("intro", ""))
     intro_low = intro.casefold()
-    if re.search(r"\bD\d+\b", intro, flags=re.I) or "en yakın doküman" in intro_low or "ilgili doküman" in intro_low:
-        raise ValueError("Görüş giriş kapısı: girişte D1/D2/D3 seçimi veya doküman kapsamı anlatılmamalıdır.")
+    report_raw = str(report_text or "")
+    report_low = report_raw.casefold()
+    report_upper = report_raw.upper()
+    is_tr_research = ("TÜRK PATENT VE MARKA KURUMU" in report_upper and "ARAŞTIRMA RAPORU" in report_upper and "EXTENDED EUROPEAN SEARCH REPORT" not in report_upper)
+    if is_tr_research:
+        if intro_low.startswith("türk patent ve marka kurumu tarafından") or intro_low.startswith("türk patent ve marka kurumu"):
+            raise ValueError("Görüş giriş kapısı: Türkiye araştırma görüşü `Türk Patent ve Marka Kurumu tarafından ...` diye başlayamaz, 696809 taslak kalıbı kullanılmalıdır.")
+        if not re.match(r"^\d{1,2}[./]\d{1,2}[./]\d{4}\s+tarihli\s+araştırma\s+raporunda,", intro, flags=re.I):
+            raise ValueError("Görüş giriş kapısı: Türkiye araştırma görüşü rapor tarihi ile başlayan `... tarihli araştırma raporunda,` taslak kalıbına uymuyor.")
+        if "başvuru sahibinin görüşleri aşağıda dikkatinize sunulmaktadır." not in intro_low:
+            raise ValueError("Görüş giriş kapısı: taslaktaki `Başvuru sahibinin görüşleri aşağıda dikkatinize sunulmaktadır.` cümlesi eksik.")
+        if "bakımından gösterilen benzer dokümanlar aşağıdadır:" not in intro_low:
+            raise ValueError("Görüş giriş kapısı: Türkiye araştırma görüşünün taslaktaki benzer dokümanlar kapanış cümlesi eksik.")
+        if not re.search(r"\bD\d+\b", intro, flags=re.I):
+            raise ValueError("Görüş giriş kapısı: Türkiye araştırma taslağında raporda ilgili istemler bakımından gösterilen D dokümanı/dokümanları girişte belirtilmelidir.")
+        if "numaralı istem" not in intro_low or "kriter" not in intro_low or "sağlamadığı belirtilmiştir" not in intro_low:
+            raise ValueError("Görüş giriş kapısı: Türkiye araştırma girişinde istem ve kriter sonucu taslak cümle yapısıyla yer almalıdır.")
+    elif re.search(r"\bD\d+\b", intro, flags=re.I) or "en yakın doküman" in intro_low or "ilgili doküman" in intro_low:
+        raise ValueError("Görüş giriş kapısı: bu görüş türünün girişinde D1/D2/D3 seçimi veya doküman kapsamı anlatılmamalıdır.")
 
     narratives = list(_iter_generated_narrative(opinion))
     forbidden_style = [
@@ -518,6 +535,10 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
         "buluş bildirim formu", "müşteri görüş formu", "müşteri bilgisi", "müşteriden gelen bilgi",
         "client form", "customer form", "client information", "customer information",
     ]
+    forbidden_opinion_diction = [
+        "devralmaktadır", "devralır", "devraldığı", "devralan", "inherits", "inherited",
+        "mimari", "architecture", "architectural", "benzersiz sinerji", "paradigma", "sofistike yaklaşım",
+    ]
     for kind, text in narratives:
         if ";" in text:
             raise ValueError(f"Görüş noktalama kapısı: model anlatımında noktalı virgül kullanılamaz ({kind}).")
@@ -526,6 +547,8 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
             raise ValueError(f"Görüş dil kapısı: hindsight/geriye-dönük kalıp savunma kullanılamaz ({kind}).")
         if re.search(r"\bBBF\b", text, flags=re.I) or any(x in low_text for x in forbidden_internal):
             raise ValueError(f"Görüş iç-kaynak kapısı: müşteri/BBF iç süreç ifadesi nihai görüşe taşınamaz ({kind}).")
+        if any(x in low_text for x in forbidden_opinion_diction):
+            raise ValueError(f"Görüş dil kapısı: devralma/mimari gibi yasak veya soyut model dili kullanılamaz ({kind}).")
 
     # Research-report X/Y structure: X => novelty + inventive step, Y => inventive step only.
     sections_by_label = {str(x.get("label", "")).upper(): x for x in opinion.get("sections") or []}
@@ -535,11 +558,13 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
         sec = sections_by_label.get(label, {})
         novelty_text = _norm(" ".join(sec.get("novelty_paragraphs") or []))
         inventive_text = _norm(" ".join(sec.get("inventive_step_paragraphs") or []))
+        if _norm(sec.get("novelty_heading", "")) or _norm(sec.get("inventive_step_heading", "")):
+            raise ValueError(f"Görüş başlık kapısı: {label} bireysel doküman bölümünde ayrı yenilik/buluş basamağı ara başlığı kullanılamaz.")
         if category == "X":
             if not novelty_text or not inventive_text:
                 raise ValueError(f"Görüş X/Y kapısı: {label} X dokümanı için hem yenilik hem buluş basamağı savunması zorunludur.")
         elif category == "Y":
-            if novelty_text or _norm(sec.get("novelty_heading", "")):
+            if novelty_text:
                 raise ValueError(f"Görüş X/Y kapısı: {label} Y dokümanı için yenilik savunması yazılamaz.")
             if not inventive_text:
                 raise ValueError(f"Görüş X/Y kapısı: {label} Y dokümanı için buluş basamağı savunması zorunludur.")
@@ -586,12 +611,21 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
             if m.group(2) not in allowed_refs:
                 raise ValueError(f"Görüş önceki-teknik referans kapısı: `{m.group(0)}` gibi gereksiz D-doküman unsur numarası kullanılmamalıdır.")
 
-    starters = ("bu teknik farkın", "bu teknik etki", "buna göre objektif teknik problem", "böylece")
+    starters = (
+        "bu farklardan", "bu farkların", "bu teknik farkın", "bu teknik etki",
+        "bu yapının teknik etkisi", "bu sistemin teknik etkisi",
+        "buna göre objektif teknik problem", "böylece",
+    )
     for section in opinion.get("sections") or []:
-        pars = [str(x) for x in section.get("inventive_step_paragraphs") or []]
+        pars = [
+            str(b.get("text", "")) for b in (section.get("blocks") or [])
+            if str(b.get("type", "paragraph")).lower() == "paragraph" and str(b.get("text", "")).strip()
+        ]
+        pars += [str(x) for x in section.get("novelty_paragraphs") or []]
+        pars += [str(x) for x in section.get("inventive_step_paragraphs") or []]
         for i, par in enumerate(pars):
             if i > 0 and _norm(par).casefold().startswith(starters):
-                raise ValueError("Görüş paragraf devamlılığı kapısı: teknik fark/etki/problem zincirinin doğal devamı gereksiz yeni paragrafa bölünmüş.")
+                raise ValueError("Görüş paragraf devamlılığı kapısı: önceki savunmanın doğal devamı gereksiz yeni paragrafa bölünmüş.")
     combined = opinion.get("combined_assessment") or {}
     pars = [str(x) for x in combined.get("paragraphs") or []]
     for i, par in enumerate(pars):
@@ -698,7 +732,12 @@ def validate_ep_prior_art_markup_text(paragraphs: Iterable[str], as_filed_spec_t
 
 def validate_gorus_docx_content_flow(docx_data: bytes) -> None:
     doc = Document(io.BytesIO(docx_data))
-    for p in doc.paragraphs:
+    continuation_starters = (
+        "bu farklardan", "bu farkların", "bu teknik farkın", "bu teknik etki",
+        "bu yapının teknik etkisi", "bu sistemin teknik etkisi",
+        "buna göre objektif teknik problem", "böylece",
+    )
+    for idx, p in enumerate(doc.paragraphs):
         text = p.text.strip()
         if not text:
             continue
@@ -707,6 +746,13 @@ def validate_gorus_docx_content_flow(docx_data: bytes) -> None:
         narrative_only = re.sub(r"“[^”]*”", "", text, flags=re.S)
         if ";" in narrative_only:
             raise ValueError("Görüş noktalama kapısı: Word gövdesinde noktalı virgül bulundu.")
+        low = _norm(narrative_only).casefold()
+        if any(x in low for x in ["devralmaktadır", "devralır", "devraldığı", "devralan", "inherits", "inherited", "mimari", "architecture", "architectural", "benzersiz sinerji", "paradigma", "sofistike yaklaşım"]):
+            raise ValueError("Görüş dil kapısı: Word gövdesinde devralma/mimari gibi yasak model dili bulundu.")
+        if idx > 0 and low.startswith(continuation_starters):
+            raise ValueError("Görüş paragraf devamlılığı kapısı: doğal devam cümlesi Word'de gereksiz yeni paragraf başlamış.")
+        if re.match(r"^D\d+\s+karşısında\s+(yenilik|buluş\s+basamağı)$", text, flags=re.I) or re.match(r"^(Novelty|Inventive\s+step)\s+over\s+D\d+$", text, flags=re.I):
+            raise ValueError("Görüş başlık kapısı: bireysel D bölümünde yenilik/buluş basamağı ara başlığı bulundu.")
 
 
 def validate_ai_quality_audit(audit: dict[str, Any]) -> None:
@@ -753,8 +799,10 @@ def build_gorus_quality_report() -> dict[str, Any]:
         "Giriş sadeliği",
         "Paragraf devamlılığı + inline dayanak",
         "Noktalı virgül + hindsight kalıbı + iç süreç/BBF/müşteri-form ifadesi temizliği",
-        "696809 şablon + normal dayanak lead / kalın quote + kalın şekil caption + şekil öncesi/sonrası boşluk + özgün şekil + render",
-        "X/Y savunma ayrımı + çoklu dokümanda ana birlikte değerlendirme",
+        "696809 şablon + normal dayanak lead / kalın quote + seçilmiş şekillerde kalın caption + şekil öncesi/sonrası boşluk + render",
+        "X/Y savunma ayrımı + bireysel D bölümünde ara başlıksız akış + çoklu dokümanda ana birlikte değerlendirme",
+        "Görüş dili: devralma/mimari soyut kalıp yasağı + paragraf devamlılığı",
+        "Kapanış: Saygılarımızla + DESTEK PATENT A.Ş. iki satır kalın",
         "Müşteri bilgi tam-kapsam ikinci okuma + bağımsız uzman-perspektifi ikna tahmini",
     ]
     return {"overall_pass": True, "checks": [{"name": x, "pass": True} for x in names]}
@@ -897,6 +945,24 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
     labels = [doc.tables[0].rows[i].cells[0].text.strip() for i in range(3)]
     if labels != ["Başvuru No", "Başvuru Sahibi", "Referans"]:
         raise ValueError("Görüş şablon kapısı: metadata etiketleri bozulmuş.")
+    # Individual D sections may not contain novelty/inventive-step subheadings.
+    forbidden_subheading_patterns = [
+        r"^D\d+\s+karşısında\s+yenilik$",
+        r"^D\d+\s+karşısında\s+buluş\s+basamağı$",
+        r"^Novelty\s+over\s+D\d+$",
+        r"^Inventive\s+step\s+over\s+D\d+$",
+    ]
+    for txt in texts:
+        if any(re.match(pat, txt, flags=re.I) for pat in forbidden_subheading_patterns):
+            raise ValueError("Görüş başlık kapısı: bireysel D bölümünde yenilik/buluş basamağı ara başlığı bulunamaz.")
+    # Signoff is bindingly bold on both lines.
+    for signoff_text in ("Saygılarımızla,", "DESTEK PATENT A.Ş."):
+        matching = [p for p in doc.paragraphs if p.text.strip() == signoff_text]
+        if not matching:
+            raise ValueError(f"Görüş kapanış kapısı: `{signoff_text}` satırı eksik.")
+        runs = [r for r in matching[-1].runs if r.text.strip()]
+        if not runs or not all(bool(r.bold) for r in runs):
+            raise ValueError(f"Görüş kapanış kapısı: `{signoff_text}` satırı kalın değil.")
     # Body paragraphs must remain Arial 11 and 1.5-spaced; first two institutional headings are exempt.
     sal_idx = texts.index("Sayın Uzman,")
     for p in doc.paragraphs[sal_idx:]:
@@ -914,7 +980,7 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
                 raise ValueError(f"Görüş şablon kapısı: Arial dışı font bulundu: {r.font.name}")
             if r.font.size is not None and abs(r.font.size.pt - 11) > 0.2:
                 raise ValueError(f"Görüş şablon kapısı: 11 punto dışı gövde metni bulundu: {r.font.size.pt}")
-    # Every required D-label must have a 2-row original-figure table with a drawing.
+    # Only D-labels explicitly selected for figure use are required to have a 2-row original-figure table with a drawing.
     found: set[str] = set()
     # Template figure archetype has two physical blank paragraphs immediately before the D-figure table.
     for idx, item in enumerate(seq):

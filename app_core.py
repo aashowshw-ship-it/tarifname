@@ -4338,7 +4338,7 @@ Kullanıcı tarafından girilmiş başvuru sahibi (varsa bağlayıcı): {applica
 Bu aşama ilk teknik analizden SONRA çalışmaktadır. İstemlerde kendiliğinden yeni revizyon önerme veya onaylanmış istem setini değiştirme.
 Raporun sonucunu dürüstçe koru. Buluş basamağı itirazında genel değerlendirme bölümünü raporun gerçek doküman kapsamına göre kur. Uzman yalnız D1 kullanmışsa tek-D1 inceleme gerekçesi üzerinden değerlendir, birden fazla doküman fiilen kullanılmışsa birlikte değerlendirme yap.
 Tarifname alıntılarında sayfa/satır numarası YAZMA; yalnız birebir quote text döndür. Sayfa ve satırlar Word üretiminden önce fiziksel tarifname üzerinden deterministik olarak eklenecektir.
-Her D1/D2/D3 bölümünün `figure_caption` alanı seçilen görüş diline uygun olsun. İngilizce çıktıda `D1 document - Figure ...`, Türkçe çıktıda `D1 dokümanı - Şekil ...` kullan. Yalnız yüklenen özgün patentte gerçekten bulunan şekil numaralarını kullan.
+Her D1/D2/D3 bölümünde şekil ZORUNLU değildir. Teknik savunmaya somut katkı sağlayan güvenilir bir özgün şekil varsa `use_figure=true` döndür ve `figure_reference` ile gerçek alt şekli, örneğin `Figure 1C` / `Şekil 1C`, belirt. Bu durumda `figure_caption` seçilen görüş diline uygun olsun. Şekil gerekli değilse `use_figure=false`, `figure_reference=""` ve `figure_caption=""` döndür. Yalnız yüklenen özgün patentte gerçekten bulunan şekil numaralarını kullan.
 
 JSON dışında yazma.
 ŞEMA:
@@ -4350,15 +4350,15 @@ JSON dışında yazma.
    {{
      "label":"D1",
      "heading":"D1 (...) dokümanı:",
-     "figure_caption":"D1 document - Figure ...",
+     "use_figure":false,"figure_reference":"","figure_caption":"",
      "blocks":[
        {{"type":"paragraph","text":""}},
        {{"type":"quote","text":"","attach_to_previous":true}},
        {{"type":"paragraph","text":""}}
      ],
-     "novelty_heading":"D1 karşısında yenilik",
+     "novelty_heading":"",
      "novelty_paragraphs":[""],
-     "inventive_step_heading":"D1 karşısında buluş basamağı",
+     "inventive_step_heading":"",
      "inventive_step_paragraphs":[""]
    }}
  ],
@@ -4367,19 +4367,21 @@ JSON dışında yazma.
 }}
 
 ÖZEL:
-- Şablon girişine uy: intro kısa olsun ve yalnız rapor tarihi/türü + istem/kriter sonucunu söylesin. Girişte D1/D2/D3 seçimini, `en yakın doküman` bilgisini veya hangi dokümana karşı savunma yapıldığını anlatma.
-- `applicant_override` boş değilse JSON `applicant` alanını aynen bu değer yap; değiştirme veya kısaltma. Boşsa yalnız rapor/tarifnameden güvenilir biçimde çıkar.
+- Şablon girişine birebir yapısal sadakat göster. TÜRKİYE ARAŞTIRMA RAPORU için `intro` serbest bir kurum özeti değildir ve `Türk Patent ve Marka Kurumu tarafından ...` diye BAŞLAYAMAZ. Taslaktaki kalıbı dosyaya göre doldur: `[rapor tarihi] tarihli araştırma raporunda, [ilgili istemler] numaralı istemlerin [ilgili D dokümanı/dokümanları] varlığında [raporda itiraz edilen kriter/kriterleri] kriterlerini sağlamadığı belirtilmiştir. Başvuru sahibinin görüşleri aşağıda dikkatinize sunulmaktadır. Araştırma raporunda [ilgili istemler] numaralı istemler bakımından gösterilen benzer dokümanlar aşağıdadır:`. X dokümanı varsa yenilik ve buluş basamağı, yalnız Y dokümanı varsa yalnız buluş basamağı mantığını rapora göre doğru kur. Bunun dışında girişe en yakın doküman, savunma stratejisi veya iç süreç açıklaması ekleme.
+- `applicant_override` boş değilse JSON `applicant` alanını aynen bu değer yap, değiştirme veya kısaltma. Boşsa yalnız rapor/tarifnameden güvenilir biçimde çıkar. Resmi raporda birden fazla başvuru sahibi ayrı satırlarda bulunuyorsa varsayılan olarak yalnız İLK başvuru sahibini `applicant` alanına yaz, diğerlerini otomatik birleştirme.
 - İnceleme raporunda X/Y etiketi yoksa category alanını boş bırak; uydurma kategori yazma.
 - Uzman gerekçeli değerlendirmeyi yalnız D1 üzerinden kurmuşsa YALNIZ D1'i görüşe al. D2/D3 yalnız `ilgili dokümanlar` listesinde bulunuyor ancak gerekçede kullanılmıyorsa görüşe bölüm, şekil veya tamamlayıcı savunma olarak ekleme.
 - Her dokümanın teknik öğretisini gerçekten yüklenen metinden çıkar. Patentte bulunmayan unsur/işlev yazma.
 - Tarifname alıntıları spec metninde birebir geçen tam cümle/pasaj olsun.
 - Buluş basamağı zincirinde çekirdek sıra teknik fark → teknik etki → objektif teknik problem şeklinde görünür olsun. Ayrıca ayırt edici teknik katkıyı, motivasyon/yönlendirmeyi ve istemdeki çözüme ulaşmak için kaynaklarda açıkça öğretilmeyen somut ilave yapısal/işlevsel değişiklikleri açıkça kur. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp savunma kullanma.
-- Araştırma raporunda category=`X` olan her dokümanda kısa objektif tanıtım ve özgün şekilden sonra `novelty_heading` + `novelty_paragraphs` ile yenilik savunması ve ayrıca buluş basamağı savunması yaz. category=`Y` olan dokümanda `novelty_heading` ve `novelty_paragraphs` alanlarını boş bırak, yalnız buluş basamağı savunması yaz.
-- İki veya daha fazla savunma dokümanı varsa bireysel D bölümlerini kontrollü uzunlukta tut. Her D bölümünde kısa özet + özgün şekil + o dokümana özgü kısa savunma bulunur. Ardından `combined_assessment` ZORUNLUDUR ve görüşün en uzun/en güçlü buluş basamağı savunması burada yer alır. İngilizce başlık örneği `D1 and D2 Documents Considered Together`, Türkçe başlık örneği `D1 ve D2 Dokümanları Birlikte Değerlendirildiğinde` şeklindedir. Üç veya daha fazla dokümanda tüm ilgili D etiketlerini başlığa al. Birlikte değerlendirme tek tek bölümleri tekrar etmez, dokümanların gerçek teknik öğretilerinin kombinasyonunun istemdeki çözümü neden sağlamadığını ayrıntılı açıklar.
+- Her bireysel D bölümü için yalnız ana D başlığını kullan. `novelty_heading` ve `inventive_step_heading` alanlarını DAİMA boş bırak. Araştırma raporunda category=`X` olan her dokümanda kısa objektif tanıtımdan sonra `novelty_paragraphs` içinde yenilik değerlendirmesini ve `inventive_step_paragraphs` içinde buluş basamağı değerlendirmesini akıcı paragraf olarak yaz. category=`Y` olan dokümanda `novelty_paragraphs` boş olsun, yalnız `inventive_step_paragraphs` yaz. Bireysel D bölümü içinde `D1 karşısında yenilik`, `D1 karşısında buluş basamağı`, `Novelty over D1`, `Inventive step over D1` gibi ara başlıklar kullanma. Şekil her iki kategoride de isteğe bağlıdır.
+- İki veya daha fazla savunma dokümanı varsa bireysel D bölümlerini kontrollü uzunlukta tut. Her D bölümünde kısa özet + o dokümana özgü kısa savunma bulunur, yalnız yararlı ve güvenilir bir özgün şekil seçilmişse araya şekil eklenir. Ardından `combined_assessment` ZORUNLUDUR ve görüşün en uzun/en güçlü buluş basamağı savunması burada yer alır. İngilizce başlık örneği `D1 and D2 Documents Considered Together`, Türkçe başlık örneği `D1 ve D2 Dokümanları Birlikte Değerlendirildiğinde` şeklindedir. Üç veya daha fazla dokümanda tüm ilgili D etiketlerini başlığa al. Birlikte değerlendirme tek tek bölümleri tekrar etmez, dokümanların gerçek teknik öğretilerinin kombinasyonunun istemdeki çözümü neden sağlamadığını ayrıntılı açıklar.
 - Tek savunma dokümanı varsa ana buluş basamağı savunması o dokümanın kendi bölümünde ayrıntılı kurulur, combined_assessment boş bırakılabilir.
 - Tarifname quote bloğunu hemen önceki teknik savunmanın doğal devamı yap ve `attach_to_previous=true` döndür. `Tarifname sayfa...` ayrı paragraf olmayacak.
-- `Bu teknik farkın...`, `Bu teknik etki...`, `Buna göre objektif teknik problem...` gibi bir önceki argümanın devamını gereksiz yeni paragrafa bölme.
+- `Bu farklardan...`, `Bu farkların...`, `Bu teknik farkın...`, `Bu teknik etki...`, `Bu yapının teknik etkisi...`, `Buna göre objektif teknik problem...` gibi bir önceki argümanın doğal devamını yeni paragrafa bölme, önceki ilgili paragrafın devamında yaz.
 - Model tarafından yazılan görüş metninde noktalı virgül (`;`) kullanma. Virgül veya nokta kullan. Birebir kaynak alıntısı noktalı virgül içeriyorsa alıntıyı değiştirme.
+- Model anlatımında `devralmaktadır`, `devralır`, `devraldığı`, `inherits`, `inherited` gibi miras dili kullanma. Bağımlı istem ilişkisini `İstem 2, İstem 1'in tüm teknik özelliklerini içerir...` mantığında doğal biçimde açıkla.
+- Model anlatımında `mimari`, `architecture`, `architectural`, `benzersiz sinerji`, `paradigma`, `sofistike yaklaşım` ifadelerini kullanma. Kaynağa uygun somut `yapı`, `düzenleme`, `işlevsel ilişki`, `işlem sırası` ve teknik unsur adlarını kullan. Birebir alıntıyı değiştirme.
 - Önceki teknik dokümanının unsur referans numaralarını (ör. piezoelektrik eleman 120, oturma tespit anahtarı 150) savunma için zorunlu olmadıkça yazma. Başvurunun kendi tarifname referansları gerektiğinde kullanılabilir.
 - Genel değerlendirme en az birkaç güçlü paragraf olsun, yalnız dokümanı özetleme, uzmanı teknik katkı üzerinden ikna et.
 - Müşteri bilgisinin tarifname dayanağı yoksa kullanma. Müşteri kaynaklarının TAMAMINI ikinci kez tara ve uzman itirazına cevap veren, tarifname/istem/D-dokümanı ile doğrulanabilen güçlü teknik bilgileri atlama. Test sonucu veya performans avantajı yalnız kaynakta gerçek veri varsa olgu olarak yazılabilir.
@@ -4412,7 +4414,7 @@ def gorus_quality_audit_prompt(
     opinion: dict[str, Any],
 ) -> str:
     return f"""{GORUS_RULES}
-Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül veya hindsight/geriye-dönük kalıp bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını, önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını, X dokümanında yenilik+buluş basamağı ve Y dokümanında yalnız buluş basamağı yapısının doğru uygulanıp uygulanmadığını, çoklu dokümanda ayrı `Considered Together/Birlikte Değerlendirildiğinde` bölümünün bireysel savunmalardan daha güçlü ve ayrıntılı olup olmadığını ve müşteri kaynağındaki doğrudan destekli güçlü teknik bilgilerin sessizce atlanıp atlanmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu ve görüşte önce geldiğini de kontrol et.
+Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül veya hindsight/geriye-dönük kalıp bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını, önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını, X dokümanında yenilik+buluş basamağı ve Y dokümanında yalnız buluş basamağı yapısının doğru uygulanıp uygulanmadığını, bireysel D bölümlerinde ayrıca yenilik/buluş basamağı ara başlığı açılmadığını, `devral.../inherit...` ve `mimari/architectur...` gibi yasak model dilinin bulunmadığını, `Bu farklardan...` gibi doğal devam cümlelerinin gereksiz yeni paragrafa bölünmediğini, çoklu dokümanda ayrı `Considered Together/Birlikte Değerlendirildiğinde` bölümünün bireysel savunmalardan daha güçlü ve ayrıntılı olup olmadığını ve müşteri kaynağındaki doğrudan destekli güçlü teknik bilgilerin sessizce atlanıp atlanmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu ve görüşte önce geldiğini de kontrol et.
 
 JSON dışında yazma.
 ŞEMA:
@@ -4427,10 +4429,14 @@ JSON dışında yazma.
     "spec_support_new_matter": {{"pass":true,"note":""}},
     "amendment_basis_order": {{"pass":true,"note":""}},
     "intro_concision": {{"pass":true,"note":""}},
+    "template_intro_fidelity": {{"pass":true,"note":""}},
     "paragraph_flow_inline_basis": {{"pass":true,"note":""}},
     "punctuation": {{"pass":true,"note":""}},
     "prior_art_reference_numbers": {{"pass":true,"note":""}},
     "xy_novelty_inventive_structure": {{"pass":true,"note":""}},
+    "individual_d_heading_flow": {{"pass":true,"note":""}},
+    "opinion_diction": {{"pass":true,"note":""}},
+    "paragraph_cohesion": {{"pass":true,"note":""}},
     "combined_document_defence_depth": {{"pass":true,"note":""}},
     "customer_material_coverage": {{"pass":true,"note":""}},
     "forbidden_internal_and_hindsight_phrases": {{"pass":true,"note":""}},
@@ -4459,7 +4465,7 @@ def gorus_repair_prompt(
     audit: dict[str, Any],
 ) -> str:
     return f"""{GORUS_RULES}
-Aşağıdaki görüş JSON'u ikinci kalite kontrolünde başarısız oldu. Yalnız belirtilen sorunları düzelt ve AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu yeniden döndür. Metadata, onaylı istem seti, rapor sonucu ve kaynak dayanakları korunmalı. Yeni doküman veya yeni teknik özellik ekleme. Tarifname alıntıları birebir kalmalı. Model anlatımında noktalı virgül kullanma. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp kullanma. İç süreçteki BBF/müşteri formu ifadelerini nihai görüşe taşıma. X/Y savunma ayrımını ve çoklu dokümanda ana `Considered Together/Birlikte Değerlendirildiğinde` bölümünü koru. Doğrudan tarifname dayanağını önceki savunma paragrafına `attach_to_previous=true` ile bağla.
+Aşağıdaki görüş JSON'u ikinci kalite kontrolünde başarısız oldu. Yalnız belirtilen sorunları düzelt ve AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu yeniden döndür. Metadata, onaylı istem seti, rapor sonucu ve kaynak dayanakları korunmalı. Yeni doküman veya yeni teknik özellik ekleme. Tarifname alıntıları birebir kalmalı. Model anlatımında noktalı virgül kullanma. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp kullanma. İç süreçteki BBF/müşteri formu ifadelerini nihai görüşe taşıma. X/Y savunma ayrımını ve çoklu dokümanda ana `Considered Together/Birlikte Değerlendirildiğinde` bölümünü koru. Bireysel D bölümlerinde yenilik/buluş basamağı ara başlığı kullanma. `devral.../inherit...` ve `mimari/architectur...` dilini temizle. `Bu farklardan...` gibi önceki düşüncenin doğal devamını yeni paragrafa bölme. Doğrudan tarifname dayanağını önceki savunma paragrafına `attach_to_previous=true` ile bağla.
 
 JSON dışında yazma.
 KALİTE RAPORU:\n{json.dumps(audit or {}, ensure_ascii=False, indent=2)}\n
@@ -4470,6 +4476,58 @@ TARİFNAME / ONAYLI İSTEMLER:\n{spec_text}\n
 SAVUNMA DOKÜMANLARI:\n{similar_text}\n
 MÜŞTERİ BİLGİLERİ:\n{customer_text}\n
 ÖN ANALİZ:\n{json.dumps(preanalysis or {}, ensure_ascii=False, indent=2)}\n"""
+
+
+def gorus_user_revision_prompt(
+    report_text: str,
+    spec_text: str,
+    prior_opinion_text: str,
+    similar_text: str,
+    customer_text: str,
+    preanalysis: dict[str, Any],
+    opinion: dict[str, Any],
+    user_instruction: str,
+) -> str:
+    return f"""{GORUS_RULES}
+Kullanıcı nihai görüş Word dosyasını incelemiş ve aşağıdaki doğal dil revizyon talebini vermiştir. MEVCUT GÖRÜŞ JSON'unu kullanıcının talebiyle sınırlı ve mümkün olan en küçük kapsamda revize et. AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu döndür.
+
+BAĞLAYICI REVİZYON KURALLARI:
+- Kullanıcının talebi yalnız görüş metnini düzeltir. Onaylı istem setini, tarifnameyi veya rapor sonucunu kendiliğinden değiştirme.
+- Kullanıcının açıkça istemediği bölümleri yeniden yazma, üslup uğruna geniş kapsamlı değişiklik yapma.
+- Yeni teknik özellik, yeni performans sonucu, yeni avantaj, yeni doküman veya kaynakta bulunmayan gerekçe ekleme.
+- Kullanıcı bir teknik iddia eklenmesini isterse bunu yalnız rapor/tarifname/savunma dokümanı veya doğrulanmış müşteri bilgisinde doğrudan destek varsa kullan. Destek yoksa mevcut görüşte bu iddiayı ekleme.
+- Tarifname quote bloklarını kullanıcı özellikle istemedikçe değiştirme. Değişiklik istenirse yeni quote yalnız tarifnamede birebir bulunuyorsa kullanılabilir.
+- D1/D2/D3 ana başlık yapısını, X/Y savunma kapsamını, çoklu dokümanda `Birlikte Değerlendirildiğinde / Considered Together` bölümünü ve bağlayıcı giriş/kapanış şablonunu koru.
+- Bireysel D bölümlerinde yenilik/buluş basamağı ara başlığı oluşturma. `devral.../inherit...`, `mimari/architectur...`, `hindsight/geriye dönük değerlendirme/working backwards`, noktalı virgül ve iç süreç/BBF/müşteri formu ifadelerini kullanma.
+- Kullanıcının şekil ekleme/kaldırma/kırpma talebi varsa yalnız yüklenen özgün patent kaynağında gerçekten bulunan şekli seç. Şekil zorunlu değildir.
+- Metadata alanlarını yalnız kullanıcı açıkça bunu talep etmişse ve rapor/kullanıcı girdisi destekliyorsa değiştir.
+- Kullanıcının talebi ile kaynak/dayanak/şablon kuralları çatışıyorsa kaynak ve bağlayıcı kalite kuralları korunur.
+
+JSON dışında yazma.
+KULLANICI REVİZYON TALEBİ:
+{user_instruction}
+
+MEVCUT GÖRÜŞ JSON:
+{json.dumps(opinion or {}, ensure_ascii=False, indent=2)}
+
+RAPOR:
+{report_text}
+
+TARİFNAME / ONAYLI İSTEMLER:
+{spec_text}
+
+ÖNCEKİ GÖRÜŞ:
+{prior_opinion_text}
+
+SAVUNMA DOKÜMANLARI:
+{similar_text}
+
+MÜŞTERİ BİLGİLERİ:
+{customer_text}
+
+ÖN ANALİZ:
+{json.dumps(preanalysis or {}, ensure_ascii=False, indent=2)}
+"""
 
 def gorus_examiner_persuasion_prompt(
     report_text: str,
@@ -4682,13 +4740,10 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
 
     docs = opinion.get("cited_documents") or []
     for i, d in enumerate(docs):
-        cat = str(d.get("category", "")).strip()
-        suffix = f" ({cat})" if cat else ""
         txt = f"{d.get('label','')}: {d.get('number','')}"
         title = str(d.get("title", "")).strip()
         if title:
             txt += f' - “{title}”'
-        txt += suffix
         archetype = template.paragraphs[6 if i == 0 else 7]
         _clone_paragraph_with_text(doc, archetype, txt, bold=False)
     _clone_blank(doc, template.paragraphs[8])
@@ -4713,7 +4768,7 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
                 if not first_para_inserted:
                     first_para_inserted = True
                     label = str(section.get("label", "")).upper()
-                    if label in figure_images:
+                    if bool(section.get("use_figure", False)) and label in figure_images:
                         _clone_blank(doc, template.paragraphs[11])
                         _clone_blank(doc, template.paragraphs[12])
                         caption = str(section.get("figure_caption", "")).strip() or f"{label} dokümanı - Şekil"
@@ -4722,25 +4777,17 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
                         figure_inserted = True
         if not figure_inserted:
             label = str(section.get("label", "")).upper()
-            if label in figure_images:
+            if bool(section.get("use_figure", False)) and label in figure_images:
                 _clone_blank(doc, template.paragraphs[11]); _clone_blank(doc, template.paragraphs[12])
                 caption = str(section.get("figure_caption", "")).strip() or f"{label} dokümanı - Şekil"
                 _add_original_figure_table(doc, template, caption, figure_images[label])
                 _clone_blank(doc, template.paragraphs[20])
-        _clone_blank(doc, template.paragraphs[20])
-        novelty_heading = str(section.get("novelty_heading", "")).strip()
         novelty_paras = list(section.get("novelty_paragraphs") or [])
-        if novelty_heading and novelty_paras:
-            _clone_paragraph_with_text(doc, template.paragraphs[21], novelty_heading, bold=True)
-            for par in novelty_paras:
-                _clone_paragraph_with_text(doc, template.paragraphs[22], par, bold=False)
-            _clone_blank(doc, template.paragraphs[23])
-        inv_heading = str(section.get("inventive_step_heading", "")).strip()
+        for par in novelty_paras:
+            _clone_paragraph_with_text(doc, template.paragraphs[22], par, bold=False)
         inv_paras = list(section.get("inventive_step_paragraphs") or [])
-        if inv_heading:
-            _clone_paragraph_with_text(doc, template.paragraphs[21], inv_heading, bold=True)
-            for par in inv_paras:
-                _clone_paragraph_with_text(doc, template.paragraphs[22], par, bold=False)
+        for par in inv_paras:
+            _clone_paragraph_with_text(doc, template.paragraphs[22], par, bold=False)
         _clone_blank(doc, template.paragraphs[23])
 
     combined = opinion.get("combined_assessment") or {}
@@ -4755,8 +4802,8 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
     _clone_blank(doc, template.paragraphs[37])
     # Exact signoff archetypes from template.
     lines = str(opinion.get("signoff", "Saygılarımızla,\nDESTEK PATENT A.Ş.")).splitlines()
-    _clone_paragraph_with_text(doc, template.paragraphs[38], lines[0] if lines else "Saygılarımızla,", bold=False)
-    _clone_paragraph_with_text(doc, template.paragraphs[39], lines[1] if len(lines) > 1 else "DESTEK PATENT A.Ş.", bold=False)
+    _clone_paragraph_with_text(doc, template.paragraphs[38], lines[0] if lines else "Saygılarımızla,", bold=True)
+    _clone_paragraph_with_text(doc, template.paragraphs[39], lines[1] if len(lines) > 1 else "DESTEK PATENT A.Ş.", bold=True)
 
     out = io.BytesIO(); doc.save(out)
     return out.getvalue()

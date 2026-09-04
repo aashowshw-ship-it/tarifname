@@ -5,9 +5,9 @@ from gorus_audit import build_gorus_quality_report
 ROOT=Path(__file__).resolve().parent
 
 def test_version_and_readme_are_synced():
-    assert APP_VERSION == "v5.4.45"
-    assert RULESET_VERSION == "2026-09-04.v35"
-    assert (ROOT/'README.md').read_text(encoding='utf-8').startswith('# Patent Atölyesi v5.4.45')
+    assert APP_VERSION == "v5.4.49"
+    assert RULESET_VERSION == "2026-09-04.v39"
+    assert (ROOT/'README.md').read_text(encoding='utf-8').startswith('# Patent Atölyesi v5.4.49')
 
 def test_exact_four_opinion_modes_are_visible_in_order():
     src=(ROOT/'app.py').read_text(encoding='utf-8')
@@ -33,7 +33,7 @@ def test_final_markup_is_authority_for_page_line_citations():
     assert 'final_spec_name = "son_markup_tarifname.docx"' in src
     assert 'validate_quote_locations_against_spec' in src
     # clean data must not be selected as the page/line authority in the final citation block
-    block=src[src.index('# Sayfa/satır numaraları modelden alınmaz'):src.index('def _build_and_gate_current_opinion', src.index('# Sayfa/satır numaraları modelden alınmaz'))]
+    block=src[src.index('# Sayfa/satır numaraları modelden alınmaz'):src.index('progress.progress(86', src.index('# Sayfa/satır numaraları modelden alınmaz'))]
     assert 'gorus_clean_data' not in block
 
 def test_quality_report_surfaces_final_markup_page_line_gate():

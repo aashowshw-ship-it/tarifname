@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-08-26.v24**
+Kural sürümü: **2026-09-04.v39**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -536,7 +536,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Bu sürümde amaç, v5.4.43'ün tamlık kazanımını korurken önceki patent dili, yapılanma, unsur-ilişkisi ve çalışma-prensibi kurallarını yeniden birincil yazım katmanı olarak bağlamaktır.
 
 
-## v5.4.45 / 2026-09-04.v35 — Görüş çalışması yeni bağlayıcı kuralları
+## v5.4.46 / 2026-09-04.v36 — Görüş çalışması yeni bağlayıcı kuralları
 
 - X dokümanı: kısa objektif açıklama + özgün şekil + yenilik savunması + buluş basamağı savunması. Y dokümanı: kısa objektif açıklama + özgün şekil + yalnız buluş basamağı savunması.
 - İki veya daha fazla savunma dokümanı varsa tek tek bölümler kontrollü uzunlukta tutulur, ardından tüm ilgili D etiketlerini içeren `... Birlikte Değerlendirildiğinde / ... Considered Together` başlığında en büyük ve en güçlü buluş basamağı savunması yapılır.
@@ -544,3 +544,42 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Görüşte BBF, müşteri görüş formu ve benzeri iç kaynak adları görünmez. Müşteri bilgisinin tamamı ikinci kez sınıflandırılır, doğrudan destekli ve itiraza cevap veren güçlü maddeler atlanamaz.
 - `Description page...` / `Tarifname sayfa...` lead'i normal, birebir alıntı kalın, D-figure caption'ı kalındır. Şekilden önce iki, şekilden sonra bir fiziksel boş paragraf zorunludur.
 - Nihai kalite kapılarından sonra bağımsız uzman-perspektifi değerlendirmesi yapılır. Yüzde genel kalite puanı değil, mevcut uzman yenilik/buluş basamağı itirazının bu görüş sonrasında geri çekilme olasılığına ilişkin gerekçeli tahmindir. Düşük/orta tahminde ve doğrudan kaynak desteği bulunduğunda yalnız bir teknik güçlendirme turu yapılır, bütün kapılar yeniden çalıştırılır ve final tahmin tekrar hesaplanır.
+
+
+## v5.4.46 / 2026-09-04.v36 — Görüş metadata, kategori görünürlüğü ve isteğe bağlı şekil seçimi
+
+- Resmi raporda birden fazla başvuru sahibi ayrı satırlarda yer alıyorsa görüş metadata alanında varsayılan olarak yalnız **ilk başvuru sahibi** kullanılır. Diğer başvuru sahipleri otomatik birleştirilmez. Kullanıcı açıkça tümünün yazılmasını isterse kullanıcı talebi geçerlidir.
+- Araştırma raporundaki **X/Y kategori işaretleri yalnız iç savunma mantığıdır**. Bağlayıcı görüş şablonunda D1/D2/D3 bibliyografik satırlarının veya başlıklarının sonuna `X`, `(X)`, `Y`, `(Y)` eklenmez.
+- D dokümanlarında şekil kullanımı zorunlu değildir. Yalnız teknik farkı veya gerçek doküman öğretisini açıklamaya somut katkı sağlayan ve güvenilir biçimde seçilebilen özgün şekiller kullanılır. Şekil kullanılmayan D bölümü doğrudan kısa objektif açıklama ve savunma ile devam eder.
+- Belirli bir alt şekil seçilmişse, örneğin **Şekil 1C**, tüm patent sayfası görüşe konulmaz. Yalnız ilgili özgün alt şekil teknik içeriği korunarak sıkı biçimde kırpılır ve okunabilir olacak şekilde büyütülür. Kırpma/ölçekleme dışında teknik geometri değiştirilmez.
+- Şekil caption bold ve şekil öncesi/sonrası boşluk kuralları yalnız gerçekten şekil kullanılan D bölümlerinde çalışır.
+
+
+## v5.4.47 / 2026-09-04.v37 — Görüş D-bölümü akışı, dil ve paragraf bütünlüğü
+
+- Her D dokümanı bölümünde yalnız ana `D1 (...) dokümanı:` / `D1 (...) document:` başlığı vardır. Bireysel bölüm içinde ayrıca `yenilik`, `buluş basamağı`, `Novelty over...`, `Inventive step over...` ara başlıkları kullanılmaz.
+- X dokümanında yenilik ve buluş basamağı savunması akıcı paragraf içinde, Y dokümanında yalnız buluş basamağı savunması akıcı paragraf içinde yapılır. Birden fazla savunma dokümanı varsa ek teknik başlık olarak yalnız ana `Birlikte Değerlendirildiğinde / Considered Together` bölümü kullanılır.
+- Görüş anlatımında `devral...` ve `inherit...` türevleri yasaktır. Bağımlı istem ilişkisi `İstem 2, İstem 1'in tüm teknik özelliklerini içerir...` gibi doğal ve açık ilişki diliyle yazılır.
+- Model anlatımında `mimari/architectur...`, `benzersiz sinerji`, `paradigma`, `sofistike yaklaşım` kullanılmaz. Birebir kaynak alıntısı bu kuralın dışındadır.
+- `Bu farklardan...`, `Bu farkların...`, `Bu teknik farkın...`, `Bu teknik etki...`, `Bu yapının teknik etkisi...`, `Buna göre objektif teknik problem...` gibi doğal devam cümleleri yeni paragraf başlatamaz.
+- `Saygılarımızla,` ile `DESTEK PATENT A.Ş.` satırlarının ikisi de bold olmak zorundadır.
+- İkinci okuma ve Word kalite kapısı ara başlık, yasak dil, paragraf devamlılığı ve kapanış bold kurallarını deterministik kontrol eder. Hata varsa indirme kapalı kalır.
+
+## v5.4.48 / 2026-09-04.v38 — Bağlayıcı Türkiye araştırma görüşü giriş kuralı
+
+- Türkiye araştırma görüşünde `Sayın Uzman,` sonrasındaki ilk paragraf taslaktan türetilir, model tarafından serbestçe yeniden kurulmaz.
+- `Türk Patent ve Marka Kurumu tarafından ...` veya benzeri kurum merkezli bir başlangıç yasaktır.
+- Bağlayıcı sıra: `[rapor tarihi] tarihli araştırma raporunda,` → ilgili istemler → ilgili D dokümanı/dokümanları → rapordaki yenilik/buluş basamağı sonucu → `Başvuru sahibinin görüşleri aşağıda dikkatinize sunulmaktadır.` → `Araştırma raporunda ... numaralı istemler bakımından gösterilen benzer dokümanlar aşağıdadır:`.
+- Taslaktaki D1/D2 örnekleri dosyaya göre D1, D2, D3 vb. biçiminde uyarlanır. X/Y kategorisi kriter dilini belirler.
+- Bu kapı model kalite değerlendirmesinden bağımsız deterministik olarak çalışır ve uyumsuz girişte Word çıktısını engeller.
+
+
+## v5.4.49 / 2026-09-04.v39 — Görüş sonrası revizyon çalışma alanı
+
+- Nihai görüş Word çıktısı görüş akışının son ve değiştirilemez noktası değildir. Word oluşturulduktan sonra arayüzde `Görüşü revize et` alanı açılır. Kullanıcı dosyayı inceledikten sonra doğal dille düzeltme talebi yazabilir.
+- Sohbet tipi revizyon **minimal ve hedefli** çalışır. Kullanıcının açık talebi dışındaki bölümler üslup amacıyla yeniden yazılmaz. Onaylı istem seti, rapor sonucu ve kaynak kapsamı korunur.
+- Kullanıcı talebi yeni teknik özellik, avantaj veya kaynak eklenmesini gerektiriyorsa yalnız mevcut kaynaklarda doğrudan destek bulunduğunda uygulanır. Desteksiz içerik eklenmez.
+- Her revizyonda kaynak/dayanak doğrulamaları, ikinci okuma, bağlayıcı görüş şablonu kalite kapıları, fiziksel sayfa-satır kontrolü ve uzman-perspektifi yeniden çalıştırılır. Başarısız revizyon mevcut başarılı Word dosyasını bozmaz.
+- `Metni doğrudan düzenle` alanı isteğe bağlı ve varsayılan kapalıdır. Kullanıcı giriş ve model yazımı paragrafları elle düzenleyebilir. Kaynak quote blokları kilitli gösterilir ve doğrudan elle değiştirilemez.
+- Elle düzenlenen metin de aynı kalite kapılarını geçmeden Word'e yazılamaz.
+- Revizyon geçmişi arayüzde kullanıcı/asistan mesajları biçiminde görünür.

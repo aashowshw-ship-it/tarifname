@@ -25,12 +25,12 @@ def base_opinion():
         "sections":[{"label":"D1","heading":"D1 (JP2005137881A) dokümanı:","blocks":[
             {"type":"paragraph","text":"İnceleme bildiriminde D1’in [0006], [0025], [0026], [0009] ve [0010] paragrafları esas alınmıştır. İstem 1 bakımından ayırt edici teknik fark ve teknik katkı, aynı piezoelektrik varlık sensörünün algılama ve enerji üretimini birlikte gerçekleştirmesidir. Teknik etki, bu işlevlerin ortak esnek yapıda bütünleşmesidir. Buna göre objektif teknik problem bu iki işlevin ortak yapıda nasıl gerçekleştirileceğidir. D1’de bu dönüşüme yönelik motivasyon veya yönlendirme bulunmamaktadır. D1 bu ilave teknik değişikliğe yönelik bir öğretim veya yönlendirme sağlamamaktadır."},
             {"type":"quote","text":SPEC,"attach_to_previous":True}],
-            "inventive_step_heading":"D1 karşısında buluş basamağı",
-            "inventive_step_paragraphs":["İstem 2, istem 1’in teknik katkısını devralmaktadır. Teknik etki ve objektif teknik problem bakımından aynı çekirdek devam eder. Uzman kişinin çözüme ulaşması için ilave yapısal değişiklikler gerekir ve D1’de yönlendirme yoktur."]}],
+            "novelty_heading":"","novelty_paragraphs":[],"inventive_step_heading":"",
+            "inventive_step_paragraphs":["İstem 2, İstem 1’in tüm teknik özelliklerini içerir ve ek özelliği bu teknik bütünle birlikte değerlendirilir. Teknik etki ve objektif teknik problem bakımından aynı teknik çekirdek devam eder. İlgili teknik alandaki uzmanın çözüme ulaşması için ilave yapısal değişiklikler gerekir ve D1’de yönlendirme yoktur."]}],
         "combined_assessment":{"heading":"D1 dokümanının inceleme gerekçesiyle birlikte değerlendirilmesi","paragraphs":[("Teknik fark ve teknik etki birlikte değerlendirildiğinde objektif teknik problem açık hale gelmektedir. D1’in somut öğretisinde başvurudaki teknik katkıya yönelik motivasyon veya yönlendirme yoktur. Uzman kişinin birden fazla yapısal ve işlevsel değişiklik yapması gerekir. Bu ilave değişiklikler D1’in somut teknik öğretisinden doğrudan çıkmaz ve D1 bu yönde teknik bir yönlendirme sağlamaz. "*5)]},
         "conclusion":["İstem 1 ve İstem 2 bakımından buluş basamağı kriterinin sağlandığı değerlendirilmektedir."]}
 def test_version_bumped():
-    assert APP_VERSION == "v5.4.45" and RULESET_VERSION == "2026-09-04.v35"
+    assert APP_VERSION == "v5.4.49" and RULESET_VERSION == "2026-09-04.v39"
 def test_rules_capture_new_controls():
     low=GORUS_RULES.casefold()
     for phrase in ["noktalı virgül","aynı paragrafta","ham-kaynak","okuma kapisi","teknik katkı","savunmada gerekli dokümanlar","referans numaraları"]: assert phrase in low

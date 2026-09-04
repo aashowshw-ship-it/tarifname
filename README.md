@@ -1,6 +1,6 @@
-# Patent Atölyesi v5.4.45
+# Patent Atölyesi v5.4.49
 
-Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 01.09.2026 tarihli güncel tam sürümüdür.
+Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 04.09.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme — ESKİ DOSYALARIN KALMAMASI ÖNEMLİ
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-09-01.v34`
+Kural sürümü: `2026-09-04.v39`
 
 ## Yerel çalıştırma
 
@@ -466,7 +466,7 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 
 
 
-## v5.4.45 / 2026-09-04.v35 — Görüş X/Y savunma mimarisi + birleşik doküman savunması + bağımsız uzman ikna tahmini
+## v5.4.46 / 2026-09-04.v36 — Görüş X/Y savunma mimarisi + birleşik doküman savunması + bağımsız uzman ikna tahmini
 
 - Araştırma raporunda **X** kategorisi için özgün şekilden sonra hem yenilik hem buluş basamağı savunması, **Y** kategorisi için yalnız buluş basamağı savunması zorunludur.
 - İki veya daha fazla savunma dokümanı varsa her doküman önce kısa teknik özet + özgün şekil + kısa bireysel savunma ile ele alınır. Ardından tüm ilgili D etiketlerini taşıyan ayrı **birlikte değerlendirme** başlığında görüşün en güçlü ve en ayrıntılı buluş basamağı savunması kurulur.
@@ -482,3 +482,40 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 - `working_principle` boş/yetersiz olamaz; en az üç referanslı unsurun birlikte çalışma ilişkisi taslakta ve nihai Word'de doğrulanır.
 - `AM1.5G`, `365–1000 nm`, `850 nm`, `PWM` gibi standart/kısaltma/değerler yalnız `technical_facts.statement` üzerinden değil doğrudan ham teknik passage üzerinden de çıkarılır. Detaylı Açıklamada bulunmayan literal, coverage beyanından bağımsız olarak indirmeyi bloke eder.
 - Böylece BBF'deki teknik ayrıntılar kaybolmadan önceki patent dili, yapılanma ve çalışma-prensibi düzeni korunur.
+
+
+## v5.4.46 / 2026-09-04.v36 — Görüş metadata, kategori görünürlüğü ve isteğe bağlı şekil seçimi
+
+- Resmi raporda birden fazla başvuru sahibi ayrı satırlarda yer alıyorsa görüş metadata alanında varsayılan olarak yalnız **ilk başvuru sahibi** kullanılır. Diğer başvuru sahipleri otomatik birleştirilmez. Kullanıcı açıkça tümünün yazılmasını isterse kullanıcı talebi geçerlidir.
+- Araştırma raporundaki **X/Y kategori işaretleri yalnız iç savunma mantığıdır**. Bağlayıcı görüş şablonunda D1/D2/D3 bibliyografik satırlarının veya başlıklarının sonuna `X`, `(X)`, `Y`, `(Y)` eklenmez.
+- D dokümanlarında şekil kullanımı zorunlu değildir. Yalnız teknik farkı veya gerçek doküman öğretisini açıklamaya somut katkı sağlayan ve güvenilir biçimde seçilebilen özgün şekiller kullanılır. Şekil kullanılmayan D bölümü doğrudan kısa objektif açıklama ve savunma ile devam eder.
+- Belirli bir alt şekil seçilmişse, örneğin **Şekil 1C**, tüm patent sayfası görüşe konulmaz. Yalnız ilgili özgün alt şekil teknik içeriği korunarak sıkı biçimde kırpılır ve okunabilir olacak şekilde büyütülür. Kırpma/ölçekleme dışında teknik geometri değiştirilmez.
+- Şekil caption bold ve şekil öncesi/sonrası boşluk kuralları yalnız gerçekten şekil kullanılan D bölümlerinde çalışır.
+
+
+## v5.4.47 / 2026-09-04.v37 — Görüş akış bütünlüğü, başlık ve kapanış kalite kapısı
+
+- Her D dokümanı için yalnız ana `D1 (...) dokümanı:` / `D1 (...) document:` başlığı kullanılır. Bireysel D bölümü içinde ayrıca `yenilik`, `buluş basamağı`, `Novelty over D1`, `Inventive step over D1` gibi ara başlıklar oluşturulmaz. X belgesindeki yenilik ve buluş basamağı değerlendirmeleri aynı D bölümünün akıcı paragraflarında, Y belgesindeki buluş basamağı değerlendirmesi yine akıcı paragrafta verilir.
+- Birden fazla savunma dokümanı için ek teknik başlık olarak zorunlu olan esas başlık yalnız `D1 ve D2 ... Birlikte Değerlendirildiğinde` / `... Considered Together` bölümüdür. Bu bölüm ana ve en ayrıntılı buluş basamağı savunması olmaya devam eder.
+- `devralmaktadır/devralır/devraldığı` ve İngilizce `inherits/inherited` gibi mekanik miras dili görüş anlatımında yasaktır. Bağımlı istem ilişkisi doğal patent vekili diliyle açıklanır.
+- Model tarafından yazılan görüş anlatımında `mimari/architecture/architectural`, `benzersiz sinerji`, `paradigma`, `sofistike yaklaşım` gibi soyut kalıplar kullanılmaz. Doğrudan teknik `yapı`, `düzenleme`, `işlevsel ilişki`, `işlem sırası` ve unsur adları tercih edilir. Birebir kaynak alıntısı değiştirilmez.
+- `Bu farklardan...`, `Bu farkların...`, `Bu teknik farkın...`, `Bu teknik etki...`, `Bu yapının teknik etkisi...`, `Buna göre objektif teknik problem...` gibi önceki savunmanın doğal devamı olan cümleler yeni paragraf açmaz, ilgili önceki paragrafın devamında kalır.
+- `Saygılarımızla,` ve `DESTEK PATENT A.Ş.` satırlarının ikisi de kalındır.
+- İkinci-okuma ve nihai Word kapıları bu kuralları deterministik olarak doğrular. Başlık, dil, paragraf devamlılığı veya kapanış bold kontrolü geçmezse çıktı kullanıcıya verilmez.
+
+## v5.4.48 / 2026-09-04.v38 — Türkiye araştırma görüşü giriş taslağı bağlayıcı
+
+- Türkiye araştırma raporuna karşı görüşte `Sayın Uzman,` sonrasındaki ilk paragraf serbestçe yeniden yazılamaz. `Türk Patent ve Marka Kurumu tarafından ...` gibi yeni bir kurumsal giriş oluşturulamaz.
+- Giriş, `Gorus_metni_696809_template.docx` içindeki cümle düzeninin dosyaya göre doldurulmuş hâlidir: rapor tarihi → ilgili istemler → ilgili D dokümanı/dokümanları → raporda itiraz edilen kriter → `Başvuru sahibinin görüşleri...` → `...gösterilen benzer dokümanlar aşağıdadır:`.
+- X/Y kategorisine göre kriter ifadesi doğru uyarlanır. X için yenilik ve buluş basamağı, yalnız Y için buluş basamağı esas alınır.
+- Deterministik giriş kalite kapısı, kurumsal serbest başlangıcı, eksik taslak cümlesini, eksik istem/kriter sonucunu veya D dokümanı bilgisini FAIL eder.
+
+
+## v5.4.49 / 2026-09-04.v39 — Görüş sonrası sohbet tipi revizyon ve doğrudan düzenleme
+
+- Görüş Word dosyası üretildikten sonra arayüzde **Görüşü revize et** alanı açılır. Kullanıcı Word'ü indirip inceledikten sonra doğal dille `şunu değiştir`, `D1'i kısalt`, `bu cümleyi önceki paragrafla birleştir`, `şu teknik farkı güçlendir` gibi talepler yazabilir.
+- Revizyon asistanı yalnız kullanıcının açık talep ettiği kapsamı değiştirir. Onaylı istem setini kendiliğinden değiştirmez, yeni teknik özellik/avantaj/kaynak üretmez ve desteklenmeyen iddia eklemez.
+- Her sohbet tipi revizyondan sonra ham kaynak doğrulaması, yapay zekâ ikinci okuması, fiziksel tarifname dayanak kontrolü, Word/şablon kalite kapıları ve bağımsız uzman-perspektifi yeniden çalıştırılır. Başarısız revizyon Word çıktısının üzerine yazılmaz.
+- Aynı ekranda kapalı bir **Metni doğrudan düzenle (isteğe bağlı)** bölümü bulunur. Giriş ve model üretimi savunma/sonuç paragrafları doğrudan değiştirilebilir. Birebir tarifname kaynak alıntıları yanlışlıkla bozulmaması için kilitli gösterilir.
+- Manuel düzenleme de kalite kapılarını atlayamaz. Kontroller geçerse aynı indirme düğmesi en son revize edilmiş Word dosyasını verir.
+- Revizyon geçmişi sohbet görünümünde ekranda tutulur.
