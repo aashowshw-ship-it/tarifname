@@ -57,5 +57,7 @@ test_v5447_opinion_flow_language_signoff.py
 test_v5448_opinion_template_intro.py
 test_v5449_opinion_post_generation_revision_ui.py
 test_v5450_opinion_technical_contribution_scope_autoanalysis.py
+test_v5451_opinion_mandatory_non_chinese_figures.py
+test_v5452_opinion_cited_rows.py
 validators.py
 word_math.py

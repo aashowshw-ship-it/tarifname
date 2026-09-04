@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-09-04.v41**
+Kural sürümü: **2026-09-04.v42**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -597,3 +597,9 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Çince/Han karakterli açıklama veya etiket içeren şekil kullanılmaz. Aynı dokümanda Çince yazı içermeyen uygun alternatif varsa o seçilir. Yalnız hiç kullanılabilir şekil bulunmaması veya tüm kullanılabilir şekillerin Çince yazı içermesi şekilsiz bölüme izin verir.
 - Seçilen şeklin teknik içeriği eksiksiz korunur. Alt şekil seçildiyse ilgili alt şeklin tamamı kullanılır; yalnız dış beyaz boşluk ve seçilmeyen diğer alt şekiller kırpılabilir.
 - Bu kural v5.4.46'daki `şekil isteğe bağlıdır` yaklaşımını görüş çalışmaları bakımından yürürlükten kaldırır. Nihai Word kalite kapısı uygun şekli bulunan D bölümünde şekil yoksa FAIL verir.
+
+
+## v5.4.52 / 2026-09-04.v42 — D dokümanı satırları sade ve kalın
+- Nihai görüş girişindeki bibliyografik D satırları yalnız `D1: yayın numarası`, `D2: yayın numarası`, `D3: yayın numarası` biçimindedir.
+- Doküman/patent başlığı bu satırlarda gösterilmez.
+- Satırın tamamı kalındır ve Word kalite kapısı bunu zorunlu doğrular.

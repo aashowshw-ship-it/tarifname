@@ -4393,6 +4393,7 @@ JSON dışında yazma.
 - Şablon girişine birebir yapısal sadakat göster. TÜRKİYE ARAŞTIRMA RAPORU için `intro` serbest bir kurum özeti değildir ve `Türk Patent ve Marka Kurumu tarafından ...` diye BAŞLAYAMAZ. Taslaktaki kalıbı dosyaya göre doldur: `[rapor tarihi] tarihli araştırma raporunda, [ilgili istemler] numaralı istemlerin [ilgili D dokümanı/dokümanları] varlığında [raporda itiraz edilen kriter/kriterleri] kriterlerini sağlamadığı belirtilmiştir. Başvuru sahibinin görüşleri aşağıda dikkatinize sunulmaktadır. Araştırma raporunda [ilgili istemler] numaralı istemler bakımından gösterilen benzer dokümanlar aşağıdadır:`. X dokümanı varsa yenilik ve buluş basamağı, yalnız Y dokümanı varsa yalnız buluş basamağı mantığını rapora göre doğru kur. Bunun dışında girişe en yakın doküman, savunma stratejisi veya iç süreç açıklaması ekleme.
 - `applicant_override` boş değilse JSON `applicant` alanını aynen bu değer yap, değiştirme veya kısaltma. Boşsa yalnız rapor/tarifnameden güvenilir biçimde çıkar. Resmi raporda birden fazla başvuru sahibi ayrı satırlarda bulunuyorsa varsayılan olarak yalnız İLK başvuru sahibini `applicant` alanına yaz, diğerlerini otomatik birleştirme.
 - İnceleme raporunda X/Y etiketi yoksa category alanını boş bırak; uydurma kategori yazma.
+- `cited_documents.title` analiz amacıyla tutulabilir, ancak nihai Word girişindeki bibliyografik satırlarda doküman başlığı kullanılmayacaktır. Bu satırlar yalnız `D1: <yayın numarası>`, `D2: <yayın numarası>`, `D3: <yayın numarası>` biçiminde ve tamamen kalın oluşturulur.
 - Uzman gerekçeli değerlendirmeyi yalnız D1 üzerinden kurmuşsa YALNIZ D1'i görüşe al. D2/D3 yalnız `ilgili dokümanlar` listesinde bulunuyor ancak gerekçede kullanılmıyorsa görüşe bölüm, şekil veya tamamlayıcı savunma olarak ekleme.
 - Her dokümanın teknik öğretisini gerçekten yüklenen metinden çıkar. Patentte bulunmayan unsur/işlev yazma.
 - Tarifname alıntıları spec metninde birebir geçen tam cümle/pasaj olsun.
@@ -4766,12 +4767,11 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
 
     docs = opinion.get("cited_documents") or []
     for i, d in enumerate(docs):
-        txt = f"{d.get('label','')}: {d.get('number','')}"
-        title = str(d.get("title", "")).strip()
-        if title:
-            txt += f' - “{title}”'
+        label = str(d.get("label", "")).strip()
+        number = str(d.get("number", "")).strip()
+        txt = f"{label}: {number}"
         archetype = template.paragraphs[6 if i == 0 else 7]
-        _clone_paragraph_with_text(doc, archetype, txt, bold=False)
+        _clone_paragraph_with_text(doc, archetype, txt, bold=True)
     _clone_blank(doc, template.paragraphs[8])
 
     figure_images = figure_images or {}

@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.51
+# Patent Atölyesi v5.4.52
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 04.09.2026 tarihli güncel tam sürümüdür.
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-09-04.v41`
+Kural sürümü: `2026-09-04.v42`
 
 ## Yerel çalıştırma
 
@@ -534,3 +534,10 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 - Şeklin üzerinde Çince/Han karakterli açıklama veya etiket varsa o şekil kullanılmaz. Aynı kaynakta Çince yazı içermeyen başka uygun şekil varsa sistem onu seçer. Yalnız hiç kullanılabilir şekil bulunmaması veya uygun şekillerin tamamının Çince yazı içermesi şekilsiz D bölümüne izin verir.
 - Belirli bir alt şekil seçilmişse yalnız o alt şeklin tamamı kırpılır ve büyütülür. Teknik etiket, çağrı, ok, eksen veya şeklin herhangi bir teknik bölümü kesilemez. Yalnız dış beyaz boşluk ve seçilmeyen diğer alt şekiller kırpılabilir.
 - Nihai Word kalite kapısı, uygun ve Çince yazı içermeyen özgün şekli bulunan bir D dokümanının `use_figure=false` bırakılmasını engeller.
+
+
+## v5.4.52 / 2026-09-04.v42 — Görüş D1/D2/D3 bibliyografik satırları
+- Görüş girişindeki D dokümanı satırları artık yalnız `D1: <yayın numarası>`, `D2: <yayın numarası>`, `D3: <yayın numarası>` biçimindedir.
+- Patent/doküman başlığı bu satırlara yazılmaz. `title` iç analiz verisinde tutulabilir.
+- D1/D2/D3 bibliyografik satırlarının tamamı kalın yazılır.
+- Nihai Word kalite kapısı, tam biçimi ve kalınlığı deterministik olarak doğrular. Başlık eki veya normal yazı bulunursa indirme açılmaz.

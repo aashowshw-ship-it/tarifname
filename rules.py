@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.51"
-RULESET_VERSION = "2026-09-04.v41"
+APP_VERSION = "v5.4.52"
+RULESET_VERSION = "2026-09-04.v42"
 
 EXTRA_CONTROLS_NOTICE = "EKSTRA KONTROLLER YAPILDI"
 EXTRA_CONTROL_GATE_KEYS = (
@@ -372,6 +372,7 @@ TÜRK PATENT GÖRÜŞ ÇALIŞMASI KURALLARI
 65. Nihai görüşte `BBF`, `buluş bildirim formu`, `müşteri görüş formu`, `müşteri bilgisi`, `müşteriden gelen bilgi`, `client form`, `customer form`, `client information`, `customer information` gibi iç süreç ve kaynak-form ifadeleri bulunamaz. Bu kaynaklardan doğrulanan teknik bilgi doğrudan Başvuru Sahibinin teknik savunması olarak yazılır.
 66. Tarifname dayanağında `Description page X, lines Y-Z states:` / `Tarifname sayfa X, satır Y-Z...` giriş kısmı NORMAL yazıdır, yalnız hemen arkasındaki birebir tarifname alıntısı KALIN yazılır. Şekil kullanılmışsa `D1 document - Figure X` / `D1 dokümanı - Şekil X` başlığı KALIN yazılır, şekilden önce iki fiziksel boş paragraf ve şekilden sonraki ilk savunma paragrafından önce bir fiziksel boş paragraf bulunur. Şekil kullanılmamışsa boş caption veya şekil tablosu oluşturulmaz.
 66A. Araştırma raporundaki `X` ve `Y` kategori işaretleri yalnız iç savunma yönlendirmesi içindir. Bağlayıcı görüş şablonunda D1/D2/D3 bibliyografik satırlarının veya başlıklarının sonuna `(X)`, `X`, `(Y)` veya `Y` eklenmez. Şablon açıkça kategori göstermiyorsa kategori nihai Word metninde görünmez.
+66B. Görüş girişindeki D1/D2/D3 bibliyografik satırlarında patent/doküman başlığı yazılmaz. Bu satırlar yalnız `D1: <yayın numarası>`, `D2: <yayın numarası>`, `D3: <yayın numarası>` biçimindedir ve satırın tamamı KALIN yazılır. Doküman başlığı analiz amacıyla iç veride tutulabilir ancak nihai Word bibliyografik satırına eklenemez.
 67. Müşteri bilgi/form kaynağı varsa taslak üretildikten sonra tamamı ikinci kez taranır. Her maddi teknik bilgi kullanılabilir, kısmen kullanılabilir, doğrudan dayanağı yok, istem kapsamı dışında, ek kanıt/test gerekli veya usuli olarak sınıflandırılır. Doğrudan kaynak destekli ve uzman itirazına cevap veren güçlü bir müşteri bilgisi sessizce atlanırsa kalite kapısı başarısızdır.
 68. Normal kalite kapıları geçtikten sonra görüş, mevcut uzman itirazını başlangıç noktası kabul eden bağımsız bir `uzman perspektifi` değerlendirmesinden geçirilir. Bu değerlendirmede verilen yüzde genel yazım/format kalite puanı değildir, hazırlanmış görüşün mevcut yenilik veya özellikle buluş basamağı itirazını uzman nezdinde geri çektirme olasılığına ilişkin gerekçeli bir tahmindir.
 69. Bağımsız uzman perspektifi tahmini düşük veya orta kalırsa ve kaynaklar yeni konu yaratmadan daha güçlü bir teknik savunmaya izin veriyorsa yalnız bir kez güçlendirme turu yapılabilir. Bu tur öncelikle ayırt edici teknik farkların, teknik etkinin ve çoklu doküman varsa birlikte değerlendirme bölümünün teknik derinliğini artırır, yeni teknik özellik veya dayanak dışı avantaj eklemez. Ardından bütün kalite kapıları yeniden çalıştırılır ve son uzman-perspektifi yüzdesi tekrar hesaplanır.

@@ -30,7 +30,7 @@ def base_opinion():
         "combined_assessment":{"heading":"","paragraphs":[]},
         "conclusion":["İstem 1 ve İstem 2 bakımından buluş basamağı kriterinin sağlandığı değerlendirilmektedir."]}
 def test_version_bumped():
-    assert APP_VERSION == "v5.4.51" and RULESET_VERSION == "2026-09-04.v41"
+    assert APP_VERSION == "v5.4.52" and RULESET_VERSION == "2026-09-04.v42"
 def test_rules_capture_new_controls():
     low=GORUS_RULES.casefold()
     for phrase in ["noktalı virgül","aynı paragrafta","ham-kaynak","okuma kapisi","teknik katkı","savunmada gerekli dokümanlar","referans numaraları"]: assert phrase in low

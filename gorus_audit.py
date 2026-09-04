@@ -1031,6 +1031,21 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
     labels = [doc.tables[0].rows[i].cells[0].text.strip() for i in range(3)]
     if labels != ["Başvuru No", "Başvuru Sahibi", "Referans"]:
         raise ValueError("Görüş şablon kapısı: metadata etiketleri bozulmuş.")
+    # Cited-document bibliography rows are binding: only D-label + publication number, fully bold, no title suffix.
+    for d in opinion.get("cited_documents") or []:
+        label = str(d.get("label", "")).strip()
+        number = str(d.get("number", "")).strip()
+        if not label or not number:
+            continue
+        expected = f"{label}: {number}"
+        exact = [p for p in doc.paragraphs if p.text.strip() == expected]
+        if not exact:
+            raise ValueError(f"Görüş D-listesi kapısı: `{expected}` bibliyografik satırı eksik veya doküman başlığı eklenmiş.")
+        runs = [r for r in exact[0].runs if r.text.strip()]
+        if not runs or not all(bool(r.bold) for r in runs):
+            raise ValueError(f"Görüş D-listesi kapısı: `{expected}` satırının tamamı kalın değil.")
+        if any(p.text.strip().startswith(expected + " -") for p in doc.paragraphs):
+            raise ValueError(f"Görüş D-listesi kapısı: `{expected}` satırına patent/doküman başlığı eklenemez.")
     # Individual D sections may not contain novelty/inventive-step subheadings.
     forbidden_subheading_patterns = [
         r"^D\d+\s+karşısında\s+yenilik$",
