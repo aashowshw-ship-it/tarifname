@@ -29,8 +29,8 @@ def base_opinion():
     }
 
 def test_version_and_new_binding_rules():
-    assert APP_VERSION == "v5.4.49"
-    assert RULESET_VERSION == "2026-09-04.v39"
+    assert APP_VERSION == "v5.4.50"
+    assert RULESET_VERSION == "2026-09-04.v40"
     low = GORUS_RULES.casefold()
     for phrase in ["ara başlıklar oluşturulmaz", "devralmaktadır", "mimari", "saygılarımızla", "bu farklardan"]:
         assert phrase in low

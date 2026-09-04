@@ -27,10 +27,10 @@ def base_opinion():
             {"type":"quote","text":SPEC,"attach_to_previous":True}],
             "novelty_heading":"","novelty_paragraphs":[],"inventive_step_heading":"",
             "inventive_step_paragraphs":["İstem 2, İstem 1’in tüm teknik özelliklerini içerir ve ek özelliği bu teknik bütünle birlikte değerlendirilir. Teknik etki ve objektif teknik problem bakımından aynı teknik çekirdek devam eder. İlgili teknik alandaki uzmanın çözüme ulaşması için ilave yapısal değişiklikler gerekir ve D1’de yönlendirme yoktur."]}],
-        "combined_assessment":{"heading":"D1 dokümanının inceleme gerekçesiyle birlikte değerlendirilmesi","paragraphs":[("Teknik fark ve teknik etki birlikte değerlendirildiğinde objektif teknik problem açık hale gelmektedir. D1’in somut öğretisinde başvurudaki teknik katkıya yönelik motivasyon veya yönlendirme yoktur. Uzman kişinin birden fazla yapısal ve işlevsel değişiklik yapması gerekir. Bu ilave değişiklikler D1’in somut teknik öğretisinden doğrudan çıkmaz ve D1 bu yönde teknik bir yönlendirme sağlamaz. "*5)]},
+        "combined_assessment":{"heading":"","paragraphs":[]},
         "conclusion":["İstem 1 ve İstem 2 bakımından buluş basamağı kriterinin sağlandığı değerlendirilmektedir."]}
 def test_version_bumped():
-    assert APP_VERSION == "v5.4.49" and RULESET_VERSION == "2026-09-04.v39"
+    assert APP_VERSION == "v5.4.50" and RULESET_VERSION == "2026-09-04.v40"
 def test_rules_capture_new_controls():
     low=GORUS_RULES.casefold()
     for phrase in ["noktalı virgül","aynı paragrafta","ham-kaynak","okuma kapisi","teknik katkı","savunmada gerekli dokümanlar","referans numaraları"]: assert phrase in low

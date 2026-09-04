@@ -32,8 +32,8 @@ def _base_opinion():
 
 
 def test_version_and_ruleset_bumped_for_opinion_gate():
-    assert APP_VERSION == "v5.4.49"
-    assert RULESET_VERSION == "2026-09-04.v39"
+    assert APP_VERSION == "v5.4.50"
+    assert RULESET_VERSION == "2026-09-04.v40"
 
 
 def test_gorus_rules_include_language_physical_line_original_figures_and_full_output_gate():
@@ -77,12 +77,12 @@ def test_payload_rejects_missing_metadata():
     op = _base_opinion()
     op["applicant"] = ""
     with pytest.raises(ValueError, match="Başvuru Sahibi"):
-        validate_opinion_payload(op, "Buluş basamağı", "örnek tarifname")
+        validate_opinion_payload(op, "Buluş basamağı. D1 ve D2 birlikte değerlendirilmiştir.", "örnek tarifname")
 
 
 def test_payload_rejects_weak_inventive_step_combined_assessment():
     op = _base_opinion()
-    op["cited_documents"] = [{"label":"D1","number":""},{"label":"D2","number":""}]
+    op["cited_documents"] = [{"label":"D1","number":"","category":"X"},{"label":"D2","number":"","category":"Y"}]
     op["sections"] = [
         {"label":"D1","blocks":[{"type":"paragraph","text":"Teknik fark ve teknik etki açıklanır."}],"inventive_step_paragraphs":["Objektif teknik problem ve motivasyon değerlendirilir."]},
         {"label":"D2","blocks":[{"type":"paragraph","text":"İkinci dokümanın teknik öğretisi açıklanır."}],"inventive_step_paragraphs":["İlave teknik değişiklikler değerlendirilir."]},

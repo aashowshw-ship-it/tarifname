@@ -80,8 +80,8 @@ def _opinion():
 
 
 def test_version_v546_and_binding_rules_present():
-    assert APP_VERSION == "v5.4.49"
-    assert RULESET_VERSION == "2026-09-04.v39"
+    assert APP_VERSION == "v5.4.50"
+    assert RULESET_VERSION == "2026-09-04.v40"
     low = GORUS_RULES.casefold()
     for phrase in [
         "x kategorisindeki", "y kategorisindeki", "considered together",
@@ -105,7 +105,7 @@ def test_xy_structure_x_has_novelty_y_must_not_have_novelty():
         validate_opinion_narrative_rules(bad, "Inventive step objection", "technical specification")
 
 
-def test_multi_document_combined_is_mandatory_and_main_defence():
+def test_y_combination_requires_combined_main_defence():
     op = _opinion()
     validate_opinion_payload(op, "Inventive step objection", "technical specification")
     bad = _opinion()
@@ -113,6 +113,17 @@ def test_multi_document_combined_is_mandatory_and_main_defence():
     with pytest.raises(ValueError, match="çoklu-doküman|birlikte"):
         validate_opinion_payload(bad, "Inventive step objection", "technical specification")
 
+
+
+def test_x_only_documents_must_not_create_combined_section():
+    op = _opinion()
+    op["cited_documents"][1]["category"] = "X"
+    op["combined_assessment"] = {"heading": "", "paragraphs": []}
+    validate_opinion_payload(op, "Inventive step objection for D1. Separate inventive step objection for D2.", "technical specification")
+    bad = _opinion()
+    bad["cited_documents"][1]["category"] = "X"
+    with pytest.raises(ValueError, match="X-doküman|Birlikte"):
+        validate_opinion_payload(bad, "Inventive step objection for D1. Separate inventive step objection for D2.", "technical specification")
 
 def test_final_opinion_bans_hindsight_internal_forms_and_semicolon():
     for text, pattern in [

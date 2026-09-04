@@ -271,6 +271,38 @@ def validate_revision_amendment_section(opinion: dict[str, Any], revision_requir
             raise ValueError("Görüş revizyon-dayanak kapısı: revizyon uygulanmadığı halde değişiklik bölümü oluşturulmuş.")
 
 
+def _explicit_multi_document_combination(report_text: str, labels: list[str]) -> bool:
+    """Return True only when the examiner text actually combines cited documents.
+
+    Mere presence of several X documents or the generic Y-category definition is not enough.
+    """
+    text = _norm(report_text)
+    if len(labels) < 2 or not text:
+        return False
+    # Look for two D labels in a local window together with combination wording.
+    label_alt = "|".join(re.escape(x) for x in labels if x)
+    if not label_alt:
+        return False
+    patterns = [
+        rf"(?:{label_alt}).{{0,180}}(?:ve|ile|and|\+).{{0,80}}(?:{label_alt}).{{0,180}}(?:birlikte|kombin|combination|combined|together)",
+        rf"(?:birlikte|kombin|combination|combined|together).{{0,180}}(?:{label_alt}).{{0,180}}(?:ve|ile|and|\+).{{0,80}}(?:{label_alt})",
+        rf"(?:{label_alt}).{{0,120}}(?:ve|ile|and|\+).{{0,80}}(?:{label_alt}).{{0,120}}(?:buluş basamağı|inventive step)",
+    ]
+    return any(re.search(pat, text, flags=re.I | re.S) for pat in patterns)
+
+
+def opinion_requires_combined_assessment(opinion: dict[str, Any], report_text: str) -> bool:
+    docs = opinion.get("cited_documents") or []
+    if len(docs) < 2:
+        return False
+    categories = {str(d.get("category", "")).strip().upper() for d in docs}
+    # A Y citation is, by definition, used with another document for inventive step.
+    if "Y" in categories:
+        return True
+    labels = [str(d.get("label", "")).strip().upper() for d in docs if str(d.get("label", "")).strip()]
+    return _explicit_multi_document_combination(report_text, labels)
+
+
 def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_text: str) -> None:
     for field, label in [("application_no", "Başvuru No"), ("applicant", "Başvuru Sahibi"), ("reference", "Referans")]:
         if not _norm(opinion.get(field, "")):
@@ -305,14 +337,15 @@ def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_tex
             sec_parts += [str(x) for x in sec.get("novelty_paragraphs") or []]
             sec_parts += [str(x) for x in sec.get("inventive_step_paragraphs") or []]
             individual_lengths.append(len(_norm(" ".join(sec_parts))))
-        if len(docs) >= 2:
-            heading = _norm(combined.get("heading", ""))
+        combined_required = opinion_requires_combined_assessment(opinion, report_text)
+        heading = _norm(combined.get("heading", ""))
+        if combined_required:
             heading_low = heading.casefold()
             labels = [str(d.get("label", "")).upper() for d in docs if d.get("label")]
             if not heading or not ("birlikte" in heading_low or "considered together" in heading_low):
-                raise ValueError("Görüş çoklu-doküman kapısı: ayrı bir dokümanların birlikte değerlendirilmesi başlığı zorunludur.")
+                raise ValueError("Görüş kombinasyon kapısı: Y/açık kombinasyon itirazında dokümanların birlikte değerlendirilmesi başlığı zorunludur.")
             if any(label and label.casefold() not in heading_low for label in labels):
-                raise ValueError("Görüş çoklu-doküman kapısı: birlikte değerlendirme başlığı tüm savunma D etiketlerini içermelidir.")
+                raise ValueError("Görüş kombinasyon kapısı: birlikte değerlendirme başlığı fiilen kombine edilen D etiketlerini içermelidir.")
             low = combined_text.casefold()
             required_concepts = [
                 ("teknik fark", "technical difference", "distinguishing technical"),
@@ -326,8 +359,12 @@ def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_tex
                 raise ValueError("Görüş buluş basamağı birlikte değerlendirmesi zinciri eksik kuruyor: " + ", ".join(missing))
             largest = max(individual_lengths or [0])
             if len(combined_text) < 1200 or (largest and len(combined_text) <= largest):
-                raise ValueError("Görüş çoklu-doküman kapısı: ana birlikte değerlendirme bölümü bireysel savunmalardan daha kapsamlı ve ayrıntılı olmalıdır.")
-        elif len(docs) == 1:
+                raise ValueError("Görüş kombinasyon kapısı: ana birlikte değerlendirme bölümü bireysel savunmalardan daha kapsamlı ve ayrıntılı olmalıdır.")
+        else:
+            # Several independent X documents do not create a combination objection.
+            if heading or combined_text:
+                raise ValueError("Görüş X-doküman kapsamı kapısı: yalnız X kategorisi/ayrı tek-doküman itirazları varken `Birlikte Değerlendirildiğinde` bölümü oluşturulamaz.")
+        if len(docs) == 1:
             # With one document, the main inventive-step defence belongs in that document section.
             if not individual_lengths or individual_lengths[0] < 750:
                 raise ValueError("Görüş tek-doküman buluş basamağı savunması yeterince ayrıntılı değil.")
@@ -800,7 +837,7 @@ def build_gorus_quality_report() -> dict[str, Any]:
         "Paragraf devamlılığı + inline dayanak",
         "Noktalı virgül + hindsight kalıbı + iç süreç/BBF/müşteri-form ifadesi temizliği",
         "696809 şablon + normal dayanak lead / kalın quote + seçilmiş şekillerde kalın caption + şekil öncesi/sonrası boşluk + render",
-        "X/Y savunma ayrımı + bireysel D bölümünde ara başlıksız akış + çoklu dokümanda ana birlikte değerlendirme",
+        "X/Y savunma ayrımı + bireysel D bölümünde ara başlıksız akış + birleşik bölüm yalnız gerçek Y/açık kombinasyon itirazında",
         "Görüş dili: devralma/mimari soyut kalıp yasağı + paragraf devamlılığı",
         "Kapanış: Saygılarımızla + DESTEK PATENT A.Ş. iki satır kalın",
         "Müşteri bilgi tam-kapsam ikinci okuma + bağımsız uzman-perspektifi ikna tahmini",
@@ -1026,11 +1063,14 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
     expected_quotes = sum(1 for _ in _iter_quote_objects(opinion))
     if expected_quotes and quote_count < expected_quotes:
         raise ValueError("Görüş dayanak kapısı: bazı birebir tarifname alıntılarında sayfa/satır görünmüyor.")
-    # For multiple defense documents, combined inventive-step reasoning is the main section.
+    # A combined inventive-step section is valid only for an actual Y/explicit combination objection.
     docs = opinion.get("cited_documents") or []
     combined = opinion.get("combined_assessment") or {}
     combined_text = _norm(" ".join(combined.get("paragraphs") or []))
-    if len(docs) >= 2 and combined_text:
+    categories = {str(d.get("category", "")).strip().upper() for d in docs if str(d.get("category", "")).strip()}
+    combined_required = "Y" in categories
+    all_x = bool(categories) and categories == {"X"}
+    if combined_text and not all_x:
         low = combined_text.casefold()
         if not any(x in low for x in ["teknik", "technical"]):
             raise ValueError("Görüş buluş basamağı kapısı: birlikte değerlendirmede teknik fark/etki tartışılmamış.")
@@ -1038,6 +1078,8 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
             raise ValueError("Görüş buluş basamağı kapısı: birlikte değerlendirmede objektif teknik problem eksik.")
         if not any(x in low for x in ["motivasyon", "yönlendirme", "motivation", "teaching", "suggestion"]):
             raise ValueError("Görüş buluş basamağı kapısı: birleştirme motivasyonu/yönlendirmesi tartışılmamış.")
+    elif all_x and (combined_text or _norm(combined.get("heading", ""))):
+        raise ValueError("Görüş X-doküman kapsamı kapısı: yalnız X kategorisi dokümanlar varken birlikte değerlendirme bölümü oluşturulmuş.")
 
 
 def render_gorus_docx_smoke_test(data: bytes) -> int:

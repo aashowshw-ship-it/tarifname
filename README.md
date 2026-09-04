@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.49
+# Patent Atölyesi v5.4.50
 
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 04.09.2026 tarihli güncel tam sürümüdür.
 
@@ -152,7 +152,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-09-04.v39`
+Kural sürümü: `2026-09-04.v40`
 
 ## Yerel çalıştırma
 
@@ -469,7 +469,7 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 ## v5.4.46 / 2026-09-04.v36 — Görüş X/Y savunma mimarisi + birleşik doküman savunması + bağımsız uzman ikna tahmini
 
 - Araştırma raporunda **X** kategorisi için özgün şekilden sonra hem yenilik hem buluş basamağı savunması, **Y** kategorisi için yalnız buluş basamağı savunması zorunludur.
-- İki veya daha fazla savunma dokümanı varsa her doküman önce kısa teknik özet + özgün şekil + kısa bireysel savunma ile ele alınır. Ardından tüm ilgili D etiketlerini taşıyan ayrı **birlikte değerlendirme** başlığında görüşün en güçlü ve en ayrıntılı buluş basamağı savunması kurulur.
+- Birden fazla X dokümanı olması tek başına birlikte değerlendirme gerekçesi değildir. Her X dokümanı ayrı yenilik + buluş basamağı savunmasıyla ele alınır. **Birlikte değerlendirme** bölümü yalnız Y kategorisi veya uzmanın açık doküman kombinasyonu varsa kurulur.
 - Görüş gövdesinde `hindsight`, `geriye dönük değerlendirme`, `working backwards` ve eşdeğer kalıplar yasaktır. Önceki teknikte eksik somut teknik öğretinin ve gerekli ilave değişikliklerin neden önerilmediği doğrudan açıklanır. Model anlatımında noktalı virgül yasağı korunur.
 - Nihai görüşte BBF/müşteri formu/iç süreç kaynak adları görünmez. Müşteri teknik bilgilerinin tamamı ikinci kez sınıflandırılır ve doğrudan destekli güçlü maddelerin sessizce atlanması kalite kapısını düşürür.
 - Dayanak lead metni normal, birebir tarifname alıntısı kalın, `D1 document - Figure X` / `D1 dokümanı - Şekil X` caption'ı kalındır. Şekilden önce iki, şekilden sonra bir fiziksel boş paragraf zorunludur.
@@ -496,7 +496,7 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 ## v5.4.47 / 2026-09-04.v37 — Görüş akış bütünlüğü, başlık ve kapanış kalite kapısı
 
 - Her D dokümanı için yalnız ana `D1 (...) dokümanı:` / `D1 (...) document:` başlığı kullanılır. Bireysel D bölümü içinde ayrıca `yenilik`, `buluş basamağı`, `Novelty over D1`, `Inventive step over D1` gibi ara başlıklar oluşturulmaz. X belgesindeki yenilik ve buluş basamağı değerlendirmeleri aynı D bölümünün akıcı paragraflarında, Y belgesindeki buluş basamağı değerlendirmesi yine akıcı paragrafta verilir.
-- Birden fazla savunma dokümanı için ek teknik başlık olarak zorunlu olan esas başlık yalnız `D1 ve D2 ... Birlikte Değerlendirildiğinde` / `... Considered Together` bölümüdür. Bu bölüm ana ve en ayrıntılı buluş basamağı savunması olmaya devam eder.
+- `D1 ve D2 ... Birlikte Değerlendirildiğinde` / `... Considered Together` başlığı doküman sayısına göre otomatik değildir. Yalnız Y kategorisi veya uzmanın açık kombinasyon gerekçesi varsa kullanılır. Sadece X dokümanları varsa bu bölüm oluşturulmaz.
 - `devralmaktadır/devralır/devraldığı` ve İngilizce `inherits/inherited` gibi mekanik miras dili görüş anlatımında yasaktır. Bağımlı istem ilişkisi doğal patent vekili diliyle açıklanır.
 - Model tarafından yazılan görüş anlatımında `mimari/architecture/architectural`, `benzersiz sinerji`, `paradigma`, `sofistike yaklaşım` gibi soyut kalıplar kullanılmaz. Doğrudan teknik `yapı`, `düzenleme`, `işlevsel ilişki`, `işlem sırası` ve unsur adları tercih edilir. Birebir kaynak alıntısı değiştirilmez.
 - `Bu farklardan...`, `Bu farkların...`, `Bu teknik farkın...`, `Bu teknik etki...`, `Bu yapının teknik etkisi...`, `Buna göre objektif teknik problem...` gibi önceki savunmanın doğal devamı olan cümleler yeni paragraf açmaz, ilgili önceki paragrafın devamında kalır.
@@ -519,3 +519,10 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 - Aynı ekranda kapalı bir **Metni doğrudan düzenle (isteğe bağlı)** bölümü bulunur. Giriş ve model üretimi savunma/sonuç paragrafları doğrudan değiştirilebilir. Birebir tarifname kaynak alıntıları yanlışlıkla bozulmaması için kilitli gösterilir.
 - Manuel düzenleme de kalite kapılarını atlayamaz. Kontroller geçerse aynı indirme düğmesi en son revize edilmiş Word dosyasını verir.
 - Revizyon geçmişi sohbet görünümünde ekranda tutulur.
+
+
+## v5.4.50 / 2026-09-04.v40 — Teknik katkı önceliği + X/Y kombinasyon kapsamı + otomatik ikinci analiz
+- İlk görüş analizi artık istem/tarifname içindeki gerçek teknik katkıları `technical_contributions` envanterinde istem numarası, birebir dayanak, teknik etki ve high/medium/low savunma önceliğiyle çıkarır.
+- `high` teknik katkılar nihai savunmada görünür biçimde öne çıkarılır. Özellikle unsur ilişkisi, teknik girdi→işlem→çıktı zinciri, ölçüm/sinyal kararlılığı ve güçlü bağımlı istem fallback'leri sessizce geçilemez.
+- Yalnız X kategorisi dokümanlar bulunan raporda `D1 ve D2 ... Birlikte Değerlendirildiğinde` bölümü yasaktır. Her X dokümanı ayrı savunulur. Birleşik bölüm yalnız gerçek Y veya uzmanın açık çoklu-doküman kombinasyonu varsa oluşturulur.
+- Savunma D dokümanları yüklendiğinde ikinci teknik analiz ayrı bir buton/onay istemeden otomatik başlar.

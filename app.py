@@ -4270,6 +4270,7 @@ Ana dosya referansı: {reference}
 
 Önce rapordaki itirazları, mevcut istemleri, tarifname dayanaklarını, varsa önceki görüşü ve müşteri bilgisini birlikte değerlendir. Türkiye araştırma raporuysa veya EP dosyası araştırma raporuysa savunma kapsamını yalnız X/Y kategorisi dokümanlarla sınırla. A kategorisini savunma dokümanı yapma. İnceleme/ofis aksiyonlarında yalnız uzmanın gerekçede fiilen kullandığı dokümanları esas al.
 İstem değişikliği sırf daha iyi yazılabilir diye önerilmez. Yalnızca itirazı gidermek için gerçekten zorunluysa amendment_required=true yap.
+Ayrıca tarifname ve istemleri ayrı bir TEKNİK KATKI taramasından geçir. İstemde gerçekten bulunan ve savunmayı güçlendirebilecek teknik katkıları `technical_contributions` alanında çıkar. Salt amaç, estetik, prestij veya genel avantajı teknik katkı sayma. Unsurların özel işlevsel ilişkisi, ayrı sensör/veri işleme ilişkisi, ölçüm kararlılığı/sinyal kalitesi sağlayan fiziksel düzenleme, teknik girdi→işlem→çıktı zinciri ve bağımlı istemlerdeki gerçek fallback teknik özelliklerini özellikle tara. Her katkının teknik etkisi ve savunma önceliği doğrudan kaynakla desteklenmeli. Kaynaksız performans sonucu uydurma.
 Revizyon gerekiyorsa EN AZ DEĞİŞİKLİK ilkesini uygula. Her old_text, TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olsun; tüm istemi old_text olarak verme. Değişmeyen kelimeyi old_text/new_text içine alma: artikel değişiyorsa yalnız artikel, unsur adı değişiyorsa yalnız değişen unsur adı, eksik harf varsa yalnız gerekli karakter farkı öner.
 EP raporunda Rule 42(1)(b) gereği önceki teknik dokümanlarının tarifnameye eklenmesi isteniyorsa description_prior_art_updates üret. Bu alanda D1/D2 etiketi kullanma. Mevcut `As a result of the research on the subject...` formatını izle. objective_summary yalnız ilgili X/Y kaynağın gerçek içeriği olsun. however_difference yalnız as-filed tarifnamede/istemlerde açıkça bulunan teknik farkı kullansın, yeni özellik veya yeni teknik etki eklemesin.
 Her basis_quote tarifnamede birebir bulunan dayanak pasajı olsun. Kapsam aşımı/yeni konu yaratma.
@@ -4283,6 +4284,15 @@ JSON dışında yazma.
   "amendment_required":false,
   "amendment_reason":"",
   "no_amendment_reason":"",
+  "technical_contributions":[
+    {{
+      "claim_number":"1",
+      "feature":"",
+      "technical_effect":"",
+      "basis_quote":"",
+      "defence_priority":"high|medium|low"
+    }}
+  ],
   "amendments":[
     {{
       "claim_number":"1",
@@ -4358,6 +4368,18 @@ def validate_gorus_analysis(analysis: dict[str, Any], spec_text: str) -> None:
             raise ValueError(f"Revize edilecek eski ifade tarifnamede birebir doğrulanamadı: {old_text[:120]}...")
         if basis and basis not in normalized_spec:
             raise ValueError(f"Revizyon dayanağı tarifnamede birebir doğrulanamadı: {basis[:120]}...")
+
+    for contribution in analysis.get("technical_contributions") or []:
+        feature = re.sub(r"\s+", " ", str(contribution.get("feature", ""))).strip()
+        effect = re.sub(r"\s+", " ", str(contribution.get("technical_effect", ""))).strip()
+        basis = re.sub(r"\s+", " ", str(contribution.get("basis_quote", ""))).strip()
+        priority = str(contribution.get("defence_priority", "")).strip().lower()
+        if not feature or not effect or not basis:
+            raise ValueError("Teknik katkı envanterinde feature/technical_effect/basis_quote boş bırakılamaz.")
+        if priority not in {"high", "medium", "low"}:
+            raise ValueError("Teknik katkı savunma önceliği high/medium/low olmalıdır.")
+        if basis not in normalized_spec:
+            raise ValueError("Teknik katkı dayanağı tarifnamede birebir doğrulanamadı.")
 
     for upd in analysis.get("description_prior_art_updates") or []:
         kind=str(upd.get("source_kind", "")).strip().lower()
@@ -4439,8 +4461,10 @@ JSON dışında yazma.
 - Tarifname alıntıları spec metninde birebir geçen tam cümle/pasaj olsun.
 - Buluş basamağı zincirinde çekirdek sıra teknik fark → teknik etki → objektif teknik problem şeklinde görünür olsun. Ayrıca ayırt edici teknik katkıyı, motivasyon/yönlendirmeyi ve istemdeki çözüme ulaşmak için kaynaklarda açıkça öğretilmeyen somut ilave yapısal/işlevsel değişiklikleri açıkça kur. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp savunma kullanma.
 - Her bireysel D bölümü için yalnız ana D başlığını kullan. `novelty_heading` ve `inventive_step_heading` alanlarını DAİMA boş bırak. Araştırma raporunda category=`X` olan her dokümanda kısa objektif tanıtımdan sonra `novelty_paragraphs` içinde yenilik değerlendirmesini ve `inventive_step_paragraphs` içinde buluş basamağı değerlendirmesini akıcı paragraf olarak yaz. category=`Y` olan dokümanda `novelty_paragraphs` boş olsun, yalnız `inventive_step_paragraphs` yaz. Bireysel D bölümü içinde `D1 karşısında yenilik`, `D1 karşısında buluş basamağı`, `Novelty over D1`, `Inventive step over D1` gibi ara başlıklar kullanma. Şekil her iki kategoride de isteğe bağlıdır.
-- İki veya daha fazla savunma dokümanı varsa bireysel D bölümlerini kontrollü uzunlukta tut. Her D bölümünde kısa özet + o dokümana özgü kısa savunma bulunur, yalnız yararlı ve güvenilir bir özgün şekil seçilmişse araya şekil eklenir. Ardından `combined_assessment` ZORUNLUDUR ve görüşün en uzun/en güçlü buluş basamağı savunması burada yer alır. İngilizce başlık örneği `D1 and D2 Documents Considered Together`, Türkçe başlık örneği `D1 ve D2 Dokümanları Birlikte Değerlendirildiğinde` şeklindedir. Üç veya daha fazla dokümanda tüm ilgili D etiketlerini başlığa al. Birlikte değerlendirme tek tek bölümleri tekrar etmez, dokümanların gerçek teknik öğretilerinin kombinasyonunun istemdeki çözümü neden sağlamadığını ayrıntılı açıklar.
-- Tek savunma dokümanı varsa ana buluş basamağı savunması o dokümanın kendi bölümünde ayrıntılı kurulur, combined_assessment boş bırakılabilir.
+- Doküman sayısı iki veya daha fazla diye otomatik `combined_assessment` oluşturma. Yalnız X kategorisi dokümanlar varsa `combined_assessment` başlığı ve paragrafları TAMAMEN boş kalmalıdır. Her X dokümanını kendi bölümünde ayrı ayrı yenilik ve buluş basamağı yönünden güçlü biçimde savun.
+- `combined_assessment` yalnız raporda en az bir Y kategorisiyle gerçek doküman kombinasyonu kurulmuşsa veya inceleme/ofis aksiyonunda uzman iki ya da daha fazla dokümanı açıkça birlikte kullanarak buluş basamağı itirazı kurmuşsa oluşturulur. Bu durumda başlık fiilen kombine edilen D etiketlerini içerir ve kombinasyonun istemdeki çözüme neden götürmediğini ayrıntılı açıklar.
+- Tek savunma dokümanı varsa ana buluş basamağı savunması o dokümanın kendi bölümünde ayrıntılı kurulur ve combined_assessment boş bırakılır.
+- ÖN ANALİZ içindeki `technical_contributions` listesini savunma önceliği olarak kullan. `defence_priority=high` olan ve istemde gerçekten bulunan katkıları nihai görüşte görünür biçimde öne çıkar. Teknik katkının hangi somut unsur/işlev ilişkisine dayandığını, teknik etkisini ve ilgili D dokümanının neden aynı katkıyı vermediğini açıkla. Bağımlı istemde yüksek öncelikli teknik katkı varsa o istemi topluca geçiştirme.
 - Tarifname quote bloğunu hemen önceki teknik savunmanın doğal devamı yap ve `attach_to_previous=true` döndür. `Tarifname sayfa...` ayrı paragraf olmayacak.
 - `Bu farklardan...`, `Bu farkların...`, `Bu teknik farkın...`, `Bu teknik etki...`, `Bu yapının teknik etkisi...`, `Buna göre objektif teknik problem...` gibi bir önceki argümanın doğal devamını yeni paragrafa bölme, önceki ilgili paragrafın devamında yaz.
 - Model tarafından yazılan görüş metninde noktalı virgül (`;`) kullanma. Virgül veya nokta kullan. Birebir kaynak alıntısı noktalı virgül içeriyorsa alıntıyı değiştirme.
@@ -4478,7 +4502,7 @@ def gorus_quality_audit_prompt(
     opinion: dict[str, Any],
 ) -> str:
     return f"""{GORUS_RULES}
-Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül veya hindsight/geriye-dönük kalıp bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını, önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını, X dokümanında yenilik+buluş basamağı ve Y dokümanında yalnız buluş basamağı yapısının doğru uygulanıp uygulanmadığını, bireysel D bölümlerinde ayrıca yenilik/buluş basamağı ara başlığı açılmadığını, `devral.../inherit...` ve `mimari/architectur...` gibi yasak model dilinin bulunmadığını, `Bu farklardan...` gibi doğal devam cümlelerinin gereksiz yeni paragrafa bölünmediğini, çoklu dokümanda ayrı `Considered Together/Birlikte Değerlendirildiğinde` bölümünün bireysel savunmalardan daha güçlü ve ayrıntılı olup olmadığını ve müşteri kaynağındaki doğrudan destekli güçlü teknik bilgilerin sessizce atlanıp atlanmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu ve görüşte önce geldiğini de kontrol et.
+Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül veya hindsight/geriye-dönük kalıp bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını, önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını, X dokümanında yenilik+buluş basamağı ve Y dokümanında yalnız buluş basamağı yapısının doğru uygulanıp uygulanmadığını, bireysel D bölümlerinde ayrıca yenilik/buluş basamağı ara başlığı açılmadığını, `devral.../inherit...` ve `mimari/architectur...` gibi yasak model dilinin bulunmadığını, `Bu farklardan...` gibi doğal devam cümlelerinin gereksiz yeni paragrafa bölünmediğini, `Considered Together/Birlikte Değerlendirildiğinde` bölümünün yalnız gerçek Y/kombinasyon itirazında bulunup bulunmadığını, yalnız X dokümanları varsa birleşik bölümün boş bırakılıp bırakılmadığını, gerçek kombinasyon varsa bu bölümün yeterince güçlü olup olmadığını, ÖN ANALİZDE high öncelikli olarak belirlenen doğrudan destekli teknik katkıların görüşte görünür biçimde öne çıkarılıp çıkarılmadığını ve müşteri kaynağındaki doğrudan destekli güçlü teknik bilgilerin sessizce atlanıp atlanmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu ve görüşte önce geldiğini de kontrol et.
 
 JSON dışında yazma.
 ŞEMA:
@@ -4500,7 +4524,8 @@ JSON dışında yazma.
     "individual_d_heading_flow": {{"pass":true,"note":""}},
     "opinion_diction": {{"pass":true,"note":""}},
     "paragraph_cohesion": {{"pass":true,"note":""}},
-    "combined_document_defence_depth": {{"pass":true,"note":""}},
+    "combined_document_defence_scope_and_depth": {{"pass":true,"note":""}},
+    "technical_contribution_priority_coverage": {{"pass":true,"note":""}},
     "customer_material_coverage": {{"pass":true,"note":""}},
     "forbidden_internal_and_hindsight_phrases": {{"pass":true,"note":""}},
     "conclusion_consistency": {{"pass":true,"note":""}}
@@ -4528,7 +4553,7 @@ def gorus_repair_prompt(
     audit: dict[str, Any],
 ) -> str:
     return f"""{GORUS_RULES}
-Aşağıdaki görüş JSON'u ikinci kalite kontrolünde başarısız oldu. Yalnız belirtilen sorunları düzelt ve AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu yeniden döndür. Metadata, onaylı istem seti, rapor sonucu ve kaynak dayanakları korunmalı. Yeni doküman veya yeni teknik özellik ekleme. Tarifname alıntıları birebir kalmalı. Model anlatımında noktalı virgül kullanma. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp kullanma. İç süreçteki BBF/müşteri formu ifadelerini nihai görüşe taşıma. X/Y savunma ayrımını ve çoklu dokümanda ana `Considered Together/Birlikte Değerlendirildiğinde` bölümünü koru. Bireysel D bölümlerinde yenilik/buluş basamağı ara başlığı kullanma. `devral.../inherit...` ve `mimari/architectur...` dilini temizle. `Bu farklardan...` gibi önceki düşüncenin doğal devamını yeni paragrafa bölme. Doğrudan tarifname dayanağını önceki savunma paragrafına `attach_to_previous=true` ile bağla.
+Aşağıdaki görüş JSON'u ikinci kalite kontrolünde başarısız oldu. Yalnız belirtilen sorunları düzelt ve AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu yeniden döndür. Metadata, onaylı istem seti, rapor sonucu ve kaynak dayanakları korunmalı. Yeni doküman veya yeni teknik özellik ekleme. Tarifname alıntıları birebir kalmalı. Model anlatımında noktalı virgül kullanma. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp kullanma. İç süreçteki BBF/müşteri formu ifadelerini nihai görüşe taşıma. X/Y savunma ayrımını koru. Yalnız X kategorisi dokümanlar varsa `combined_assessment` alanını boş bırak. `Considered Together/Birlikte Değerlendirildiğinde` bölümünü yalnız gerçek Y/kombinasyon itirazı varsa koru. Bireysel D bölümlerinde yenilik/buluş basamağı ara başlığı kullanma. `devral.../inherit...` ve `mimari/architectur...` dilini temizle. `Bu farklardan...` gibi önceki düşüncenin doğal devamını yeni paragrafa bölme. Doğrudan tarifname dayanağını önceki savunma paragrafına `attach_to_previous=true` ile bağla.
 
 JSON dışında yazma.
 KALİTE RAPORU:\n{json.dumps(audit or {}, ensure_ascii=False, indent=2)}\n
@@ -4560,7 +4585,7 @@ BAĞLAYICI REVİZYON KURALLARI:
 - Yeni teknik özellik, yeni performans sonucu, yeni avantaj, yeni doküman veya kaynakta bulunmayan gerekçe ekleme.
 - Kullanıcı bir teknik iddia eklenmesini isterse bunu yalnız rapor/tarifname/savunma dokümanı veya doğrulanmış müşteri bilgisinde doğrudan destek varsa kullan. Destek yoksa mevcut görüşte bu iddiayı ekleme.
 - Tarifname quote bloklarını kullanıcı özellikle istemedikçe değiştirme. Değişiklik istenirse yeni quote yalnız tarifnamede birebir bulunuyorsa kullanılabilir.
-- D1/D2/D3 ana başlık yapısını, X/Y savunma kapsamını, çoklu dokümanda `Birlikte Değerlendirildiğinde / Considered Together` bölümünü ve bağlayıcı giriş/kapanış şablonunu koru.
+- D1/D2/D3 ana başlık yapısını ve X/Y savunma kapsamını koru. Yalnız X dokümanları varsa birleşik değerlendirme bölümü oluşturma. `Birlikte Değerlendirildiğinde / Considered Together` bölümünü yalnız gerçek Y/kombinasyon itirazı varsa koru. Bağlayıcı giriş/kapanış şablonunu koru.
 - Bireysel D bölümlerinde yenilik/buluş basamağı ara başlığı oluşturma. `devral.../inherit...`, `mimari/architectur...`, `hindsight/geriye dönük değerlendirme/working backwards`, noktalı virgül ve iç süreç/BBF/müşteri formu ifadelerini kullanma.
 - Kullanıcının şekil ekleme/kaldırma/kırpma talebi varsa yalnız yüklenen özgün patent kaynağında gerçekten bulunan şekli seç. Şekil zorunlu değildir.
 - Metadata alanlarını yalnız kullanıcı açıkça bunu talep etmişse ve rapor/kullanıcı girdisi destekliyorsa değiştir.
@@ -4601,7 +4626,7 @@ def gorus_examiner_persuasion_prompt(
     return f"""{GORUS_RULES}
 Bağımsız ve tarafsız bir patent inceleme uzmanı gibi davran. İnceleme raporundaki mevcut yenilik/buluş basamağı itirazını BAŞLANGIÇ NOKTASI kabul et ve aşağıdaki nihai görüş gönderilirse uzmanın mevcut itirazını geri çekme ihtimalini teknik esaslar üzerinden değerlendir.
 
-Buradaki yüzde genel yazım, biçim veya kalite puanı DEĞİLDİR. `persuasion_probability`, bu görüşün mevcut itirazı uzman nezdinde geri çektirme olasılığına ilişkin gerekçeli bir tahmindir. İstatistiksel garanti gibi davranma. Özellikle istemde gerçekten bulunan ayırt edici teknik farkların, bunların doğrudan tarifname dayanağının, D dokümanlarının gerçek öğretisinin, X/Y kapsamının ve birden çok doküman varsa kombinasyon savunmasının gücünü dikkate al. Dayanaksız avantajı olumlu puanlama.
+Buradaki yüzde genel yazım, biçim veya kalite puanı DEĞİLDİR. `persuasion_probability`, bu görüşün mevcut itirazı uzman nezdinde geri çektirme olasılığına ilişkin gerekçeli bir tahmindir. İstatistiksel garanti gibi davranma. Özellikle istemde gerçekten bulunan ayırt edici teknik farkların, yüksek öncelikli teknik katkıların, bunların doğrudan tarifname dayanağının, D dokümanlarının gerçek öğretisinin ve X/Y kapsamının gücünü dikkate al. Kombinasyon savunmasını yalnız raporda gerçek Y/kombinasyon itirazı varsa değerlendir. Dayanaksız avantajı olumlu puanlama.
 
 JSON dışında yazma.
 ŞEMA:
@@ -4633,7 +4658,7 @@ def gorus_examiner_strengthen_prompt(
     return f"""{GORUS_RULES}
 Aşağıdaki görüş bütün normal kalite kapılarını geçmiştir ancak bağımsız uzman-perspektifi değerlendirmesinde ikna olasılığı daha da güçlendirilebilir görünmektedir. AYNI JSON ŞEMASIYLA görüşü yalnız bir kez teknik olarak güçlendir.
 
-Öncelik sırası: (1) istemde gerçekten bulunan ayırt edici teknik fark, (2) bu farkın kaynakta açık teknik işlev/etkisi, (3) D dokümanlarının somut teknik öğretisinin bu farkı neden vermediği, (4) çoklu dokümanda `Considered Together/Birlikte Değerlendirildiğinde` bölümünün kombinasyon analizinin güçlendirilmesi. Yeni teknik özellik, yeni performans sonucu, yeni test sonucu veya dolaylı dayanak ekleme. Onaylı istemleri ve amendment bölümünü değiştirme. Tarifname quote metinlerini değiştirme. `hindsight`, `geriye dönük değerlendirme`, `working backwards`, noktalı virgül ve iç süreç/BBF/müşteri formu ifadeleri kullanma. X/Y yenilik-buluş basamağı ayrımını koru. Bireysel D bölümleri ana birleşik savunmadan daha uzun olmasın.
+Öncelik sırası: (1) istemde gerçekten bulunan ve ÖN ANALİZDE yüksek öncelikli belirlenen teknik katkı, (2) bu katkının kaynakta açık teknik işlev/etkisi, (3) D dokümanlarının somut teknik öğretisinin bu katkıyı neden vermediği, (4) yalnız gerçek Y/kombinasyon itirazı varsa `Considered Together/Birlikte Değerlendirildiğinde` bölümünün kombinasyon analizinin güçlendirilmesi. Yeni teknik özellik, yeni performans sonucu, yeni test sonucu veya dolaylı dayanak ekleme. Onaylı istemleri ve amendment bölümünü değiştirme. Tarifname quote metinlerini değiştirme. `hindsight`, `geriye dönük değerlendirme`, `working backwards`, noktalı virgül ve iç süreç/BBF/müşteri formu ifadeleri kullanma. X/Y yenilik-buluş basamağı ayrımını koru. Yalnız X dokümanları varsa combined_assessment boş kalmalıdır. Gerçek Y/kombinasyon itirazı varsa birleşik bölüm uygun ağırlıkta tutulur.
 
 JSON dışında yazma.
 UZMAN-PERSPEKTİFİ BULGUSU:\n{json.dumps(examiner_assessment or {}, ensure_ascii=False, indent=2)}\n
@@ -6765,6 +6790,7 @@ elif work_type == "Görüş hazırlama":
         "gorus_opinion_json": None,
         "gorus_revision_history": [],
         "gorus_edit_revision": 0,
+        "gorus_analysis_upload_signature": None,
     }.items():
         if key not in st.session_state:
             st.session_state[key] = default
@@ -6796,6 +6822,7 @@ elif work_type == "Görüş hazırlama":
                 st.session_state.gorus_opinion_json = None
                 st.session_state.gorus_revision_history = []
                 st.session_state.gorus_edit_revision = 0
+                st.session_state.gorus_analysis_upload_signature = None
             except Exception as exc:
                 st.exception(exc)
 
@@ -6813,71 +6840,79 @@ elif work_type == "Görüş hazırlama":
             key="gor_sim",
         )
 
-    if required_docs and st.button("2. Raporu, istemleri ve savunma dokümanlarını teknik olarak analiz et", type="primary", use_container_width=True):
-        if not similar_files:
-            st.error("Yukarıda tespit edilen savunma dokümanlarını yükleyin.")
-        else:
-            try:
-                progress = st.progress(0, text="Dosyalar okunuyor...")
-                report_text = extract_text_from_asset(UploadedAsset(report_file.name, report_file.getvalue(), report_file.type))
-                spec_bytes = spec_file.getvalue()
-                spec_text = extract_text_from_asset(UploadedAsset(spec_file.name, spec_bytes, spec_file.type))
-                prior_text = ""
-                if prior_file:
-                    prior_text = extract_text_from_asset(UploadedAsset(prior_file.name, prior_file.getvalue(), prior_file.type))
-                sim_assets = assets_from_uploads(similar_files)
-                sim_text, sim_images = combine_asset_text("BENZER DOKÜMAN", sim_assets)
-                cust_assets = assets_from_uploads(customer_files)
-                cust_text, cust_images = combine_asset_text("MÜŞTERİ BİLGİSİ", cust_assets)
-                model_images = [*sim_images, *cust_images]
+    analysis_upload_signature = None
+    if required_docs and similar_files:
+        analysis_upload_signature = tuple((f.name, len(f.getvalue())) for f in similar_files)
 
-                progress.progress(35, text="Rapor itirazları, savunma dokümanları ve mevcut istemler analiz ediliyor...")
-                analysis = ask_json(
-                    gorus_analysis_prompt(
-                        report_type,
-                        reference,
-                        report_text,
-                        spec_text,
-                        prior_text,
-                        sim_text,
-                        cust_text,
-                    ),
-                    images=model_images,
-                )
-                validate_gorus_analysis(analysis, spec_text)
+    # Savunma dokümanları yüklenir yüklenmez ikinci teknik analiz otomatik çalışır.
+    # Kullanıcıdan ayrıca "2. analiz" onayı istenmez.
+    if (
+        required_docs
+        and similar_files
+        and st.session_state.gorus_analysis_upload_signature != analysis_upload_signature
+    ):
+        st.session_state.gorus_analysis_upload_signature = analysis_upload_signature
+        try:
+            progress = st.progress(0, text="Dosyalar okunuyor...")
+            report_text = extract_text_from_asset(UploadedAsset(report_file.name, report_file.getvalue(), report_file.type))
+            spec_bytes = spec_file.getvalue()
+            spec_text = extract_text_from_asset(UploadedAsset(spec_file.name, spec_bytes, spec_file.type))
+            prior_text = ""
+            if prior_file:
+                prior_text = extract_text_from_asset(UploadedAsset(prior_file.name, prior_file.getvalue(), prior_file.type))
+            sim_assets = assets_from_uploads(similar_files)
+            sim_text, sim_images = combine_asset_text("BENZER DOKÜMAN", sim_assets)
+            cust_assets = assets_from_uploads(customer_files)
+            cust_text, cust_images = combine_asset_text("MÜŞTERİ BİLGİSİ", cust_assets)
+            model_images = [*sim_images, *cust_images]
 
-                st.session_state.gorus_analysis = analysis
-                st.session_state.gorus_source = {
-                    "report_type": report_type,
-                    "opinion_case_mode": opinion_case_mode,
-                    "language": opinion_language,
-                    "reference": reference,
-                    "applicant_override": applicant_override.strip(),
-                    "output_name": output_name,
-                    "required_docs": required_docs,
-                    "report_text": report_text,
-                    "spec_text": spec_text,
-                    "spec_name": spec_file.name,
-                    "spec_bytes": spec_bytes,
-                    "prior_text": prior_text,
-                    "sim_text": sim_text,
-                    "sim_assets": sim_assets,
-                    "cust_text": cust_text,
-                    "model_images": model_images,
-                }
-                st.session_state.gorus_markup_data = None
-                st.session_state.gorus_clean_data = None
-                st.session_state.gorus_final_spec_text = None
-                st.session_state.gorus_opinion_data = None
-                st.session_state.gorus_opinion_status = None
-                st.session_state.gorus_examiner_assessment = None
-                st.session_state.gorus_quality_report = None
-                st.session_state.gorus_opinion_json = None
-                st.session_state.gorus_revision_history = []
-                st.session_state.gorus_edit_revision = 0
-                progress.progress(100, text="Teknik analiz tamamlandı")
-            except Exception as exc:
-                st.exception(exc)
+            progress.progress(35, text="Rapor itirazları, savunma dokümanları ve mevcut istemler analiz ediliyor...")
+            analysis = ask_json(
+                gorus_analysis_prompt(
+                    report_type,
+                    reference,
+                    report_text,
+                    spec_text,
+                    prior_text,
+                    sim_text,
+                    cust_text,
+                ),
+                images=model_images,
+            )
+            validate_gorus_analysis(analysis, spec_text)
+
+            st.session_state.gorus_analysis = analysis
+            st.session_state.gorus_source = {
+                "report_type": report_type,
+                "opinion_case_mode": opinion_case_mode,
+                "language": opinion_language,
+                "reference": reference,
+                "applicant_override": applicant_override.strip(),
+                "output_name": output_name,
+                "required_docs": required_docs,
+                "report_text": report_text,
+                "spec_text": spec_text,
+                "spec_name": spec_file.name,
+                "spec_bytes": spec_bytes,
+                "prior_text": prior_text,
+                "sim_text": sim_text,
+                "sim_assets": sim_assets,
+                "cust_text": cust_text,
+                "model_images": model_images,
+            }
+            st.session_state.gorus_markup_data = None
+            st.session_state.gorus_clean_data = None
+            st.session_state.gorus_final_spec_text = None
+            st.session_state.gorus_opinion_data = None
+            st.session_state.gorus_opinion_status = None
+            st.session_state.gorus_examiner_assessment = None
+            st.session_state.gorus_quality_report = None
+            st.session_state.gorus_opinion_json = None
+            st.session_state.gorus_revision_history = []
+            st.session_state.gorus_edit_revision = 0
+            progress.progress(100, text="Teknik analiz tamamlandı")
+        except Exception as exc:
+            st.exception(exc)
 
     analysis = st.session_state.gorus_analysis
     source_state = st.session_state.gorus_source
@@ -7138,7 +7173,7 @@ elif work_type == "Görüş hazırlama":
                         int(examiner_assessment.get("persuasion_probability", 0)) < 75
                         and bool(examiner_assessment.get("can_strengthen_without_new_matter", False))
                     ):
-                        progress.progress(94, text="Teknik fark ve birlikte değerlendirme savunması bir kez güçlendiriliyor...")
+                        progress.progress(94, text="Yüksek öncelikli teknik katkı ve ilgili savunma bir kez güçlendiriliyor...")
                         opinion = ask_json(
                             gorus_examiner_strengthen_prompt(
                                 source_state["report_text"], final_spec_text, source_state["prior_text"],
