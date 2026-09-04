@@ -1,5 +1,24 @@
 # Patent Atölyesi v5.4.52
 
+## Çok kullanıcılı giriş ekranı (v5.4.52 tabanı)
+
+Bu paket, çekirdek patent üretim/görüş kurallarına dokunmadan uygulamanın önüne kullanıcı adı/şifre kapısı ekler. Kullanıcılar kod içine yazılmaz. Render **Environment** bölümünde `PATENT_USERS_JSON` tanımlanır.
+
+Örnek:
+
+```json
+{"samet":{"password":"GucluSifre1","display_name":"Samet","role":"admin"},"musteri1":{"password":"GucluSifre2","display_name":"Müşteri 1","role":"user"}}
+```
+
+Daha güvenli kullanım için düz parola yerine PBKDF2 hash kullanılabilir:
+
+```bash
+python -c "from auth import make_password_hash; print(make_password_hash('GucluSifre1'))"
+```
+
+Çıkan değeri ilgili kullanıcıda `password_hash` alanına koyun. Aynı Render servisini farklı kullanıcılar aynı anda kullanabilir. Streamlit oturum verileri tarayıcı oturumuna özeldir ve mevcut çalışma dosyaları `TemporaryDirectory` ile benzersiz geçici klasörlerde işlenir. Bu sürüm yalnız giriş/oturum ayrımını ekler; kullanıcıya özel kalıcı dosya arşivi veya kullanım kotası henüz eklenmemiştir.
+
+
 Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 04.09.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme — ESKİ DOSYALARIN KALMAMASI ÖNEMLİ

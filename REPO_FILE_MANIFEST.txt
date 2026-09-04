@@ -9,6 +9,7 @@ __init__.py
 ai.py
 app.py
 app_core.py
+auth.py
 config.toml
 docgen.py
 gorus_audit.py
@@ -24,6 +25,7 @@ tarifname_figure_generation.py
 tarifname_figure_update.py
 tarifname_update.py
 template_audit.py
+test_login_auth.py
 test_v5418_rules.py
 test_v5419_three_gates.py
 test_v5420_five_gates.py

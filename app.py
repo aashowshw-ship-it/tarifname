@@ -29,6 +29,8 @@ from docx.shared import Cm, Pt
 from openai import OpenAI
 from PIL import Image
 
+from auth import authenticate, load_users
+
 try:
     import cairosvg  # SVG müşteri şekillerini teknik içerik değiştirmeden PNG önizlemeye/Word yerleşimine dönüştürmek için
 except ImportError:  # pragma: no cover
@@ -6103,15 +6105,83 @@ def split_manual_opinion_paragraphs(value: str) -> list[str]:
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title=f"Patent Atölyesi {APP_VERSION}", page_icon="⚙️", layout="wide")
 st.markdown(
-    f"""
+    """
     <style>
-      .block-container {{max-width: 1180px; padding-top: 1.5rem; padding-bottom: 3rem;}}
-      .hero {{padding: 1.2rem 1.4rem; border:1px solid #e7e7e7; border-radius:16px; margin-bottom:1rem;}}
-      .hero h1 {{margin:0; font-size:2rem;}}
-      .hero p {{margin:.35rem 0 0 0; color:#666;}}
-      .version {{font-size:.82rem; color:#888; margin-top:.45rem;}}
-      div[data-testid="stDownloadButton"] button, div[data-testid="stFormSubmitButton"] button {{width:100%;}}
+      .block-container {max-width: 1180px; padding-top: 1.5rem; padding-bottom: 3rem;}
+      .hero {padding: 1.2rem 1.4rem; border:1px solid #e7e7e7; border-radius:16px; margin-bottom:1rem;}
+      .hero h1 {margin:0; font-size:2rem;}
+      .hero p {margin:.35rem 0 0 0; color:#666;}
+      .version {font-size:.82rem; color:#888; margin-top:.45rem;}
+      .login-wrap {max-width:520px; margin:4vh auto 0 auto;}
+      div[data-testid="stDownloadButton"] button, div[data-testid="stFormSubmitButton"] button {width:100%;}
     </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+AUTH_SESSION_KEY = "pa_authenticated_user"
+
+
+def _configured_users():
+    raw = os.getenv("PATENT_USERS_JSON", "").strip()
+    if not raw:
+        try:
+            raw = str(st.secrets.get("PATENT_USERS_JSON", "")).strip()
+        except Exception:
+            raw = ""
+    return load_users(raw)
+
+
+try:
+    _users = _configured_users()
+except ValueError as exc:
+    st.error(f"Kullanıcı yapılandırması hatalı: {exc}")
+    st.stop()
+
+_current_username = str(st.session_state.get(AUTH_SESSION_KEY, "")).strip()
+_current_user = _users.get(_current_username) if _current_username else None
+if _current_user is None or not _current_user.active:
+    st.session_state.pop(AUTH_SESSION_KEY, None)
+    st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="hero">
+          <h1>Patent Atölyesi {APP_VERSION}</h1>
+          <p>Devam etmek için kullanıcı hesabınızla giriş yapın.</p>
+          <div class="version">Kural sürümü: {RULESET_VERSION}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if not _users:
+        st.error(
+            "Henüz kullanıcı tanımlanmamış. Render > Environment bölümünde PATENT_USERS_JSON değişkenini tanımlayın."
+        )
+    else:
+        with st.form("login_form", clear_on_submit=False):
+            login_username = st.text_input("Kullanıcı adı", autocomplete="username")
+            login_password = st.text_input("Şifre", type="password", autocomplete="current-password")
+            login_submit = st.form_submit_button("Giriş yap", type="primary")
+        if login_submit:
+            user = authenticate(_users, login_username, login_password)
+            if user is None:
+                st.error("Kullanıcı adı veya şifre hatalı.")
+            else:
+                st.session_state[AUTH_SESSION_KEY] = user.username
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
+# Giriş doğrulandıktan sonra asıl uygulama görünür.
+with st.sidebar:
+    st.caption(f"Aktif kullanıcı: {_current_user.display_name}")
+    if st.button("Çıkış yap", use_container_width=True):
+        for _key in list(st.session_state.keys()):
+            del st.session_state[_key]
+        st.rerun()
+
+st.markdown(
+    f"""
     <div class="hero">
       <h1>Patent Atölyesi {APP_VERSION}</h1>
       <p>Tarifname oluşturma/düzenleme, görüş, Tip 3 ön araştırma ve araştırma güncelleme çalışmalarını tek arayüzden yürütün.</p>
@@ -6120,7 +6190,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
 
 if not os.getenv("OPENAI_API_KEY", "").strip():
     st.warning("OPENAI_API_KEY henüz tanımlı değil. Arayüzü inceleyebilirsiniz; üretim düğmeleri API anahtarı olmadan çalışmaz.")
