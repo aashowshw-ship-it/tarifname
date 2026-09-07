@@ -80,8 +80,8 @@ def _opinion():
 
 
 def test_version_v546_and_binding_rules_present():
-    assert APP_VERSION == "v5.4.52"
-    assert RULESET_VERSION == "2026-09-04.v42"
+    assert APP_VERSION == "v5.4.53"
+    assert RULESET_VERSION == "2026-09-07.v43"
     low = GORUS_RULES.casefold()
     for phrase in [
         "x kategorisindeki", "y kategorisindeki", "considered together",

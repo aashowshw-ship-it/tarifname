@@ -1,6 +1,6 @@
-# Patent Atölyesi v5.4.52
+# Patent Atölyesi v5.4.53
 
-## Çok kullanıcılı giriş ekranı (v5.4.52 tabanı)
+## Çok kullanıcılı giriş ekranı (v5.4.53 tabanı)
 
 Bu paket, çekirdek patent üretim/görüş kurallarına dokunmadan uygulamanın önüne kullanıcı adı/şifre kapısı ekler. Kullanıcılar kod içine yazılmaz. Render **Environment** bölümünde `PATENT_USERS_JSON` tanımlanır.
 
@@ -129,7 +129,7 @@ Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün
 
 ## Tip 3 ön araştırma
 
-- Akış adım atlamadan yürür: BBF analizi → DP referansı → global tam 10 doküman + TotalPatent sorgusu + önerilen D1/D2 → kullanıcı benzer dokümanları → kullanıcı dokümanlarından yalnız en ilgili birkaç `10+` belge → D1/D2 değişim durumu → sistemin `Bence buluş basamağı var/yok` kanaati → kullanıcı sonuç modu → Word raporu.
+- Akış adım atlamadan yürür: BBF analizi → DP referansı → global tam 10 doküman + `Totalpatent/Espaenet sorgusu` + önerilen D1/D2 → kullanıcı benzer dokümanları → kullanıcı dokümanlarından yalnız en ilgili birkaç `10+` belge → D1/D2 değişim durumu → sistemin `Bence buluş basamağı var/yok` kanaati → nihai D1/D2 özgün patent dosyalarının yüklenip doğrulanması → kullanıcı sonuç modu → Word raporu.
 - İlk 10 doğrulanmış doküman sonradan kullanıcı belgesi geldi diye yeniden yazılmaz. Kullanıcı belgeleri ayrı `10+ XX... or YY...` satırında gösterilir.
 - Kullanıcı dokümanlarından sonra D1 ve D2'nin değişip değişmediği eski/yeni numaralarla açıkça belirtilir.
 - Sonuç seçimi, sistem kanaatinden önce gösterilmez. Seçenekler `Buluş basamağı var / Buluş basamağı yok / Otomatik belirle`dir.
@@ -171,7 +171,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-09-04.v42`
+Kural sürümü: `2026-09-07.v43`
 
 ## Yerel çalıştırma
 
@@ -560,3 +560,26 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 - Patent/doküman başlığı bu satırlara yazılmaz. `title` iç analiz verisinde tutulabilir.
 - D1/D2/D3 bibliyografik satırlarının tamamı kalın yazılır.
 - Nihai Word kalite kapısı, tam biçimi ve kalınlığı deterministik olarak doğrular. Başlık eki veya normal yazı bulunursa indirme açılmaz.
+
+
+## v5.4.53 / 2026-09-07.v43 — Tip 3 fail-closed kalite ve adlandırma
+- Tip 3 model metninde noktalı virgül yasaktır. Özgün İngilizce Abstract ve şablonun değiştirilmeyen sabit metinleri kaynak istisnasıdır.
+- D1/D2 tablo sonrası yenilik değerlendirmesi istem/şekil dayanaklarını tekrar etmez, kısa kalır ve yeniliği bozmayan dokümanlarda `emareye rastlanmamıştır` + `D1/D2 dokümanı varlığında yeni olduğu düşünülmektedir` kalıbıyla biter.
+- Uyarılar standart değildir. Şablondaki sabit girişten sonra en fazla iki, yalnız kaynakta gerçekten eksik kritik yazım bilgi/çizimi veya somut araştırma riski için kaynağa özgü uyarı kullanılır.
+- Kullanılmayan uyarı slotu şablondaki paragraf geometrisini korur ancak boş madde imi göstermez.
+- Tip 3 teslimi fail-closed çalışır. Rapor içerik, seçim tutarlılığı, ikinci-okuma, Word şablon, nihai DOCX içerik ve render kapılarının tamamı geçmeden indirme düğmesi oluşmaz.
+- Çıktı dosya adlarında boşluk/URL kodlaması yerine alt çizgi kullanılır. `Ön_Araştırma_Raporu_<DP REF>.docx` ve revizyonda `Ön_Araştırma_Raporu_<DP REF>_rev.docx` kullanılır.
+
+
+## v5.4.53 rev2 / 2026-09-07 — Tip 3 ikinci sayfa yerleşim kapısı
+- `Anahtar Kelimeler` ile `IPC Kodu` arasındaki sabit satır yüksekliği ve görünmez boş paragraf kaynaklı beyaz alan kaldırıldı. Font, punto ve 5x2 anahtar kelime tablosu korunur.
+- IPC alanından sonra `Araştırma kapsamının belirlenmesi...` metni normal Word akışında gereksiz boşluk olmadan devam eder. İlk iki Tip 3 tablosu floating yerine inline akışta tutulur.
+- `2. DEĞERLENDİRME` başlığı ile D1/D2'yi bildiren değerlendirme giriş paragrafının tamamı 2. sayfada bulunmak zorundadır. LibreOffice render kapısı sayfa 2'de bu metinleri arar; taşma varsa Word indirmesi açılmaz.
+- Aynı yerleşim normal Tip 3 ve `Araştırma güncelleme - Tip 3` çıktılarında ortak olarak uygulanır.
+
+### Tip 3 rev3 yerleşim ve değerlendirme kapıları
+- Anahtar Kelimeler alanı 5x2 şablonu boş hücre bırakmadan tam 10 İngilizce teknik arama ifadesiyle doldurulur.
+- `2. DEĞERLENDİRME` başlığı ikinci sayfada kalır, değerlendirme giriş paragrafı ve `2.1. Yenilik Değerlendirmesi` yeni sayfadan başlar.
+- Nihai D1 ve varsa D2 özgün patent PDF/DOCX dosyaları sonuç modu açılmadan önce zorunlu olarak yüklenir ve doküman kimliği doğrulanır.
+- D1+D2 bulunan raporlarda buluş basamağı değerlendirmesi üç ayrı güçlü paragraftır: D1 başlangıç noktası ve teknik farklar, D2 kombinasyon motivasyonu, kalan özellikler/sinerjik teknik etki ve ihtiyatlı sonuç.
+- İlk arama satırı `Totalpatent/Espaenet sorgusu: ...` etiketiyle gösterilir.

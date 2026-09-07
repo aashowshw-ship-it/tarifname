@@ -61,5 +61,8 @@ test_v5449_opinion_post_generation_revision_ui.py
 test_v5450_opinion_technical_contribution_scope_autoanalysis.py
 test_v5451_opinion_mandatory_non_chinese_figures.py
 test_v5452_opinion_cited_rows.py
+test_v5453_rev2_tip3_page2_layout.py
+test_v5453_tip3_fail_closed_delivery.py
 validators.py
 word_math.py
+test_v5453_rev4_tip3_pagination_spacing_gate.py

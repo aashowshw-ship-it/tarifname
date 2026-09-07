@@ -30,8 +30,8 @@ def _opinion():
 
 
 def test_v552_versions_and_rule_text():
-    assert APP_VERSION == "v5.4.52"
-    assert RULESET_VERSION == "2026-09-04.v42"
+    assert APP_VERSION == "v5.4.53"
+    assert RULESET_VERSION == "2026-09-07.v43"
     low = GORUS_RULES.casefold()
     assert "bibliyografik satırlarında patent/doküman başlığı yazılmaz" in low
     assert "satırın tamamı" in low

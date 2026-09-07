@@ -1271,11 +1271,9 @@ def add_nested_claim_list_item(doc: Document, template: Document, text: str):
 def safe_output_name(name: str, default: str) -> str:
     """Return a human-readable, filesystem-safe DOCX download name.
 
-    Browser/URL encoded names such as ``Görüş%20Metni_698891.docx`` or
-    ``G%C3%B6r%C3%BC%C5%9F%20Metni_698891.docx`` are decoded before they
-    reach Streamlit's ``file_name`` parameter. Turkish characters and normal
-    spaces are deliberately preserved; the downloaded file must not contain
-    literal ``%20``/``%C3...`` fragments.
+    URL-encoded fragments are decoded and whitespace is normalized to
+    underscores so browser downloads never expose literal ``%20``/``%C3...``
+    fragments. Turkish characters are deliberately preserved.
     """
     raw = str(name or default).strip()
 
@@ -1289,7 +1287,7 @@ def safe_output_name(name: str, default: str) -> str:
 
     raw = raw.replace("\u00a0", " ")
     raw = re.sub(r"[\r\n\t]+", " ", raw)
-    raw = re.sub(r"\s+", " ", raw).strip()
+    raw = re.sub(r"\s+", "_", raw).strip("_ ")
 
     # Strip any user-supplied path and keep only the filename. Handle both
     # Windows and POSIX separators regardless of the server OS.
@@ -5165,7 +5163,7 @@ Dokümanları teknik yakınlığa göre sırala. Numara, başlık, tarih ve kayn
    "rank":1,"publication_number":"","application_number":"","title":"","date":"","jurisdiction":"","source_url":"",
    "summary":"","abstract_en":"","matching_features":[""],"missing_features":[""],"novelty_destroying":false,"novelty_reason":"","relevance_score":0
  }}],
- "totalpatent_query":"TotalPatent arama sorgusu: CN... or US...",
+ "totalpatent_query":"Totalpatent/Espaenet sorgusu: CN... or US...",
  "proposed_d1":"publication_number",
  "proposed_d2":"publication_number veya boş",
  "preliminary_novelty":"sağlanır/sağlanmaz",
@@ -5192,7 +5190,7 @@ Tek doküman bütün esas teknik özellikleri doğrudan ve açık açıklıyorsa
 - `additional_query` alanı belge varsa tam olarak `10+ CN... or IN...` biçiminde olsun; ilgili kullanıcı belgesi yoksa boş bırak.
 - İlk önerilen D1/D2 ile nihai D1/D2'yi karşılaştırarak `d1_changed` ve `d2_changed` alanlarını doğru doldur; değişiklik notunda eski ve yeni numarayı açık yaz.
 - D1 ve D2 karşılaştırma satırları aynı özellik listesine ve aynı sıraya sahip olmalıdır.
-- Sağ hücre metni çıplak + veya - olmasın. `+ Özet; İstem 1; Şekil 3 ...` veya `- Dokümanda ... açıklanmamaktadır.` mantığında somut dayanak yaz.
+- Sağ hücre metni çıplak + veya - olmasın. `+ Özet, İstem 1, Şekil 3 ...` veya `- Dokümanda ... açıklanmamaktadır.` mantığında somut dayanak yaz.
 - Patent şekli için model tarafından üretilmiş veya temsili bir görsel verme. Kaynakta bulunan özgün şekle ait doğrudan URL bulunabiliyorsa `figure_image_url` alanına yaz; aksi halde boş bırak.
 - Nihai D1/D2 için `abstract_en` alanına yalnız ilgili patentin yayımlanmış özgün İngilizce Abstract metnini koy. Kullanıcı yüklemesinde özgün İngilizce Abstract varsa onu öncelikle aynen kullan; yoksa doğrulanmış resmi/Google Patents kaynağından getir. Türkçe özet, çeviri veya model tarafından yeniden yazılmış abstract kullanma. Kaynak türünü `abstract_source` alanına yaz.
 JSON dışında yazma.
@@ -5212,7 +5210,7 @@ JSON dışında yazma.
  "novelty_reasoning":[""],
  "inventive_step_reasoning":[""],
  "feature_list":[""],
- "comparison_rows_d1":[{{"feature":"","status_evidence":"+ Özet; İstem ...; Şekil ..."}}],
+ "comparison_rows_d1":[{{"feature":"","status_evidence":"+ Özet, İstem ..., Şekil ..."}}],
  "comparison_rows_d2":[{{"feature":"","status_evidence":"- ..."}}],
  "helper_documents":[{{"number":"","title":"","source_url":"","role":""}}],
  "warnings":[""]
@@ -5231,6 +5229,8 @@ def validate_research_selection(selection: dict[str, Any]) -> None:
                 raise ValueError(f"{label} karşılaştırma hücresi + veya - ile başlamalı ve dayanak içermelidir: {evidence!r}")
             if evidence.startswith("+") and len(evidence) < 5:
                 raise ValueError(f"{label} karşılaştırma hücresinde '+' yanında dokümandaki somut yer/dayanak da belirtilmelidir.")
+            if ";" in evidence:
+                raise ValueError(f"{label} karşılaştırma hücresinde noktalı virgül kullanılamaz, virgül veya nokta kullanılmalıdır.")
             row["status_evidence"] = evidence
     if selection.get("d2"):
         d1_features = [re.sub(r"\s+", " ", str(row.get("feature", ""))).strip() for row in d1_rows]
@@ -5246,6 +5246,41 @@ def validate_research_selection(selection: dict[str, Any]) -> None:
             raise ValueError(f"{label} için doğrulanmış özgün İngilizce Abstract bulunamadı.")
         if _contains_turkish_specific_chars(abstract_en):
             raise ValueError(f"{label} abstract_en alanı özgün İngilizce Abstract olmalıdır; Türkçe/çeviri metin kabul edilmez.")
+
+
+def _normalize_patent_document_id(value: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+
+def validate_research_original_patent_asset(asset: UploadedAsset, document_info: dict[str, Any], label: str) -> None:
+    """Word aşamasından önce yüklenen özgün D1/D2 kaynağının seçilen dokümanla uyumunu doğrular."""
+    text = extract_text_from_asset(asset)
+    if not text.strip():
+        raise ValueError(f"{label} özgün patent dosyası okunamadı.")
+    normalized_text = _normalize_patent_document_id(text)
+    candidates = [
+        _normalize_patent_document_id(document_info.get("number")),
+        _normalize_patent_document_id(document_info.get("alternate_number")),
+    ]
+    candidates = [x for x in candidates if x]
+    if not candidates or not any(candidate in normalized_text for candidate in candidates):
+        expected = " / ".join(str(document_info.get(k) or "").strip() for k in ("number", "alternate_number") if str(document_info.get(k) or "").strip())
+        raise ValueError(f"{label} kaynak doğrulama kapısı: yüklenen dosyada seçilen doküman kimliği ({expected}) doğrulanamadı.")
+    if "ABSTRACT" not in text.upper():
+        raise ValueError(f"{label} kaynak doğrulama kapısı: özgün patent dosyasında İngilizce Abstract bölümü doğrulanamadı.")
+
+def research_original_patent_figure_fallback(asset: UploadedAsset) -> bytes | None:
+    """Yalnız gerektiğinde, yüklenen özgün patent dosyasındaki en büyük kullanılabilir raster görseli fallback yapar."""
+    images = extract_embedded_images(asset)
+    ranked: list[tuple[int, bytes]] = []
+    for image in images:
+        try:
+            with Image.open(io.BytesIO(image.data)) as im:
+                area = im.width * im.height
+                if im.width >= 420 and im.height >= 230:
+                    ranked.append((area, image.data))
+        except Exception:
+            continue
+    return max(ranked, key=lambda x: x[0])[1] if ranked else None
 
 
 def report_drafting_prompt(
@@ -5275,12 +5310,12 @@ JSON dışında yazma.
  "documents":[{{
    "label":"D1","number":"","alternate_number":"","title":"","date":"","source_url":"","figure_reference":"","figure_image_url":"",
    "description":["2-3 cümle"],"abstract":"ORIGINAL ENGLISH ABSTRACT VERBATIM","figure_caption":"D1- Şekil",
-   "comparison_rows":[{{"feature":"","status_evidence":"+ Özet; İstem ...; Şekil ..."}}],
+   "comparison_rows":[{{"feature":"","status_evidence":"+ Özet, İstem ..., Şekil ..."}}],
    "novelty_assessment":["5-10 satırlık değerlendirme"]
  }}],
- "inventive_step_paragraphs":[""],
+ "inventive_step_paragraphs":["1. güçlü paragraf","2. güçlü paragraf","3. güçlü paragraf"],
  "conclusion_paragraphs":[""],
- "warnings":["uyarı paragrafı 1","uyarı paragrafı 2","uyarı paragrafı 3","uyarı paragrafı 4"],
+ "warnings":["Patent başvurusu yapılmasına karar verildiği taktirde:","kaynağa özgü yazım bilgi/çizim uyarısı veya boş","araştırma güvenilirliği riski varsa uyarı veya boş"],
  "attachments":["Benzer Dokümanlar","Ön İnceleme Raporu","Makine Tercümeleri"]
 }}
 ÖZEL:
@@ -5288,16 +5323,19 @@ JSON dışında yazma.
 - D1 ve D2 tablolarındaki feature alanları birebir aynı ve aynı sırada olmalıdır.
 - comparison_rows sağ hücresi `status_evidence` alanıdır; + veya - ile başlar ve dokümandaki yeri açıkça yazar. Çıplak + / - kullanma.
 - `documents` alanındaki D1/D2, NİHAİ SEÇİM içindeki D1/D2 ile aynı dokümanlar olmalı; yayın numarası, alternatif numara, başlık, tarih, source_url ve figure_image_url bilgilerini aynen taşı.
-- `keywords` alanı yalnız İngilizce teknik anahtar kelimelerden oluşmalı; Türkçe kelime/ifade kullanma. Şablon 5x2 olduğundan en fazla 10 adet ver.
+- `keywords` alanı yalnız İngilizce teknik anahtar kelimelerden oluşmalı; Türkçe kelime/ifade kullanma. Şablon 5x2 olduğundan TAM 10 adet anlamlı teknik anahtar kelime/arama ifadesi ver. Boş hücre veya boş satır bırakma.
 - `ipc_cpc[].description` yalnız İngilizce resmi sınıflandırma açıklaması olmalı; Türkçe açıklama yazma. Kodların kendisini değiştirme.
 - `scope` alanını tam olarak `Global (İlan edilmiş olan patent başvuruları)` yaz; kesim tarihini bu sabit hücreye ekleme.
 - D1/D2 `abstract` alanını ASLA yeniden yazma, Türkçeye çevirme veya özetleme. NİHAİ SEÇİM içindeki ilgili `abstract_en` değerini doğrudan kullan. `abstract_en` boşsa özgün İngilizce abstract olmadan raporu tamamlanmış gibi gösterme.
-- `warnings` alanı şablondaki uyarı hücresinin dört ayrı paragraf yapısını koruyacak şekilde tam 4 paragraf olarak ver; tek paragrafta satır sonlarıyla birleştirme.
+- `warnings` alanında ilk değer tam olarak `Patent başvurusu yapılmasına karar verildiği taktirde:` olmalıdır. Sonrasında yalnız araştırma konusu kaynak metninde tarifname yazımı için gerçekten eksik olan kritik bilgi/çizim varsa tek bir kısa uyarı ve güvenilir araştırma raporu düzenlenmesini engelleyebilecek somut bir risk varsa ikinci kısa uyarı ver. Kaynakta zaten bulunan bilgileri yeniden isteme, standart/genel uyarı üretme ve sırf dört paragrafı doldurmak için içerik uydurma. Word üreticisi kullanılmayan dördüncü şablon paragrafını boş bırakacaktır.
+- Model tarafından yazılan Tip 3 metinlerinde ve karşılaştırma tablosu hücrelerinde noktalı virgül (`;`) kullanma. Somut dayanakları virgül veya nokta ile ayır. Yalnız özgün İngilizce Abstract metni kaynakta bulunduğu haliyle korunur.
+- D1/D2 karşılaştırma tablosu sonrasındaki yenilik değerlendirmesinde tabloyu `İstem 1 şunu...`, `İstem 2 bunu...`, `Şekil ...` biçiminde yeniden anlatma. Kısa ve akıcı değerlendir. Doküman yeniliği tek başına bozmuyorsa değerlendirmeyi `<D1/D2> dokümanında <ayırt edici özellikler> ile ilgili bir emareye rastlanmamıştır. Bu kapsamda araştırma konusu buluşun <D1/D2> dokümanı varlığında yeni olduğu düşünülmektedir.` kalıbıyla bitir.
 - Rapor metninde BBF/buluş bildirim formu ifadesi kullanma; `araştırma konusu` de.
 - `→`, `=>` veya `özellik + özellik + özellik` gibi sembolik/yapay zekâ görünümlü anlatım kullanma.
 - Yardımcı dokümanları yeni bir D3 başlığı açmadan yalnız buluş basamağı değerlendirmesinin doğal paragraf akışında kullan.
 - Şablonda olmayan bölüm/başlık ekleme.
 - Sonuçta yenilik ve buluş basamağı sonucunu açıkça yaz; ancak bu bir ön araştırma raporu olduğundan sonuç cümlelerini kesin hüküm kipiyle `sağlamaktadır/sağlamamaktadır`, `sağlar/sağlamaz` veya `sağlanır/sağlanmaz` biçiminde kurma. D1/D2 yenilik değerlendirmelerinde, buluş basamağı değerlendirmesinde ve SONUÇ bölümünde `... kriterini sağladığı düşünülmektedir` / `... kriterini sağlamadığı düşünülmektedir` ihtiyatlı dilini kullan.
+- D1 ve D2 mevcutsa `inventive_step_paragraphs` TAM 3 ayrı, dolu ve gerekçeli paragraftan oluşmalıdır. Her paragraf 4-6 tam cümle ve yeterli somut teknik gerekçe içermeli, kısa özet olmamalıdır. 1. paragrafta en yakın D1 öğretisi, araştırma konusunun D1 karşısındaki ayırt edici yönleri ve çözülmek istenen teknik problem birlikte kurulmalıdır. 2. paragrafta D2'nin hangi tamamlayıcı teknik öğretisi verdiği, ilgili alandaki uzman kişinin D1'den D2'ye yönelmesi için somut teknik motivasyon bulunup bulunmadığı ve birleşimin ayırt edici özelliklere nasıl ulaştığı açıklanmalıdır. 3. paragrafta kalan özelliklerin bilinen uygulama tercihi/olağan uyarlama olup olmadığı, birleşimden beklenmeyen veya sinerjik teknik etki doğup doğmadığı değerlendirilerek buluş basamağı sonucu açık fakat ihtiyatlı ön değerlendirme diliyle kurulmalıdır. Gereksiz tekrar ve genel patent hukuku anlatımı yapma.
 - `evaluation_intro` içinde nihai D1/D2 kimliklerini `Araştırma sonucunda, araştırma konusu ile teknik yakınlığı en yüksek dokümanlar <D1 no> (D1) ve <D2 no> (D2) olarak değerlendirilmiştir.` mantığında ver. Word üreticisi D1/D2 kimliklerini şablondaki gibi kalın yazacaktır.
 - Metni ikinci kez kontrol edip düzelt.
 ARAŞTIRMA KONUSU:\n{bbf_text}\n
@@ -5358,13 +5396,13 @@ JSON dışında yazma.
  "d1":{{"number":"","alternate_number":"","title":"","date":"","source_url":"","summary":"","abstract_en":"","abstract_source":"official/espacenet/google-patents","figure_reference":"","figure_image_url":""}},
  "d2":{{"number":"","alternate_number":"","title":"","date":"","source_url":"","summary":"","abstract_en":"","abstract_source":"official/espacenet/google-patents","figure_reference":"","figure_image_url":""}},
  "feature_list":[""],
- "comparison_rows_d1":[{{"feature":"","status_evidence":"+ Özet; İstem ...; Şekil ..."}}],
+ "comparison_rows_d1":[{{"feature":"","status_evidence":"+ Özet, İstem ..., Şekil ..."}}],
  "comparison_rows_d2":[{{"feature":"","status_evidence":"- ..."}}],
  "helper_documents":[{{"number":"","title":"","date":"","source_url":"","role":""}}],
  "novelty_result":"sağlanır/sağlanmaz",
  "inventive_step_result":"sağlanır/sağlanmaz",
  "technical_opinion":"Kanaatim: ...",
- "totalpatent_query":"TotalPatent arama sorgusu: ..."
+ "totalpatent_query":"Totalpatent/Espaenet sorgusu: ..."
 }}
 REVİZE ARAŞTIRMA KONUSU:\n{revised_text}\n
 İLK ÖN ARAŞTIRMA RAPORU:\n{prior_report_text}\n
@@ -5396,7 +5434,9 @@ Karşılaştırma hücrelerinde + veya - işaretinin ardından dokümandaki somu
 `keywords` yalnız İngilizce olsun ve en fazla 10 adet ver; `ipc_cpc[].description` yalnız İngilizce resmi sınıflandırma açıklaması olsun.
 `scope` tam olarak `Global (İlan edilmiş olan patent başvuruları)` olarak kalsın.
 D1/D2 `abstract` alanına YENİ ARAŞTIRMA içindeki ilgili dokümanın `abstract_en` değerini doğrudan aktar; Türkçeye çevirme, özetleme veya yeniden yazma. Özgün İngilizce abstract yoksa raporu tamamlanmış gibi üretme.
-`warnings` alanını şablondaki dört ayrı uyarı paragrafını koruyacak şekilde tam 4 paragraf olarak üret.
+`warnings` alanında ilk değer tam olarak `Patent başvurusu yapılmasına karar verildiği taktirde:` olmalıdır. Sonrasında yalnız revize araştırma konusu kaynak metninde tarifname yazımı için gerçekten eksik kritik bilgi/çizim varsa tek kısa uyarı ve güvenilir araştırma raporu düzenlenmesini engelleyen somut risk varsa ikinci kısa uyarı yaz. Kaynakta bulunan bilgiyi yeniden isteme, standart uyarı üretme ve boş şablon paragrafını doldurmak için içerik uydurma.
+Model tarafından yazılan Tip 3 metinlerinde ve karşılaştırma tablosunda noktalı virgül (`;`) kullanma. Özgün İngilizce Abstract metnini değiştirme.
+D1/D2 tablo sonrası yenilik değerlendirmesinde istem/şekil dayanaklarını tekrar tekrar sayma. Doküman yeniliği tek başına bozmuyorsa değerlendirmeyi `<D1/D2> dokümanında <ayırt edici özellikler> ile ilgili bir emareye rastlanmamıştır. Bu kapsamda araştırma konusu buluşun <D1/D2> dokümanı varlığında yeni olduğu düşünülmektedir.` kalıbıyla bitir.
 `→`, `=>`, oklar veya `özellik + özellik` gibi kısa sembolik anlatım kullanma.
 Bu bir ön araştırma raporu olduğundan D1/D2 yenilik değerlendirmeleri, buluş basamağı değerlendirmesi ve SONUÇ bölümünde kesin `sağlamaktadır/sağlamamaktadır`, `sağlar/sağlamaz`, `sağlanır/sağlanmaz` dili kullanma; `... kriterini sağladığı düşünülmektedir` / `... kriterini sağlamadığı düşünülmektedir` yaz.
 `evaluation_intro` nihai D1/D2 yayın numaraları ile `(D1)` / `(D2)` etiketlerini açıkça içersin; Word üreticisi bu kimlikleri şablondaki gibi kalın yazacaktır.
@@ -5414,12 +5454,12 @@ JSON dışında yazma.
  "documents":[{{
    "label":"D1","number":"","alternate_number":"","title":"","date":"","source_url":"","figure_reference":"","figure_image_url":"",
    "description":[""],"abstract":"ORIGINAL ENGLISH ABSTRACT VERBATIM","figure_caption":"D1- Şekil",
-   "comparison_rows":[{{"feature":"","status_evidence":"+ Özet; İstem ...; Şekil ..."}}],
+   "comparison_rows":[{{"feature":"","status_evidence":"+ Özet, İstem ..., Şekil ..."}}],
    "novelty_assessment":[""]
  }}],
- "inventive_step_paragraphs":[""],
+ "inventive_step_paragraphs":["1. güçlü paragraf","2. güçlü paragraf","3. güçlü paragraf"],
  "conclusion_paragraphs":[""],
- "warnings":["uyarı paragrafı 1","uyarı paragrafı 2","uyarı paragrafı 3","uyarı paragrafı 4"],
+ "warnings":["Patent başvurusu yapılmasına karar verildiği taktirde:","kaynağa özgü yazım bilgi/çizim uyarısı veya boş","araştırma güvenilirliği riski varsa uyarı veya boş"],
  "attachments":["Benzer Dokümanlar","Ön İnceleme Raporu","Makine Tercümeleri"]
 }}
 REVİZE ARAŞTIRMA KONUSU:\n{revised_text}\n
@@ -5492,6 +5532,131 @@ def _validate_research_preliminary_language(report: dict[str, Any]) -> None:
             )
 
 
+
+RESEARCH_WARNING_INTRO = "Patent başvurusu yapılmasına karar verildiği taktirde:"
+
+def _research_sentence_count(text: str) -> int:
+    return len([x for x in re.split(r"(?<=[.!?])\s+", str(text or "").strip()) if x.strip()])
+
+def _iter_research_model_authored_text(report: dict[str, Any]):
+    # Özgün İngilizce Abstract ve şablonun sabit metinleri bu içerik kapısının dışında tutulur.
+    for key in ("title", "evaluation_intro"):
+        value = report.get(key)
+        if isinstance(value, str) and value.strip():
+            yield f"report.{key}", value
+    for block in report.get("documents") or []:
+        label = str(block.get("label") or "D1/D2")
+        for key in ("description", "novelty_assessment"):
+            for i, value in enumerate(block.get(key) or []):
+                if str(value or "").strip():
+                    yield f"{label}.{key}[{i}]", str(value)
+        for i, row in enumerate(block.get("comparison_rows") or []):
+            for key in ("feature", "status_evidence"):
+                value = str(row.get(key) or "").strip()
+                if value:
+                    yield f"{label}.comparison_rows[{i}].{key}", value
+    for key in ("inventive_step_paragraphs", "conclusion_paragraphs", "warnings"):
+        for i, value in enumerate(report.get(key) or []):
+            if str(value or "").strip():
+                yield f"report.{key}[{i}]", str(value)
+
+def _validate_research_narrative_style(report: dict[str, Any]) -> None:
+    for location, text in _iter_research_model_authored_text(report):
+        if ";" in text:
+            raise ValueError(f"Tip 3 noktalı virgül kapısı: {location} içinde noktalı virgül kullanılamaz.")
+
+    for block in report.get("documents") or []:
+        label = str(block.get("label") or "D1/D2").strip()
+        description = " ".join(str(x or "").strip() for x in (block.get("description") or []) if str(x or "").strip())
+        if description and not (2 <= _research_sentence_count(description) <= 3):
+            raise ValueError(f"{label} tanıtımı şablon kuralı gereği 2-3 cümle olmalıdır.")
+
+        assessment = " ".join(str(x or "").strip() for x in (block.get("novelty_assessment") or []) if str(x or "").strip())
+        if not assessment:
+            raise ValueError(f"{label} tablo sonrası yenilik değerlendirmesi boş bırakılamaz.")
+        if len(assessment) > 1200 or _research_sentence_count(assessment) > 5:
+            raise ValueError(f"{label} tablo sonrası yenilik değerlendirmesi gereksiz uzundur, kısa şablon anlatımına dönülmelidir.")
+        if re.search(r"\b(?:İstem|Şekil|Tarifname)\s*(?:\d|S\d)", assessment, flags=re.IGNORECASE):
+            raise ValueError(f"{label} tablo sonrası yenilik değerlendirmesinde istem/şekil dayanakları yeniden sayılmamalıdır, bunlar karşılaştırma tablosunda kalmalıdır.")
+        new_tail = f"Bu kapsamda araştırma konusu buluşun {label} dokümanı varlığında yeni olduğu düşünülmektedir."
+        if "yeni olduğu düşünülmektedir" in assessment:
+            if not assessment.endswith(new_tail):
+                raise ValueError(f"{label} yenilik değerlendirmesi bağlayıcı yeni-olduğu bitiş kalıbıyla sona ermelidir.")
+            prefix = assessment[: -len(new_tail)].rstrip()
+            if not re.search(rf"{re.escape(label)} dokümanında .+ ile ilgili bir emareye rastlanmamıştır\.$", prefix, flags=re.IGNORECASE | re.DOTALL):
+                raise ValueError(f"{label} yenilik değerlendirmesinde `... ile ilgili bir emareye rastlanmamıştır.` kalıbı eksiktir.")
+
+    inventive = [str(x).strip() for x in (report.get("inventive_step_paragraphs") or []) if str(x).strip()]
+    doc_count = len(report.get("documents") or [])
+    if doc_count >= 2:
+        if len(inventive) != 3:
+            raise ValueError("Tip 3 buluş basamağı kapısı: D1 ve D2 mevcutsa değerlendirme TAM 3 güçlü paragraftan oluşmalıdır.")
+        for idx, paragraph in enumerate(inventive, 1):
+            sentence_count = _research_sentence_count(paragraph)
+            if sentence_count < 3 or sentence_count > 6 or len(paragraph) < 280:
+                raise ValueError(f"Tip 3 buluş basamağı kapısı: {idx}. paragraf kısa/yüzeysel. Her paragraf 3-6 tam cümle ve yeterli teknik gerekçe içermelidir.")
+        if "D1" not in inventive[0]:
+            raise ValueError("Tip 3 buluş basamağı kapısı: 1. paragraf en yakın D1 öğretisini ve ayırt edici yönleri tartışmalıdır.")
+        if "D2" not in inventive[1]:
+            raise ValueError("Tip 3 buluş basamağı kapısı: 2. paragraf D2'nin tamamlayıcı öğretisini ve kombinasyon motivasyonunu tartışmalıdır.")
+        if not re.search(r"buluş basamağı", inventive[2], flags=re.IGNORECASE):
+            raise ValueError("Tip 3 buluş basamağı kapısı: 3. paragraf kalan özellikleri ve buluş basamağı sonucunu açıkça değerlendirmelidir.")
+    elif inventive:
+        if len(inventive) < 2 or any(_research_sentence_count(x) < 3 or len(x) < 250 for x in inventive):
+            raise ValueError("Tip 3 buluş basamağı kapısı: tek D1 bulunan dosyada da değerlendirme kısa/yüzeysel bırakılamaz.")
+
+    warnings = [str(x).strip() for x in (report.get("warnings") or []) if str(x).strip()]
+    if not warnings or warnings[0] != RESEARCH_WARNING_INTRO:
+        raise ValueError("Tip 3 Uyarılar kapısı: ilk paragraf bağlayıcı şablondaki sabit giriş olmalıdır.")
+    if len(warnings) > 3:
+        raise ValueError("Tip 3 Uyarılar kapısı: sabit girişten sonra en fazla iki kaynağa özgü dinamik uyarı kullanılabilir.")
+    for warning in warnings[1:]:
+        if len(warning) > 700:
+            raise ValueError("Tip 3 Uyarılar kapısı: uyarı paragrafı gereksiz ayrıntılıdır, yalnız kritik eksik bilgi/çizim veya somut araştırma riski istenmelidir.")
+
+def research_quality_audit_prompt(bbf_text: str, report: dict[str, Any], selection: dict[str, Any], decision_mode: str) -> str:
+    return f"""{ARASTIRMA_RULES}
+Aşağıdaki Tip 3 rapor taslağını kaynak araştırma konusu ve nihai D1/D2 seçimine karşı yalnız kalite kapısı olarak denetle. Metni yeniden yazma. En küçük şüphede ilgili kontrolü false yap.
+Özellikle model metninde noktalı virgül olmadığını, D1/D2 tablo sonrası değerlendirmelerin tabloyu istem/şekil bazında tekrar etmeden kısa kaldığını, yeniliği bozmayan D1/D2 değerlendirmelerinin `... ile ilgili bir emareye rastlanmamıştır. Bu kapsamda araştırma konusu buluşun D1/D2 dokümanı varlığında yeni olduğu düşünülmektedir.` kalıbıyla bittiğini, D1 ve D2 mevcutsa buluş basamağı değerlendirmesinin üç ayrı ve teknik bakımdan dolu paragrafta D1 başlangıç noktası, D2 kombinasyon motivasyonu ve kalan özellikler/sinerjik teknik etki yönlerini gerçekten tartıştığını, Uyarılar bölümünün standart değil bu kaynak metindeki gerçek eksiklere özgü ve minimum olduğunu, kaynakta zaten bulunan bilgilerin yeniden talep edilmediğini ve kullanıcı sonuç moduyla SONUÇ/buluş basamağı anlatımının tutarlı olduğunu denetle. Özgün İngilizce Abstract içindeki noktalı virgülleri hata sayma.
+JSON dışında yazma.
+ŞEMA:
+{{
+ "semicolon_free":{{"pass":true,"note":""}},
+ "d1d2_concise_template":{{"pass":true,"note":""}},
+ "novelty_tail_template":{{"pass":true,"note":""}},
+ "inventive_step_three_substantive_paragraphs":{{"pass":true,"note":""}},
+ "warnings_source_specific_minimal":{{"pass":true,"note":""}},
+ "no_redundant_warning_requests":{{"pass":true,"note":""}},
+ "result_consistency":{{"pass":true,"note":""}},
+ "overall_pass":true
+}}
+ARAŞTIRMA KONUSU:
+{bbf_text}
+NİHAİ D1/D2 SEÇİMİ:
+{json.dumps(selection, ensure_ascii=False, indent=2)}
+KULLANICI SONUÇ MODU: {decision_mode}
+RAPOR TASLAĞI:
+{json.dumps(report, ensure_ascii=False, indent=2)}"""
+
+def validate_research_quality_audit(audit: dict[str, Any]) -> None:
+    required = [
+        "semicolon_free",
+        "d1d2_concise_template",
+        "novelty_tail_template",
+        "inventive_step_three_substantive_paragraphs",
+        "warnings_source_specific_minimal",
+        "no_redundant_warning_requests",
+        "result_consistency",
+    ]
+    failures = []
+    for key in required:
+        item = audit.get(key) or {}
+        if not bool(item.get("pass")):
+            failures.append(f"{key}: {str(item.get('note') or '').strip()}")
+    if not bool(audit.get("overall_pass")) or failures:
+        detail = " | ".join(failures) or "overall_pass=false"
+        raise ValueError("Tip 3 ikinci-okuma kalite kapısı başarısız oldu. Word kullanıcıya sunulmadı. " + detail)
+
 def validate_research_report_language(report: dict[str, Any]) -> None:
     banned = [r"\bBBF\b", r"buluş bildirim formu", r"→", r"=>"]
     # Tablo durum/evidence hücrelerindeki + / - izinlidir; diğer alanlarda ok ve BBF dili yasaktır.
@@ -5501,8 +5666,8 @@ def validate_research_report_language(report: dict[str, Any]) -> None:
                 raise ValueError(f"Ön araştırma raporu metninde kullanılmaması gereken ifade bulundu: {pattern}")
 
     keywords = [str(x).strip() for x in (report.get("keywords") or []) if str(x).strip()]
-    if len(keywords) > 10:
-        raise ValueError("Tip 3 anahtar kelime alanı şablondaki 5x2 yapı gereği en fazla 10 İngilizce ifade içerebilir.")
+    if len(keywords) != 10:
+        raise ValueError("Tip 3 anahtar kelime alanı şablondaki 5x2 tabloyu boş hücre bırakmadan dolduracak TAM 10 İngilizce teknik ifade içermelidir.")
     if any(_contains_turkish_specific_chars(x) for x in keywords):
         raise ValueError("Tip 3 raporundaki anahtar kelimelerin tamamı İngilizce olmalıdır.")
 
@@ -5528,6 +5693,7 @@ def validate_research_report_language(report: dict[str, Any]) -> None:
         if _contains_turkish_specific_chars(abstract):
             raise ValueError(f"{block.get('label','D1/D2')} Abstract alanı özgün İngilizce metin olmalıdır; Türkçe/çeviri metin kabul edilmez.")
 
+    _validate_research_narrative_style(report)
     _validate_research_preliminary_language(report)
 
 
@@ -5634,6 +5800,110 @@ def _replace_cell_lines_preserve_format(cell, lines: list[str]) -> None:
             _replace_paragraph_text_preserve_format(new_p, value)
 
 
+def _compact_tip3_blank_paragraph(paragraph) -> None:
+    """Tip 3 sayfa-2 yerleşiminde görünmez boş paragrafın dikey boşluk üretmesini engeller."""
+    paragraph.paragraph_format.space_before = Pt(0)
+    paragraph.paragraph_format.space_after = Pt(0)
+    paragraph.paragraph_format.line_spacing = Pt(1)
+
+
+def _apply_tip3_page2_layout(doc: Document) -> None:
+    """Tip 3 ikinci sayfa kriter yerleşimini sıkı tutar ve şablondaki değerlendirme sayfa kırılımını korur.
+
+    Anahtar Kelimeler ve IPC arasında gereksiz beyaz alan oluşmaz. Kapaktan sonraki kriter sayfası
+    araştırma kapsamı açıklamasıyla tamamlanır. `2. DEĞERLENDİRME` başlığı zorunlu sayfa kırılımıyla
+    bir sonraki ayrı sayfanın başında başlar ve değerlendirme giriş paragrafı aynı sayfada devam eder.
+    Font, punto ve başlık biçimleri değiştirilmez.
+    """
+    if len(doc.tables) < 2:
+        raise ValueError("Tip 3 sayfa-2 yerleşim kapısı: kriter/araştırma kapsamı tabloları bulunamadı.")
+
+    # Dinamik içerik nedeniyle floating tablo/sabit satır yüksekliği geniş beyaz alan üretmesin.
+    for table in (doc.tables[0], doc.tables[1]):
+        tbl_pr = table._tbl.tblPr
+        floating = tbl_pr.find(qn("w:tblpPr"))
+        if floating is not None:
+            tbl_pr.remove(floating)
+
+    criteria = doc.tables[0]
+    for row_index in (3, 4):
+        tr_pr = criteria.rows[row_index]._tr.get_or_add_trPr()
+        for height in list(tr_pr.findall(qn("w:trHeight"))):
+            tr_pr.remove(height)
+
+    for cell in criteria.rows[3].cells:
+        for paragraph in cell.paragraphs:
+            if not paragraph.text.strip():
+                _compact_tip3_blank_paragraph(paragraph)
+    for cell in criteria.rows[4].cells[:2]:
+        for paragraph in cell.paragraphs:
+            if not paragraph.text.strip():
+                _compact_tip3_blank_paragraph(paragraph)
+
+    # Kriter tablosu ile araştırma kapsamı metni arasındaki görünmez gövde paragrafı yer kaplamasın.
+    body = doc._element.body
+    children = list(body)
+    pos_criteria = children.index(criteria._tbl)
+    scope_table = doc.tables[1]
+    pos_scope = children.index(scope_table._tbl)
+    for element in children[pos_criteria + 1:pos_scope]:
+        if element.tag == qn("w:p"):
+            p_pr = element.get_or_add_pPr()
+            spacing = p_pr.find(qn("w:spacing"))
+            if spacing is None:
+                spacing = OxmlElement("w:spacing")
+                p_pr.append(spacing)
+            spacing.set(qn("w:before"), "0")
+            spacing.set(qn("w:after"), "0")
+            spacing.set(qn("w:line"), "20")
+            spacing.set(qn("w:lineRule"), "exact")
+
+    scope_cell = scope_table.cell(0, 0)
+    if scope_cell.paragraphs:
+        scope_cell.paragraphs[0].paragraph_format.space_before = Pt(0)
+        scope_cell.paragraphs[0].paragraph_format.space_after = Pt(0)
+        for paragraph in scope_cell.paragraphs[1:]:
+            if not paragraph.text.strip():
+                _compact_tip3_blank_paragraph(paragraph)
+
+    # Bağlayıcı davranış: kriter sayfası tamamen biter, hemen sonraki içerik sayfası
+    # 2. DEĞERLENDİRME ile başlar. Başlık altındaki şablon boşluğu ASLA sıkıştırılmaz.
+    heading_index = next((i for i, p in enumerate(doc.paragraphs) if p.text.strip() == "2. DEĞERLENDİRME"), None)
+    if heading_index is None:
+        raise ValueError("Tip 3 sayfa yerleşim kapısı: `2. DEĞERLENDİRME` başlığı bulunamadı.")
+    intro_index = next((i for i in range(heading_index + 1, len(doc.paragraphs)) if doc.paragraphs[i].text.strip()), None)
+    if intro_index is None:
+        raise ValueError("Tip 3 sayfa kırılım kapısı: değerlendirme giriş paragrafı bulunamadı.")
+    heading = doc.paragraphs[heading_index]
+    intro = doc.paragraphs[intro_index]
+    heading.paragraph_format.page_break_before = True
+    intro.paragraph_format.page_break_before = False
+
+    # Şablonda başlık ile giriş arasında TAM bir boş paragraf vardır ve bu paragraf 1,5 satırdır.
+    # Önceki revizyondaki 1 puntoya sıkıştırma burada açıkça geri çevrilir.
+    if intro_index != heading_index + 2:
+        raise ValueError("Tip 3 paragraf ritmi kapısı: `2. DEĞERLENDİRME` ile giriş arasında tam bir boş paragraf bulunmalıdır.")
+    eval_spacer = doc.paragraphs[heading_index + 1]
+    if eval_spacer.text.strip():
+        raise ValueError("Tip 3 paragraf ritmi kapısı: değerlendirme başlığı altındaki şablon boş paragrafı metin içermemelidir.")
+    eval_spacer.paragraph_format.line_spacing = 1.5
+    eval_spacer.paragraph_format.space_before = None
+    eval_spacer.paragraph_format.space_after = None
+    intro.paragraph_format.line_spacing = 1.5
+
+    novelty_index = next((i for i in range(intro_index + 1, len(doc.paragraphs)) if doc.paragraphs[i].text.strip().lstrip("\u200e") == "2.1. Yenilik Değerlendirmesi"), None)
+    if novelty_index is None:
+        raise ValueError("Tip 3 paragraf ritmi kapısı: `2.1. Yenilik Değerlendirmesi` başlığı bulunamadı.")
+    if novelty_index != intro_index + 2:
+        raise ValueError("Tip 3 paragraf ritmi kapısı: değerlendirme girişi ile `2.1. Yenilik Değerlendirmesi` arasında tam bir boş paragraf bulunmalıdır.")
+    post_intro_spacer = doc.paragraphs[intro_index + 1]
+    if post_intro_spacer.text.strip():
+        raise ValueError("Tip 3 paragraf ritmi kapısı: değerlendirme girişinden sonraki şablon boş paragrafı metin içermemelidir.")
+    post_intro_spacer.paragraph_format.line_spacing = 1.5
+    post_intro_spacer.paragraph_format.space_before = None
+    post_intro_spacer.paragraph_format.space_after = None
+    doc.paragraphs[novelty_index].paragraph_format.line_spacing = 1.5
+
 def _fill_keyword_table(cell, keywords: list[str]) -> None:
     if not cell.tables:
         return
@@ -5709,6 +5979,9 @@ def _fill_warning_cell(cell, warnings: list[str]) -> None:
                 p._p.remove(p._p.pPr)
             p._p.insert(0, proto_ppr)
         _replace_paragraph_text_preserve_format(p, vals[i])
+        # Boş uyarı slotu şablondaki paragraf geometrisini korur ancak görünür madde imi üretmez.
+        if not vals[i] and p._p.pPr is not None and p._p.pPr.numPr is not None:
+            p._p.pPr.remove(p._p.pPr.numPr)
 
 def _replace_comparison_table(table, rows: list[dict[str, Any]], label: str) -> None:
     # Şablon başlığını, satır yüksekliğini, hücre genişliklerini ve yazı biçimini koru.
@@ -5876,6 +6149,18 @@ def _validate_research_template_fidelity(doc: Document) -> None:
     keyword_cell = criteria.rows[3].cells[2]
     if len(keyword_cell.tables) != 1 or len(keyword_cell.tables[0].rows) != 5 or len(keyword_cell.tables[0].columns) != 2:
         raise ValueError("Tip 3 anahtar kelime tablosunun 5x2 şablon geometrisi bozulmuştur.")
+    keyword_values = [c.text.strip() for row in keyword_cell.tables[0].rows for c in row.cells]
+    if len(keyword_values) != 10 or any(not value for value in keyword_values):
+        raise ValueError("Tip 3 anahtar kelime tablosunda 10 hücrenin tamamı dolu olmalıdır. Boş satır/hücre kullanılamaz.")
+
+    # Sayfa-2 yerleşimi floating tablo veya sabit Anahtar Kelimeler/IPC satır yüksekliğine bırakılamaz.
+    for table_index in (0, 1):
+        if doc.tables[table_index]._tbl.tblPr.find(qn("w:tblpPr")) is not None:
+            raise ValueError("Tip 3 sayfa-2 yerleşim kapısı: kriter ve araştırma kapsamı tabloları inline akışta olmalıdır.")
+    for row_index in (3, 4):
+        tr_pr = criteria.rows[row_index]._tr.trPr
+        if tr_pr is not None and tr_pr.find(qn("w:trHeight")) is not None:
+            raise ValueError("Tip 3 sayfa-2 yerleşim kapısı: Anahtar Kelimeler/IPC satırında sabit yükseklik bulunamaz.")
 
     ipc_cell = criteria.rows[4].cells[2]
     if len(ipc_cell.paragraphs) != 4:
@@ -5886,8 +6171,37 @@ def _validate_research_template_fidelity(doc: Document) -> None:
         if len(para.runs) < 2 or para.runs[0].bold is not True or para.runs[1].bold is True:
             raise ValueError("Tip 3 IPC alanında kod kalın, İngilizce açıklama normal yazı biçimi korunmalıdır.")
 
-    # 2. DEĞERLENDİRME girişinde D1/D2 kimliklerinin şablondaki gibi kalın run olarak korunması zorunludur.
-    intro_para = doc.paragraphs[36]
+    # Kriter sayfasından hemen sonraki içerik sayfası 2. DEĞERLENDİRME ile başlar.
+    heading_index = next((i for i, p in enumerate(doc.paragraphs) if p.text.strip() == "2. DEĞERLENDİRME"), None)
+    if heading_index is None:
+        raise ValueError("Tip 3 sayfa kırılım kapısı: `2. DEĞERLENDİRME` başlığı bulunamadı.")
+    intro_index = next((i for i in range(heading_index + 1, len(doc.paragraphs)) if doc.paragraphs[i].text.strip()), None)
+    if intro_index is None:
+        raise ValueError("Tip 3 sayfa kırılım kapısı: değerlendirme giriş paragrafı bulunamadı.")
+    heading_para = doc.paragraphs[heading_index]
+    intro_para = doc.paragraphs[intro_index]
+    if heading_para.paragraph_format.page_break_before is not True:
+        raise ValueError("Tip 3 sayfa kırılım kapısı: `2. DEĞERLENDİRME` kriter sayfasından hemen sonraki yeni içerik sayfasından başlamalıdır.")
+    if intro_para.paragraph_format.page_break_before is True:
+        raise ValueError("Tip 3 sayfa kırılım kapısı: değerlendirme giriş paragrafı başlıktan ayrı bir sonraki sayfaya atılamaz.")
+
+    # Başlık altı ve 2.1 geçişindeki fiziksel paragraf ritmi şablondan sapamaz.
+    if intro_index != heading_index + 2:
+        raise ValueError("Tip 3 paragraf ritmi kapısı: `2. DEĞERLENDİRME` ile giriş arasında tam bir boş paragraf bulunmalıdır.")
+    eval_spacer = doc.paragraphs[heading_index + 1]
+    if eval_spacer.text.strip() or eval_spacer.paragraph_format.line_spacing != 1.5:
+        raise ValueError("Tip 3 paragraf ritmi kapısı: değerlendirme başlığı altındaki boş paragraf 1,5 satır aralığında korunmalıdır.")
+    if intro_para.paragraph_format.line_spacing != 1.5:
+        raise ValueError("Tip 3 paragraf ritmi kapısı: değerlendirme giriş paragrafı 1,5 satır aralığında olmalıdır.")
+    novelty_index = next((i for i in range(intro_index + 1, len(doc.paragraphs)) if doc.paragraphs[i].text.strip().lstrip("\u200e") == "2.1. Yenilik Değerlendirmesi"), None)
+    if novelty_index is None or novelty_index != intro_index + 2:
+        raise ValueError("Tip 3 paragraf ritmi kapısı: değerlendirme girişi ile `2.1. Yenilik Değerlendirmesi` arasında tam bir boş paragraf bulunmalıdır.")
+    post_intro_spacer = doc.paragraphs[intro_index + 1]
+    if post_intro_spacer.text.strip() or post_intro_spacer.paragraph_format.line_spacing != 1.5:
+        raise ValueError("Tip 3 paragraf ritmi kapısı: değerlendirme girişinden sonraki boş paragraf 1,5 satır aralığında korunmalıdır.")
+    if doc.paragraphs[novelty_index].paragraph_format.line_spacing != 1.5:
+        raise ValueError("Tip 3 paragraf ritmi kapısı: `2.1. Yenilik Değerlendirmesi` başlığı 1,5 satır aralığını korumalıdır.")
+
     bold_intro = "".join(r.text for r in intro_para.runs if r.bold is True)
     normal_intro = "".join(r.text for r in intro_para.runs if r.bold is not True)
     if "(D1)" not in bold_intro:
@@ -5901,6 +6215,9 @@ def _validate_research_template_fidelity(doc: Document) -> None:
     warning_cell = doc.tables[4].rows[0].cells[2]
     if len(warning_cell.paragraphs) != 4:
         raise ValueError("Tip 3 uyarı alanı şablondaki dört ayrı paragraf yapısını korumuyor.")
+    for para in warning_cell.paragraphs:
+        if not para.text.strip() and para._p.pPr is not None and para._p.pPr.numPr is not None:
+            raise ValueError("Tip 3 uyarı alanında boş satır görünür madde imi üretiyor.")
 
 
 def build_research_docx(report: dict[str, Any], figure_fallbacks: list[bytes] | None = None) -> bytes:
@@ -5978,10 +6295,198 @@ def build_research_docx(report: dict[str, Any], figure_fallbacks: list[bytes] | 
     warnings = [str(x).strip() for x in (report.get("warnings") or []) if str(x).strip()]
     _fill_warning_cell(doc.tables[4].rows[0].cells[2], warnings)
 
+    _apply_tip3_page2_layout(doc)
     _validate_research_template_fidelity(doc)
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
+
+
+def validate_research_docx_delivery(data: bytes) -> None:
+    """Nihai DOCX üzerinde Tip 3 içerik + şablon teslim kapısını fail-closed uygular."""
+    doc = Document(io.BytesIO(data))
+    _validate_research_template_fidelity(doc)
+    ps = doc.paragraphs
+    if len(ps) < 107 or len(doc.tables) < 5:
+        raise ValueError("Tip 3 teslim kapısı: nihai DOCX beklenen şablon yapısında değil.")
+
+    # Özgün İngilizce abstractlar (46, 62) ve şablonun sabit Önemli Not metinleri bu yasaktan muaftır.
+    dynamic_paragraphs = [42, 55, 59, 71, 75, 77, 79, 81, 85]
+    for pidx in dynamic_paragraphs:
+        text = ps[pidx].text.strip()
+        if text and ";" in text:
+            raise ValueError(f"Tip 3 teslim kapısı: paragraf {pidx} model metninde noktalı virgül bulundu.")
+
+    for table_idx in (2, 3):
+        table = doc.tables[table_idx]
+        for row in table.rows[1:]:
+            evidence = row.cells[1].text.strip()
+            if ";" in evidence:
+                raise ValueError(f"Tip 3 teslim kapısı: D1/D2 karşılaştırma tablosunda noktalı virgül bulundu.")
+
+    for label, pidx in (("D1", 55), ("D2", 71)):
+        assessment = ps[pidx].text.strip()
+        if not assessment:
+            if label == "D2" and not ps[57].text.strip():
+                continue
+            raise ValueError(f"Tip 3 teslim kapısı: {label} tablo sonrası yenilik değerlendirmesi boş.")
+        if len(assessment) > 1200 or _research_sentence_count(assessment) > 5:
+            raise ValueError(f"Tip 3 teslim kapısı: {label} tablo sonrası değerlendirme gereksiz uzundur.")
+        if re.search(r"\b(?:İstem|Şekil|Tarifname)\s*(?:\d|S\d)", assessment, flags=re.IGNORECASE):
+            raise ValueError(f"Tip 3 teslim kapısı: {label} tablo sonrası değerlendirme tablo dayanaklarını tekrar ediyor.")
+        if "yeni olduğu düşünülmektedir" in assessment:
+            tail = f"Bu kapsamda araştırma konusu buluşun {label} dokümanı varlığında yeni olduğu düşünülmektedir."
+            if not assessment.endswith(tail):
+                raise ValueError(f"Tip 3 teslim kapısı: {label} yenilik bitiş kalıbı bozuk.")
+            prefix = assessment[: -len(tail)].rstrip()
+            if not re.search(rf"{label} dokümanında .+ ile ilgili bir emareye rastlanmamıştır\.$", prefix, flags=re.IGNORECASE | re.DOTALL):
+                raise ValueError(f"Tip 3 teslim kapısı: {label} emareye-rastlanmamıştır kalıbı eksik.")
+
+    inventive_slots = [ps[i].text.strip() for i in (75, 77, 79, 81)]
+    inventive_nonempty = [x for x in inventive_slots if x]
+    has_d2 = bool(ps[57].text.strip())
+    if has_d2:
+        if len(inventive_nonempty) != 3 or inventive_slots[3]:
+            raise ValueError("Tip 3 teslim kapısı: D1+D2 dosyasında buluş basamağı değerlendirmesi tam 3 paragraf olmalıdır.")
+        for idx, paragraph in enumerate(inventive_nonempty, 1):
+            if _research_sentence_count(paragraph) < 4 or len(paragraph) < 450:
+                raise ValueError(f"Tip 3 teslim kapısı: buluş basamağı {idx}. paragrafı kısa/yüzeysel kaldı. En az 4 tam cümle ve somut teknik gerekçe gereklidir.")
+
+    warning_paras = doc.tables[4].rows[0].cells[2].paragraphs
+    if len(warning_paras) != 4 or warning_paras[0].text.strip() != RESEARCH_WARNING_INTRO:
+        raise ValueError("Tip 3 teslim kapısı: Uyarılar alanının sabit giriş/paragraf geometrisi bozuk.")
+    dynamic_warnings = [p.text.strip() for p in warning_paras[1:] if p.text.strip()]
+    if len(dynamic_warnings) > 2:
+        raise ValueError("Tip 3 teslim kapısı: Uyarılar alanında iki dinamik paragraftan fazlası kullanılmış.")
+    for warning in dynamic_warnings:
+        if ";" in warning:
+            raise ValueError("Tip 3 teslim kapısı: Uyarılar alanında noktalı virgül kullanılamaz.")
+        if len(warning) > 700:
+            raise ValueError("Tip 3 teslim kapısı: Uyarı paragrafı gereksiz ayrıntılıdır.")
+
+def render_research_docx_smoke_test(data: bytes) -> int:
+    """Nihai Tip 3 Word dosyasının PDF'e render edilebildiğini ve temel sayfa yapısını doğrular."""
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        docx_path = td_path / "on_arastirma_qa.docx"
+        docx_path.write_bytes(data)
+        proc = subprocess.run(
+            ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", str(td_path), str(docx_path)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120, check=False,
+        )
+        pdf_path = td_path / "on_arastirma_qa.pdf"
+        if proc.returncode != 0 or not pdf_path.exists() or pdf_path.stat().st_size == 0:
+            detail = (proc.stderr or proc.stdout).decode("utf-8", errors="ignore")[-500:]
+            raise ValueError("Tip 3 render kapısı başarısız oldu, Word kullanıcıya sunulmadı. " + detail)
+        if fitz is None:
+            return 1
+        pdf = fitz.open(pdf_path)
+        try:
+            if pdf.page_count < 1:
+                raise ValueError("Tip 3 render kapısı: sıfır sayfa üretildi.")
+            rendered_text = []
+            for page in pdf:
+                if page.rect.width <= 0 or page.rect.height <= 0:
+                    raise ValueError("Tip 3 render kapısı: geçersiz sayfa geometrisi bulundu.")
+                rendered_text.append(page.get_text("text"))
+            joined = "\n".join(rendered_text)
+            normalized_joined = re.sub(r"\s+", " ", joined).strip()
+            for required in ("ÖN ARAŞTIRMA RAPORU", "2. DEĞERLENDİRME", "3. SONUÇ", "Önemli Not"):
+                if required not in normalized_joined:
+                    raise ValueError(f"Tip 3 render kapısı: `{required}` render edilen dosyada bulunamadı.")
+
+            if pdf.page_count < 2:
+                raise ValueError("Tip 3 render kapısı: bağlayıcı raporun kriter sayfası üretilemedi.")
+
+            # DOCX'teki dinamik kriter içeriğini de okuyarak, yalnız başlıkların değil TAM içeriğin
+            # kapaktan sonraki tek kriter sayfasında bittiğini deterministik doğrula.
+            qa_doc = Document(io.BytesIO(data))
+            criteria_table = qa_doc.tables[0]
+            dynamic_keywords = [
+                re.sub(r"\s+", " ", c.text).strip()
+                for row in criteria_table.rows[3].cells[2].tables[0].rows
+                for c in row.cells
+                if re.sub(r"\s+", " ", c.text).strip()
+            ]
+            dynamic_ipc = [
+                re.sub(r"\s+", " ", p.text).strip()
+                for p in criteria_table.rows[4].cells[2].paragraphs
+                if re.sub(r"\s+", " ", p.text).strip()
+            ]
+            scope_expected = re.sub(r"\s+", " ", qa_doc.tables[1].cell(0, 0).text).strip()
+
+            page2 = re.sub(r"\s+", " ", rendered_text[1]).strip()
+            page2_required = ("Amaç", "Konu", "Kapsam", "Anahtar Kelimeler", "IPC Kodu")
+            missing_page2 = [item for item in page2_required if item not in page2]
+            if missing_page2:
+                raise ValueError(
+                    "Tip 3 kriter sayfası render kapısı: Amaç/Konu/Kapsam/Anahtar Kelimeler/IPC alanları "
+                    "kapaktan sonraki ilk içerik sayfasında birlikte tamamlanmadı. Eksik: " + ", ".join(missing_page2)
+                )
+            for keyword in dynamic_keywords:
+                if keyword not in page2:
+                    raise ValueError(f"Tip 3 kriter sayfası taşma kapısı: anahtar kelime ilk içerik sayfasında tamamen bulunamadı: `{keyword}`")
+            for ipc_line in dynamic_ipc:
+                if ipc_line not in page2:
+                    raise ValueError(f"Tip 3 kriter sayfası taşma kapısı: IPC/CPC satırı ilk içerik sayfasında tamamen bulunamadı: `{ipc_line}`")
+            if scope_expected and scope_expected not in page2:
+                raise ValueError("Tip 3 kriter sayfası taşma kapısı: bağlayıcı `Araştırma kapsamının belirlenmesi...` metninin tamamı ilk içerik sayfasında bitmelidir.")
+            if "2. DEĞERLENDİRME" in page2:
+                raise ValueError("Tip 3 sayfa kırılım kapısı: `2. DEĞERLENDİRME` kriter sayfasında başlayamaz.")
+
+            if pdf.page_count < 3:
+                raise ValueError("Tip 3 sayfa kırılım kapısı: kriter sayfasından hemen sonraki değerlendirme başlangıç sayfası üretilemedi.")
+            page3 = re.sub(r"\s+", " ", rendered_text[2]).strip()
+            # Değerlendirme sayfasına kriter içeriğinin hiçbir parçası taşamaz.
+            for forbidden in ("Anahtar Kelimeler", "IPC Kodu", "Araştırma kapsamının belirlenmesi"):
+                if forbidden in page3:
+                    raise ValueError(f"Tip 3 kriter sayfası taşma kapısı: `{forbidden}` değerlendirme başlangıç sayfasına taşmıştır.")
+            for keyword in dynamic_keywords:
+                if keyword and keyword in page3:
+                    raise ValueError(f"Tip 3 kriter sayfası taşma kapısı: anahtar kelime değerlendirme sayfasına taşmıştır: `{keyword}`")
+
+            evaluation_lead = "Araştırma kapsamında yurtiçi ve yurtdışı patent veritabanlarında taramalar yapılmış"
+            for required in ("2. DEĞERLENDİRME", evaluation_lead, "olarak değerlendirilmiştir.", "2.1. Yenilik Değerlendirmesi"):
+                if required not in page3:
+                    raise ValueError(f"Tip 3 değerlendirme sayfası render kapısı: `{required}` kriter sayfasından hemen sonraki değerlendirme başlangıç sayfasında bulunamadı.")
+
+            # Görünür paragraf ritmi: başlık ile ilk değerlendirme satırı arasındaki boşluk,
+            # bağlayıcı şablondaki 1,5 satırlık boş paragrafı fiziksel olarak göstermelidir.
+            words = pdf[2].get_text("words")
+            heading_words = [w for w in words if w[4] == "DEĞERLENDİRME"]
+            if not heading_words:
+                raise ValueError("Tip 3 değerlendirme render kapısı: `2. DEĞERLENDİRME` fiziksel başlık konumu bulunamadı.")
+            heading_word = min(heading_words, key=lambda w: w[1])
+            intro_words = [w for w in words if w[4] == "Araştırma" and w[1] > heading_word[3]]
+            if not intro_words:
+                raise ValueError("Tip 3 değerlendirme render kapısı: değerlendirme girişinin ilk fiziksel satırı bulunamadı.")
+            intro_word = min(intro_words, key=lambda w: w[1])
+            visible_gap_pt = float(intro_word[1] - heading_word[3])
+            if visible_gap_pt < 16.0:
+                raise ValueError(
+                    "Tip 3 paragraf ritmi render kapısı: `2. DEĞERLENDİRME` başlığı ile giriş paragrafı dip dibe geldi. "
+                    f"Görünür boşluk {visible_gap_pt:.1f} pt, şablon ritmi için en az 16 pt gereklidir."
+                )
+            if heading_word[1] > 190:
+                raise ValueError("Tip 3 değerlendirme sayfası başlangıç kapısı: `2. DEĞERLENDİRME` sayfanın başlangıç bölgesinde yer almıyor; kriter içeriği taşmış olabilir.")
+            return pdf.page_count
+        finally:
+            pdf.close()
+
+def build_and_gate_tip3_report(
+    report: dict[str, Any],
+    selection: dict[str, Any],
+    quality_audit: dict[str, Any],
+    figure_fallbacks: list[bytes] | None = None,
+) -> bytes:
+    """Tüm Tip 3 kalite kapıları PASS olmadan kullanıcıya verilebilecek bytes döndürmez."""
+    validate_report_against_selection(report, selection)
+    validate_research_report_language(report)
+    validate_research_quality_audit(quality_audit)
+    data = build_research_docx(report, figure_fallbacks=figure_fallbacks)
+    validate_research_docx_delivery(data)
+    render_research_docx_smoke_test(data)
+    return data
 
 # -----------------------------------------------------------------------------
 # ARAYÜZ

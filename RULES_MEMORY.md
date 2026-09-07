@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-09-04.v42**
+Kural sürümü: **2026-09-07.v43**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -96,7 +96,7 @@ Formüller zorunlu çekirdek değilse ana istemi gereksiz daraltmamak için bağ
 
 - BBF'den teknik problem, unsurlar, işlevler, işlem adımları ve teknik etkiler çıkarılır.
 - DP referansı alınır.
-- Global araştırmada tam 10 doğrulanmış doküman belirlenir; tek satır `TotalPatent arama sorgusu: ... or ...` verilir ve aynı aşamada önerilen D1/D2 açıkça gösterilir.
+- Global araştırmada tam 10 doğrulanmış doküman belirlenir; tek satır `Totalpatent/Espaenet sorgusu: ... or ...` verilir ve aynı aşamada önerilen D1/D2 açıkça gösterilir.
 - Bu üç çıktı verilmeden `Sizin araştırdığınız benzer dokümanlar var mı?` sorusuna geçilmez.
 - Kullanıcı kendi dokümanlarını yüklerse ilk 10 liste değiştirilmez. Kullanıcı dokümanları arasından yalnız en ilgili birkaç belge ayrı `10+ XX... or YY...` satırında gösterilir.
 - Kullanıcı dokümanlarının analizi sonrasında nihai D1/D2 belirlenir; `D1 değişti/değişmedi` ve `D2 değişti/değişmedi` açıkça yazılır, değiştiyse eski/yeni doküman numarası belirtilir.
@@ -603,3 +603,26 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Nihai görüş girişindeki bibliyografik D satırları yalnız `D1: yayın numarası`, `D2: yayın numarası`, `D3: yayın numarası` biçimindedir.
 - Doküman/patent başlığı bu satırlarda gösterilmez.
 - Satırın tamamı kalındır ve Word kalite kapısı bunu zorunlu doğrular.
+
+
+## v5.4.53 / 2026-09-07.v43 — Tip 3 teslim kalite kapısı
+1. Tip 3 model metninde noktalı virgül kullanılmaz. Yalnız patentten aynen aktarılan İngilizce Abstract ve bağlayıcı şablonun değiştirilmeyen sabit metni istisnadır.
+2. D1/D2 tablo sonrası yenilik değerlendirmesi tabloyu istem/şekil bazında tekrar etmez. Yeniliği bozmayan dokümanda son iki cümle `... ile ilgili bir emareye rastlanmamıştır. Bu kapsamda araştırma konusu buluşun D1/D2 dokümanı varlığında yeni olduğu düşünülmektedir.` kalıbına uyar.
+3. Uyarılar standart metin değildir. `Patent başvurusu yapılmasına karar verildiği taktirde:` sabit girişinden sonra en fazla iki kaynağa özgü dinamik uyarı kullanılabilir. İlki yalnız tarifname yazımı için gerçekten eksik kritik bilgi/çizimi, ikincisi yalnız varsa güvenilir araştırma raporu düzenlenmesini etkileyen somut riski belirtir. Kaynakta zaten bulunan bilgi tekrar istenmez.
+   Kullanılmayan uyarı slotu boş kalır ve görünür madde imi üretmez.
+4. Tip 3 Word indirme fail-closed'dur. Rapor JSON içerik kapısı, D1/D2 seçim tutarlılığı, ikinci-okuma audit'i, şablon sadakati, nihai DOCX içerik kapısı ve LibreOffice render kapısı geçmeden indirme butonu açılmaz.
+5. Tip 3 çıktı adlarında boşluk veya `%20` kullanılmaz. Normal çıktı `Ön_Araştırma_Raporu_<DP REF>.docx`, güncelleme çıktısı `Ön_Araştırma_Raporu_<DP REF>_rev.docx` biçimindedir.
+
+
+## v5.4.53 rev2 / 2026-09-07 — Tip 3 sayfa-2 yerleşimi
+1. Anahtar Kelimeler ile IPC Kodu arasında sabit satır yüksekliği veya görünmez boş paragraf kaynaklı geniş boşluk bırakılmaz.
+2. IPC sonrasında `Araştırma kapsamının belirlenmesi...` metni gereksiz boşluk olmadan devam eder.
+3. `2. DEĞERLENDİRME` başlığı ve D1/D2 değerlendirme giriş paragrafının tamamı 2. sayfada yer almalıdır.
+4. İlk iki Tip 3 tablosu inline akışta, Anahtar Kelimeler/IPC satırları otomatik yükseklikte tutulur. Render kapısı bu sayfa düzeni bozulursa teslimi bloke eder.
+
+## 2026-09-07 — Tip 3 rev3
+- Global 10 doküman satırı `Totalpatent/Espaenet sorgusu:` etiketiyle verilir.
+- Nihai D1 ve varsa D2 özgün patent kaynağı kullanıcıdan Word üretiminden önce zorunlu istenir ve kimliği doğrulanır.
+- Anahtar Kelimeler 5x2 tablo boş bırakılmaz, tam 10 İngilizce teknik ifade kullanılır.
+- İkinci sayfada kriterler ve `2. DEĞERLENDİRME` başlığı kalır. Değerlendirme giriş paragrafı ile `2.1. Yenilik Değerlendirmesi` yeni sayfadan başlar.
+- D1+D2 buluş basamağı değerlendirmesi üç teknik olarak dolu paragraf olmalıdır.
