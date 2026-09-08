@@ -291,11 +291,147 @@ def _explicit_multi_document_combination(report_text: str, labels: list[str]) ->
     return any(re.search(pat, text, flags=re.I | re.S) for pat in patterns)
 
 
+def apply_defense_scope_metadata(opinion: dict[str, Any], report_text: str) -> None:
+    """Canonicalize model X/Y metadata from the report before narrative gates run."""
+    expected = detect_defense_documents(report_text)
+    by_label = {str(d.get("label", "")).upper(): d for d in expected if d.get("label")}
+    for d in opinion.get("cited_documents") or []:
+        meta = by_label.get(str(d.get("label", "")).upper())
+        if not meta or not meta.get("category"):
+            continue
+        d["category"] = meta.get("category", "")
+        d["category_marker"] = meta.get("category_marker", meta.get("category", ""))
+        d["combination_groups"] = list(meta.get("combination_groups") or [])
+
+
+
+def _combined_assessment_groups(opinion: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return explicit combination groups, with legacy top-level fields as a compatibility fallback."""
+    combined = opinion.get("combined_assessment") or {}
+    raw_groups = combined.get("groups") or []
+    out: list[dict[str, Any]] = []
+    for raw in raw_groups:
+        if not isinstance(raw, dict):
+            continue
+        heading = _norm(raw.get("heading", ""))
+        paragraphs = [_norm(x) for x in raw.get("paragraphs") or [] if _norm(x)]
+        labels = [str(x).strip().upper() for x in raw.get("labels") or [] if re.fullmatch(r"D\d+", str(x).strip(), flags=re.I)]
+        if not labels and heading:
+            labels = list(dict.fromkeys(re.findall(r"\bD\d+\b", heading.upper())))
+        if heading or paragraphs:
+            out.append({
+                "group": str(raw.get("group", "") or "").strip().upper(),
+                "labels": labels,
+                "heading": heading,
+                "paragraphs": paragraphs,
+            })
+    if out:
+        return out
+    heading = _norm(combined.get("heading", ""))
+    paragraphs = [_norm(x) for x in combined.get("paragraphs") or [] if _norm(x)]
+    if heading or paragraphs:
+        return [{
+            "group": "",
+            "labels": list(dict.fromkeys(re.findall(r"\bD\d+\b", heading.upper()))),
+            "heading": heading,
+            "paragraphs": paragraphs,
+        }]
+    return []
+
+
+def _combined_assessment_text(opinion: dict[str, Any]) -> str:
+    return _norm(" ".join(
+        " ".join([g.get("heading", "")] + list(g.get("paragraphs") or []))
+        for g in _combined_assessment_groups(opinion)
+    ))
+
+
+def _opinion_sentence_count(text: str) -> int:
+    return len([x for x in re.split(r"(?<=[.!?])\s+", _norm(text)) if x.strip()])
+
+
+def _validate_combination_group_depth(group: dict[str, Any], largest_individual: int = 0) -> None:
+    heading = _norm(group.get("heading", ""))
+    paragraphs = [_norm(x) for x in group.get("paragraphs") or [] if _norm(x)]
+    text = _norm(" ".join(paragraphs))
+    group_name = str(group.get("group", "") or heading or "kombinasyon").strip()
+    if len(paragraphs) < 2:
+        raise ValueError(f"Görüş kombinasyon derinlik kapısı: {group_name} için en az iki dolu savunma paragrafı zorunludur.")
+    if any(len(par) < 320 or _opinion_sentence_count(par) < 2 for par in paragraphs):
+        raise ValueError(f"Görüş kombinasyon derinlik kapısı: {group_name} paragrafları kısa/yüzeysel; her paragraf somut teknik gerekçe içermelidir.")
+    min_len = max(1400, largest_individual + 1 if largest_individual else 1400)
+    if len(text) < min_len or _opinion_sentence_count(text) < 8:
+        raise ValueError(
+            f"Görüş kombinasyon derinlik kapısı: {group_name} birlikte değerlendirmesi görüşün ana buluş basamağı savunması olacak kadar ayrıntılı değil."
+        )
+    low = text.casefold()
+    required_concepts = [
+        ("teknik fark", "technical difference", "distinguishing technical"),
+        ("teknik etki", "technical effect"),
+        ("objektif teknik problem", "objective technical problem", "teknik problem", "technical problem"),
+        ("motivasyon", "yönlendirme", "motivation", "teaching", "suggestion"),
+        ("ilave", "değişiklik", "uyarlama", "additional", "modification", "adaptation"),
+        ("işlevsel ilişki", "yapısal ilişki", "mekanizma", "functional relationship", "structural relationship", "mechanism"),
+    ]
+    missing = [alts[0] for alts in required_concepts if not any(a in low for a in alts)]
+    if missing:
+        raise ValueError("Görüş kombinasyon derinlik kapısı: birlikte değerlendirme zinciri eksik: " + ", ".join(missing))
+    if not any(x in low for x in ["uzman", "itiraz", "rapor", "examiner", "objection", "search report", "office action"]):
+        raise ValueError("Görüş kombinasyon kapısı: uzmanın çoklu-doküman saldırı mantığı açıkça yeniden kurulmadan doğrudan sonuca geçilmiş.")
+
+def validate_y_combination_group_coverage(opinion: dict[str, Any], report_text: str) -> None:
+    """Numbered Y1/Y2 groups require separate visible headings and group-specific substantive defences."""
+    expected = detect_defense_documents(report_text)
+    expected_groups = _y_combination_sets(expected)
+    if not expected_groups:
+        return
+    groups = _combined_assessment_groups(opinion)
+    explicit_groups = (opinion.get("combined_assessment") or {}).get("groups") or []
+    if not explicit_groups:
+        raise ValueError("Görüş Y-kombinasyon kapısı: numaralı Y grupları ayrı görünür başlıklar altında `combined_assessment.groups` içinde savunulmalıdır.")
+    all_labels = {lab for _, labels in expected_groups for lab in labels}
+    matched_indexes: set[int] = set()
+    for group_name, labels in expected_groups:
+        target = set(labels)
+        matches: list[tuple[int, dict[str, Any]]] = []
+        for idx, item in enumerate(groups):
+            item_labels = set(item.get("labels") or [])
+            declared = str(item.get("group", "") or "").upper()
+            if declared == group_name or item_labels == target:
+                matches.append((idx, item))
+        if len(matches) != 1:
+            raise ValueError(
+                f"Görüş Y-kombinasyon kapısı: {group_name} grubu ({' ve '.join(labels)}) için tam bir ayrı başlık/bölüm bulunmalıdır."
+            )
+        idx, item = matches[0]
+        matched_indexes.add(idx)
+        item_labels = set(item.get("labels") or [])
+        if item_labels != target:
+            raise ValueError(f"Görüş Y-kombinasyon kapısı: {group_name} başlığı yalnız {' ve '.join(labels)} dokümanlarını içermelidir.")
+        heading = _norm(item.get("heading", ""))
+        heading_low = heading.casefold()
+        if not heading or not ("birlikte" in heading_low or "considered together" in heading_low):
+            raise ValueError(f"Görüş Y-kombinasyon kapısı: {group_name} için ayrı `Birlikte Değerlendirildiğinde` başlığı zorunludur.")
+        for lab in labels:
+            if not re.search(rf"\b{re.escape(lab)}\b", heading, flags=re.I):
+                raise ValueError(f"Görüş Y-kombinasyon kapısı: {group_name} başlığında {lab} etiketi eksik.")
+        other_labels = all_labels - target
+        if any(re.search(rf"\b{re.escape(other)}\b", heading, flags=re.I) for other in other_labels):
+            raise ValueError(f"Görüş Y-kombinasyon kapısı: {group_name} başlığı başka Y grubundaki dokümanı içeremez.")
+        group_text = _norm(" ".join(item.get("paragraphs") or []))
+        if any(re.search(rf"\b{re.escape(other)}\b", group_text, flags=re.I) for other in other_labels):
+            raise ValueError(f"Görüş Y-kombinasyon kapısı: {group_name} savunmasına başka Y grubundaki doküman karıştırılmış.")
+    if len(matched_indexes) != len(groups):
+        extras = [g for i, g in enumerate(groups) if i not in matched_indexes]
+        if extras:
+            raise ValueError("Görüş Y-kombinasyon kapısı: raporda bulunmayan ek/toplu kombinasyon bölümü oluşturulamaz.")
+
+
 def opinion_requires_combined_assessment(opinion: dict[str, Any], report_text: str) -> bool:
     docs = opinion.get("cited_documents") or []
     if len(docs) < 2:
         return False
-    categories = {str(d.get("category", "")).strip().upper() for d in docs}
+    categories = {(_parse_xy_category_marker(str(d.get("category", ""))) or (str(d.get("category", "")).strip().upper(), "", []))[0] for d in docs}
     # A Y citation is, by definition, used with another document for inventive step.
     if "Y" in categories:
         return True
@@ -304,6 +440,7 @@ def opinion_requires_combined_assessment(opinion: dict[str, Any], report_text: s
 
 
 def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_text: str) -> None:
+    apply_defense_scope_metadata(opinion, report_text)
     for field, label in [("application_no", "Başvuru No"), ("applicant", "Başvuru Sahibi"), ("reference", "Referans")]:
         if not _norm(opinion.get(field, "")):
             raise ValueError(f"Görüş metadata kapısı: {label} boş bırakılamaz. Kaynaktan bulunamıyorsa arayüzden girin.")
@@ -327,7 +464,8 @@ def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_tex
         if text and text not in spec_norm:
             raise ValueError(f"Tarifname alıntısı birebir doğrulanamadı: {text[:140]}...")
     combined = opinion.get("combined_assessment") or {}
-    combined_text = _norm(" ".join(combined.get("paragraphs") or []))
+    combination_groups = _combined_assessment_groups(opinion)
+    combined_text = _combined_assessment_text(opinion)
     inventive_objection = any(x in report_norm for x in ["buluş basamağı", "buluş basamagi", "inventive step"])
     if inventive_objection:
         sections = opinion.get("sections") or []
@@ -338,31 +476,24 @@ def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_tex
             sec_parts += [str(x) for x in sec.get("inventive_step_paragraphs") or []]
             individual_lengths.append(len(_norm(" ".join(sec_parts))))
         combined_required = opinion_requires_combined_assessment(opinion, report_text)
-        heading = _norm(combined.get("heading", ""))
         if combined_required:
-            heading_low = heading.casefold()
-            labels = [str(d.get("label", "")).upper() for d in docs if d.get("label")]
-            if not heading or not ("birlikte" in heading_low or "considered together" in heading_low):
-                raise ValueError("Görüş kombinasyon kapısı: Y/açık kombinasyon itirazında dokümanların birlikte değerlendirilmesi başlığı zorunludur.")
-            if any(label and label.casefold() not in heading_low for label in labels):
-                raise ValueError("Görüş kombinasyon kapısı: birlikte değerlendirme başlığı fiilen kombine edilen D etiketlerini içermelidir.")
-            low = combined_text.casefold()
-            required_concepts = [
-                ("teknik fark", "technical difference", "distinguishing technical"),
-                ("teknik etki", "technical effect"),
-                ("teknik problem", "technical problem", "objective technical problem"),
-                ("motivasyon", "yönlendirme", "motivation", "teaching", "suggestion"),
-                ("ilave", "değişiklik", "additional", "modification", "adaptation"),
-            ]
-            missing = [alts[0] for alts in required_concepts if not any(a in low for a in alts)]
-            if missing:
-                raise ValueError("Görüş buluş basamağı birlikte değerlendirmesi zinciri eksik kuruyor: " + ", ".join(missing))
+            if not combination_groups:
+                raise ValueError("Görüş kombinasyon kapısı: Y/açık çoklu-doküman itirazında ayrı birlikte değerlendirme bölümü zorunludur.")
             largest = max(individual_lengths or [0])
-            if len(combined_text) < 1200 or (largest and len(combined_text) <= largest):
-                raise ValueError("Görüş kombinasyon kapısı: ana birlikte değerlendirme bölümü bireysel savunmalardan daha kapsamlı ve ayrıntılı olmalıdır.")
+            # Numbered Y groups are scope-validated first so depth is enforced per actual pair/group.
+            validate_y_combination_group_coverage(opinion, report_text)
+            for group in combination_groups:
+                heading = _norm(group.get("heading", ""))
+                heading_low = heading.casefold()
+                labels = group.get("labels") or []
+                if not heading or not ("birlikte" in heading_low or "considered together" in heading_low):
+                    raise ValueError("Görüş kombinasyon kapısı: her gerçek kombinasyon için ayrı `Birlikte Değerlendirildiğinde/Considered Together` başlığı zorunludur.")
+                if len(labels) < 2:
+                    raise ValueError("Görüş kombinasyon kapısı: birlikte değerlendirme başlığı en az iki fiilen kombine edilen D etiketini içermelidir.")
+                _validate_combination_group_depth(group, largest)
         else:
             # Several independent X documents do not create a combination objection.
-            if heading or combined_text:
+            if combination_groups or combined_text or _norm(combined.get("heading", "")):
                 raise ValueError("Görüş X-doküman kapsamı kapısı: yalnız X kategorisi/ayrı tek-doküman itirazları varken `Birlikte Değerlendirildiğinde` bölümü oluşturulamaz.")
         if len(docs) == 1:
             # With one document, the main inventive-step defence belongs in that document section.
@@ -424,75 +555,238 @@ def is_ep_search_report(report_text: str) -> bool:
     return ("european search report" in low or "supplementary european search report" in low) and "category of cited documents" in low
 
 
-def detect_ep_xy_documents(report_text: str) -> list[dict[str, str]]:
-    """Return D-labelled X/Y search documents and preserve each document's X/Y category."""
+def is_tr_search_report(report_text: str) -> bool:
+    upper = str(report_text or "").upper()
+    return "ARAŞTIRMA RAPORU" in upper and ("TÜRK PATENT" in upper or "TÜRKPATENT" in upper)
+
+
+def _parse_xy_category_marker(marker: str) -> tuple[str, str, list[str]] | None:
+    """Normalize X/Y, X1/Y1 and grouped markers such as Y1,Y2 without losing grouping."""
+    raw = re.sub(r"\s+", "", str(marker or "").upper()).replace(";", ",")
+    raw = raw.replace("/", ",")
+    if not raw:
+        return None
+    parts = [x for x in raw.split(",") if x]
+    if not parts:
+        return None
+    normalized_parts: list[str] = []
+    base: str | None = None
+    for idx, part in enumerate(parts):
+        m = re.fullmatch(r"([XY]?)(\d*)", part)
+        if not m:
+            return None
+        pbase = m.group(1) or base
+        if pbase not in {"X", "Y"}:
+            return None
+        if base is None:
+            base = pbase
+        if pbase != base:
+            return None
+        suffix = m.group(2)
+        normalized_parts.append(f"{base}{suffix}")
+    assert base is not None
+    marker_norm = ",".join(normalized_parts)
+    groups = [x for x in normalized_parts if base == "Y" and re.fullmatch(r"Y\d+", x)]
+    return base, marker_norm, groups
+
+
+def _xy_marker_at_line_start(raw: str) -> tuple[str, str, list[str], str] | None:
+    """Parse a category marker at line start and return base/raw/groups/remainder."""
+    m = re.match(
+        r"^\s*((?:[XY](?:\s*\d+)?)(?:\s*[,/;]\s*(?:(?:[XY]\s*)?\d+))*)\s*(?=\s|$)(.*)$",
+        str(raw or ""), flags=re.I,
+    )
+    if not m:
+        return None
+    parsed = _parse_xy_category_marker(m.group(1))
+    if not parsed:
+        return None
+    base, marker_norm, groups = parsed
+    return base, marker_norm, groups, m.group(2).strip()
+
+
+def _xy_doc(number: str, category: str, marker: str, groups: list[str], label: str = "") -> dict[str, Any]:
+    return {
+        "label": label,
+        "number": re.sub(r"\s+", " ", str(number or "")).strip(),
+        "category": category,
+        "category_marker": marker,
+        "combination_groups": list(groups),
+    }
+
+
+def _y_combination_sets(documents: list[dict[str, Any]]) -> list[tuple[str, list[str]]]:
+    grouped: dict[str, list[str]] = {}
+    for d in documents or []:
+        label = str(d.get("label", "") or "").strip().upper()
+        for group in d.get("combination_groups") or []:
+            g = str(group or "").strip().upper()
+            if re.fullmatch(r"Y\d+", g) and label and label not in grouped.setdefault(g, []):
+                grouped[g].append(label)
+    return [(g, labels) for g, labels in grouped.items() if len(labels) >= 2]
+
+
+def validate_xy_scope_documents(report_text: str, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fail-closed scope validator used for deterministic parsing and AI fallback alike."""
+    if not documents:
+        raise ValueError("X/Y kapsam kapısı: savunma dokümanı bulunamadı.")
+    report_key = _publication_key(report_text)
+    out: list[dict[str, Any]] = []
+    seen_numbers: set[str] = set()
+    for idx, raw in enumerate(documents, start=1):
+        number = _norm(raw.get("number", ""))
+        key = _publication_key(number)
+        if not number or not key or key not in report_key:
+            raise ValueError(f"X/Y kapsam kapısı: raporda doğrulanamayan yayın numarası: {number or '[boş]'}")
+        if key in seen_numbers:
+            raise ValueError(f"X/Y kapsam kapısı: aynı yayın birden fazla kez döndürüldü: {number}")
+        seen_numbers.add(key)
+        marker_value = raw.get("category_marker", "") or raw.get("category", "")
+        parsed = _parse_xy_category_marker(str(marker_value))
+        if not parsed:
+            raise ValueError(f"X/Y kapsam kapısı: geçersiz kategori işareti: {marker_value}")
+        category, marker, groups = parsed
+        label = str(raw.get("label", "") or f"D{idx}").strip().upper()
+        if not re.fullmatch(r"D\d+", label):
+            label = f"D{idx}"
+        out.append(_xy_doc(number, category, marker, groups, label))
+    # Numbered Y groups are meaningful only if the same group actually links >=2 documents.
+    membership: dict[str, int] = {}
+    for d in out:
+        for group in d.get("combination_groups") or []:
+            membership[group] = membership.get(group, 0) + 1
+    invalid = sorted(g for g, count in membership.items() if count < 2)
+    if invalid:
+        raise ValueError("X/Y kombinasyon kapısı: tek dokümana bağlı numaralı Y grubu var: " + ", ".join(invalid))
+    return out
+
+
+def xy_scope_ai_fallback_prompt(report_text: str) -> str:
+    return f"""Aşağıdaki patent araştırma raporunun yalnız `İLGİLİ DOKÜMANLAR / DOCUMENTS CONSIDERED TO BE RELEVANT` tablosunu oku.
+Amaç, deterministik PDF parser tabloyu okuyamadığında X/Y savunma kapsamını çıkarmaktır. Hukuki veya teknik yorum yapma.
+- Yalnız X veya Y tabanlı kategori işaretli yayınları döndür. A/E/T/L/O/P/& kategorilerini dahil etme.
+- Kategori işaretini raporda göründüğü biçimde koru: X, Y, X1, Y1, Y1,Y2 vb.
+- Y1/Y2 gibi numaralar kombinasyon grubudur. Bunları kaybetme veya tek bir üçlü kombinasyon gibi yorumlama.
+- Yayın numarasını yalnız raporda açıkça görüyorsan yaz. Emin değilsen documents=[] döndür.
+JSON dışında yazma.
+ŞEMA: {{"documents":[{{"number":"","category_marker":""}}]}}
+
+RAPOR:
+{report_text}
+"""
+
+
+def validate_xy_scope_ai_payload(report_text: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    docs = payload.get("documents") if isinstance(payload, dict) else None
+    if not isinstance(docs, list):
+        raise ValueError("X/Y AI fallback kapısı: documents listesi yok.")
+    normalized: list[dict[str, Any]] = []
+    for idx, d in enumerate(docs, start=1):
+        if not isinstance(d, dict):
+            raise ValueError("X/Y AI fallback kapısı: geçersiz doküman kaydı.")
+        normalized.append({
+            "label": f"D{idx}",
+            "number": d.get("number", ""),
+            "category_marker": d.get("category_marker", ""),
+        })
+    return validate_xy_scope_documents(report_text, normalized)
+
+
+def detect_ep_xy_documents(report_text: str) -> list[dict[str, Any]]:
+    """Return X/Y search documents for EP or TÜRKPATENT reports, preserving numbered Y groups."""
     text = str(report_text or "")
     mapping = _listed_report_documents(text)
     lines = text.splitlines()
-    category_by_key: dict[str, str] = {}
-    raw_xy: list[tuple[str, str]] = []
+    meta_by_key: dict[str, dict[str, Any]] = {}
+    raw_xy: list[tuple[str, str, str, list[str]]] = []
     pub_re = re.compile(r"\bXP\d{6,}\b|\b(?:US|EP|WO|CN|JP|KR|DE|GB)\s*[0-9][0-9/ .-]{4,}[A-Z]\d?\b", re.I)
+
+    # Normal row-oriented extraction: category marker and citation share/localize to one row block.
     for i, raw in enumerate(lines):
-        cm = re.match(r"^\s*([XY])\b", raw, flags=re.I)
-        if not cm:
+        parsed_line = _xy_marker_at_line_start(raw)
+        if not parsed_line:
             continue
-        category = cm.group(1).upper()
+        category, marker, groups, remainder = parsed_line
         block = [raw]
-        for nxt in lines[i+1:i+14]:
+        for nxt in lines[i + 1:i + 14]:
             if re.match(r"^\s*-{3,}\s*$", nxt):
                 break
-            if re.match(r"^\s*[XYA]\b", nxt, flags=re.I):
+            if _xy_marker_at_line_start(nxt) or re.match(r"^\s*[AETLOP&](?:\s|$)", nxt, flags=re.I):
                 break
             block.append(nxt)
         chunk = " ".join(block)
-        for token in pub_re.findall(chunk):
+        tokens = pub_re.findall(chunk)
+        # A marker-only line followed by multiple publications is a flattened category column,
+        # not one citation row. Let the table-order fallback below resolve that layout.
+        if not remainder and len({_publication_key(t) for t in tokens if _publication_key(t)}) > 1:
+            continue
+        for token in tokens:
             key = _publication_key(token)
             if key:
-                category_by_key[key] = category
-                raw_xy.append((token.strip(), category))
-    # PDF extraction may flatten the category column before citation rows.
-    if not category_by_key:
-        low = text.casefold()
-        a = low.find("documents considered to be relevant")
-        b = low.find("classification of the", a + 1) if a >= 0 else -1
-        table_text = text[a:b if b > a else len(text)] if a >= 0 else text
-        table_lines = [x.strip() for x in table_text.splitlines() if x.strip()]
-        cats = [x.upper() for x in table_lines if re.fullmatch(r"[XYA]", x, flags=re.I)]
-        pubs: list[str] = []
-        seen_pub_keys: set[str] = set()
-        for m in pub_re.finditer(table_text):
-            token = re.sub(r"\s+", " ", m.group(0)).strip()
-            key = _publication_key(token)
-            if key and key not in seen_pub_keys:
-                seen_pub_keys.add(key)
-                pubs.append(token)
-        for cat, token in zip(cats, pubs):
-            if cat in {"X", "Y"}:
-                key = _publication_key(token)
-                category_by_key[key] = cat
-                raw_xy.append((token, cat))
+                meta_by_key[key] = {"category": category, "category_marker": marker, "combination_groups": groups}
+                raw_xy.append((token.strip(), category, marker, groups))
 
-    out: list[dict[str, str]] = []
+    # PDF extraction often flattens category, document and claim columns into three vertical lists.
+    # Read only the cited-document table, then zip category markers to publication numbers in visual order.
+    low = text.casefold().replace("\u0307", "")
+    table_starts = [
+        low.find("documents considered to be relevant"),
+        low.find("c. ilgili dokümanlar"),
+        low.find("ilgili dokümanlar"),
+    ]
+    table_starts = [x for x in table_starts if x >= 0]
+    a = min(table_starts) if table_starts else -1
+    table_ends = []
+    if a >= 0:
+        for token in ["category of cited documents", "kategorilerin açıklaması", "classification of the"]:
+            pos = low.find(token, a + 1)
+            if pos > a:
+                table_ends.append(pos)
+    b = min(table_ends) if table_ends else -1
+    table_text = text[a:b if b > a else len(text)] if a >= 0 else text
+    table_lines = [x.strip() for x in table_text.splitlines() if x.strip()]
+    cats: list[tuple[str, str, list[str]]] = []
+    for line in table_lines:
+        parsed = _parse_xy_category_marker(line)
+        if parsed:
+            cats.append(parsed)
+    pubs: list[str] = []
+    seen_pub_keys: set[str] = set()
+    for m in pub_re.finditer(table_text):
+        token = re.sub(r"\s+", " ", m.group(0)).strip()
+        key = _publication_key(token)
+        if key and key not in seen_pub_keys:
+            seen_pub_keys.add(key)
+            pubs.append(token)
+    if cats and pubs and len(cats) == len(pubs):
+        for (category, marker, groups), token in zip(cats, pubs):
+            key = _publication_key(token)
+            meta_by_key[key] = {"category": category, "category_marker": marker, "combination_groups": groups}
+            raw_xy.append((token, category, marker, groups))
+
+    out: list[dict[str, Any]] = []
     for label, number in mapping.items():
         key = _publication_key(number)
-        match_key = next((x for x in category_by_key if key and (key == x or _edit_distance_le1(key, x))), None)
+        match_key = next((x for x in meta_by_key if key and (key == x or _edit_distance_le1(key, x))), None)
         if match_key:
-            out.append({"label": label, "number": number, "category": category_by_key[match_key]})
-    if out:
-        return out
-    # Fallback when the detailed report does not assign D-labels.
-    seen: set[str] = set()
-    for token, category in raw_xy:
-        key = _publication_key(token)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({"label": f"D{len(out)+1}", "number": token, "category": category})
-    return out
+            meta = meta_by_key[match_key]
+            out.append(_xy_doc(number, meta["category"], meta["category_marker"], meta["combination_groups"], label))
+    if not out:
+        # TÜRKPATENT reports commonly have no D1/D2 labels; assign them by cited-table order.
+        seen: set[str] = set()
+        for token, category, marker, groups in raw_xy:
+            key = _publication_key(token)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(_xy_doc(token, category, marker, groups, f"D{len(out)+1}"))
+    if not out:
+        return []
+    return validate_xy_scope_documents(text, out)
 
-def detect_defense_documents(report_text: str) -> list[dict[str, str]]:
-    """Binding defense scope: EP search report = X/Y only, other office actions = reasoned documents."""
-    if is_ep_search_report(report_text):
+def detect_defense_documents(report_text: str) -> list[dict[str, Any]]:
+    """Binding defense scope: TR/EP search reports = X/Y only, other actions = reasoned documents."""
+    if is_ep_search_report(report_text) or is_tr_search_report(report_text):
         return detect_ep_xy_documents(report_text)
     return detect_examiner_reasoned_documents(report_text)
 
@@ -518,9 +812,11 @@ def _iter_generated_narrative(opinion: dict[str, Any]):
             yield ("novelty", str(par))
         for par in section.get("inventive_step_paragraphs") or []:
             yield ("inventive_step", str(par))
-    combined = opinion.get("combined_assessment") or {}
-    for par in combined.get("paragraphs") or []:
-        yield ("overall_assessment", str(par))
+    for group in _combined_assessment_groups(opinion):
+        if group.get("heading"):
+            yield ("overall_assessment_heading", str(group.get("heading")))
+        for par in group.get("paragraphs") or []:
+            yield ("overall_assessment", str(par))
     for par in opinion.get("conclusion") or []:
         yield ("conclusion", str(par))
 
@@ -579,6 +875,8 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
     for kind, text in narratives:
         if ";" in text:
             raise ValueError(f"Görüş noktalama kapısı: model anlatımında noktalı virgül kullanılamaz ({kind}).")
+        if "+" in text:
+            raise ValueError(f"Görüş noktalama kapısı: model anlatımında doküman kombinasyonu artı işaretiyle yazılamaz ({kind}); `ve/and` kullanılmalıdır.")
         low_text = _norm(text).casefold()
         if any(x in low_text for x in forbidden_style):
             raise ValueError(f"Görüş dil kapısı: hindsight/geriye-dönük kalıp savunma kullanılamaz ({kind}).")
@@ -591,7 +889,9 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
     sections_by_label = {str(x.get("label", "")).upper(): x for x in opinion.get("sections") or []}
     for d in opinion.get("cited_documents") or []:
         label = str(d.get("label", "")).upper()
-        category = str(d.get("category", "")).upper().strip()
+        raw_category = str(d.get("category", "")).upper().strip()
+        parsed_category = _parse_xy_category_marker(raw_category)
+        category = parsed_category[0] if parsed_category else raw_category
         sec = sections_by_label.get(label, {})
         novelty_text = _norm(" ".join(sec.get("novelty_paragraphs") or []))
         inventive_text = _norm(" ".join(sec.get("inventive_step_paragraphs") or []))
@@ -663,11 +963,11 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
         for i, par in enumerate(pars):
             if i > 0 and _norm(par).casefold().startswith(starters):
                 raise ValueError("Görüş paragraf devamlılığı kapısı: önceki savunmanın doğal devamı gereksiz yeni paragrafa bölünmüş.")
-    combined = opinion.get("combined_assessment") or {}
-    pars = [str(x) for x in combined.get("paragraphs") or []]
-    for i, par in enumerate(pars):
-        if i > 0 and _norm(par).casefold().startswith(starters):
-            raise ValueError("Görüş paragraf devamlılığı kapısı: genel değerlendirmedeki doğal devam cümlesi gereksiz yeni paragrafa bölünmüş.")
+    for group in _combined_assessment_groups(opinion):
+        pars = [str(x) for x in group.get("paragraphs") or []]
+        for i, par in enumerate(pars):
+            if i > 0 and _norm(par).casefold().startswith(starters):
+                raise ValueError("Görüş paragraf devamlılığı kapısı: birlikte değerlendirmedeki doğal devam cümlesi gereksiz yeni paragrafa bölünmüş.")
 
 
 def validate_opinion_against_raw_sources(
@@ -783,6 +1083,8 @@ def validate_gorus_docx_content_flow(docx_data: bytes) -> None:
         narrative_only = re.sub(r"“[^”]*”", "", text, flags=re.S)
         if ";" in narrative_only:
             raise ValueError("Görüş noktalama kapısı: Word gövdesinde noktalı virgül bulundu.")
+        if "+" in narrative_only:
+            raise ValueError("Görüş noktalama kapısı: Word gövdesinde model anlatımına ait artı işareti bulundu; doküman kombinasyonları `ve/and` ile yazılmalıdır.")
         low = _norm(narrative_only).casefold()
         if any(x in low for x in ["devralmaktadır", "devralır", "devraldığı", "devralan", "inherits", "inherited", "mimari", "architecture", "architectural", "benzersiz sinerji", "paradigma", "sofistike yaklaşım"]):
             raise ValueError("Görüş dil kapısı: Word gövdesinde devralma/mimari gibi yasak model dili bulundu.")
@@ -1056,6 +1358,28 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
     for txt in texts:
         if any(re.match(pat, txt, flags=re.I) for pat in forbidden_subheading_patterns):
             raise ValueError("Görüş başlık kapısı: bireysel D bölümünde yenilik/buluş basamağı ara başlığı bulunamaz.")
+    # Every explicit combination group must survive into the final Word as its own visible bold heading.
+    explicit_groups = (opinion.get("combined_assessment") or {}).get("groups") or []
+    expected_group_headings = []
+    for raw in explicit_groups:
+        if not isinstance(raw, dict):
+            continue
+        heading = _norm(raw.get("heading", ""))
+        if not heading:
+            continue
+        expected_group_headings.append(heading)
+        matching = [p for p in doc.paragraphs if p.text.strip() == heading]
+        if len(matching) != 1:
+            raise ValueError(f"Görüş kombinasyon Word kapısı: `{heading}` ayrı görünür başlık olarak tam bir kez bulunmalıdır.")
+        runs = [r for r in matching[0].runs if r.text.strip()]
+        if not runs or not all(bool(r.bold) for r in runs):
+            raise ValueError(f"Görüş kombinasyon Word kapısı: `{heading}` başlığı kalın değil.")
+    if len(expected_group_headings) > 1:
+        union_labels = sorted(set(re.findall(r"\bD\d+\b", " ".join(expected_group_headings).upper())))
+        for txt in texts:
+            if ("birlikte" in txt.casefold() or "considered together" in txt.casefold()) and all(re.search(rf"\b{re.escape(lab)}\b", txt, flags=re.I) for lab in union_labels):
+                if txt not in expected_group_headings:
+                    raise ValueError("Görüş kombinasyon Word kapısı: ayrı Y grupları tek toplu kombinasyon başlığında birleştirilmiş.")
     # Signoff is bindingly bold on both lines.
     for signoff_text in ("Saygılarımızla,", "DESTEK PATENT A.Ş."):
         matching = [p for p in doc.paragraphs if p.text.strip() == signoff_text]
@@ -1130,8 +1454,11 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
     # A combined inventive-step section is valid only for an actual Y/explicit combination objection.
     docs = opinion.get("cited_documents") or []
     combined = opinion.get("combined_assessment") or {}
-    combined_text = _norm(" ".join(combined.get("paragraphs") or []))
-    categories = {str(d.get("category", "")).strip().upper() for d in docs if str(d.get("category", "")).strip()}
+    combined_text = _combined_assessment_text(opinion)
+    categories = {
+        (_parse_xy_category_marker(str(d.get("category", ""))) or (str(d.get("category", "")).strip().upper(), "", []))[0]
+        for d in docs if str(d.get("category", "")).strip()
+    }
     combined_required = "Y" in categories
     all_x = bool(categories) and categories == {"X"}
     if combined_text and not all_x:

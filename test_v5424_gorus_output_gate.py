@@ -32,8 +32,8 @@ def _base_opinion():
 
 
 def test_version_and_ruleset_bumped_for_opinion_gate():
-    assert APP_VERSION == "v5.4.53"
-    assert RULESET_VERSION == "2026-09-07.v43"
+    assert APP_VERSION == "v5.4.44"
+    assert RULESET_VERSION == "2026-09-08.v46"
 
 
 def test_gorus_rules_include_language_physical_line_original_figures_and_full_output_gate():
@@ -88,7 +88,7 @@ def test_payload_rejects_weak_inventive_step_combined_assessment():
         {"label":"D2","blocks":[{"type":"paragraph","text":"İkinci dokümanın teknik öğretisi açıklanır."}],"inventive_step_paragraphs":["İlave teknik değişiklikler değerlendirilir."]},
     ]
     op["combined_assessment"] = {"heading": "D1 ve D2 Dokümanları Birlikte Değerlendirildiğinde", "paragraphs": ["D1 ve D2 farklıdır."]}
-    with pytest.raises(ValueError, match="buluş basamağı"):
+    with pytest.raises(ValueError, match="buluş basamağı|kombinasyon derinlik"):
         validate_opinion_payload(op, "Buluş basamağı", "örnek tarifname")
 
 

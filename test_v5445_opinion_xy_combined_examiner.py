@@ -33,6 +33,7 @@ D1 and D2 are relevant to the assessment.
 
 def _long_combined():
     base = (
+        "The examiner's inventive-step objection combines D1 and D2 as complementary teachings. "
         "The distinguishing technical difference is the claimed functional relationship between the processing stages. "
         "The technical effect is that the claimed data representation is used by the following processing stage in the defined sequence. "
         "The objective technical problem is therefore how to implement that processing relationship without changing the claimed data flow. "
@@ -73,15 +74,15 @@ def _opinion():
         ],
         "combined_assessment": {
             "heading": "D1 and D2 Documents Considered Together",
-            "paragraphs": [_long_combined()],
+            "paragraphs": [_long_combined(), _long_combined()],
         },
         "conclusion": ["The claimed subject-matter therefore involves an inventive step."],
     }
 
 
 def test_version_v546_and_binding_rules_present():
-    assert APP_VERSION == "v5.4.53"
-    assert RULESET_VERSION == "2026-09-07.v43"
+    assert APP_VERSION == "v5.4.44"
+    assert RULESET_VERSION == "2026-09-08.v46"
     low = GORUS_RULES.casefold()
     for phrase in [
         "x kategorisindeki", "y kategorisindeki", "considered together",
@@ -110,7 +111,7 @@ def test_y_combination_requires_combined_main_defence():
     validate_opinion_payload(op, "Inventive step objection", "technical specification")
     bad = _opinion()
     bad["combined_assessment"] = {"heading": "D1 assessment", "paragraphs": ["technical effect and technical problem"]}
-    with pytest.raises(ValueError, match="çoklu-doküman|birlikte"):
+    with pytest.raises(ValueError, match="çoklu-doküman|birlikte|Birlikte"):
         validate_opinion_payload(bad, "Inventive step objection", "technical specification")
 
 

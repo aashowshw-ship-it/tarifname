@@ -201,6 +201,22 @@ def _method_step_language_findings(draft: dict[str, Any]) -> list[dict[str, str]
     return out
 
 
+def _method_claim_how_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    relation_re = re.compile(r"(?:tarafından|üzerinden|vasıtasıyla|kullanılarak|kullanarak|girdi olarak|çıktı olarak|önceki|ardından|sonrasında|sonucu|veritabanından|dosyadan|arayüzden|cihazdan|kullanıcıdan|yazılım tarafından|işlem birimi|elektronik cihaz|motoru|ayrıştırıcı|denetimi|zinciri|bloğu|tablosuna göre|değerlerine göre|parametrelerine göre|eşleştirilerek|karşılaştırılarak|doğrulanarak|okunarak|yüklenerek|aktarılıp|aktarılarak)", re.I)
+    generic_end_re = re.compile(r"(?:alınması|işlenmesi|dönüştürülmesi|oluşturulması|belirlenmesi|üretilmesi|hesaplanması|doğrulanması|seçilmesi|aktarılması|kaydedilmesi|okunması|ayrıştırılması)\s*$", re.I)
+    take_re = re.compile(r"\balınması\s*$", re.I)
+    take_origin_re = re.compile(r"(?:kullanıcı(?:dan| tarafından)|dosya(?:dan| üzerinden)|arayüz(?:den| üzerinden)|veritabanından|cihazdan|girdi olarak|yüklenerek|yüklenmesi|sağlanan|belirlenen|seçilen|işlem birimine|yazılıma)", re.I)
+    rows = [(str(x.get("number", "?") or "?"), str(x.get("text", "") or "")) for x in (draft.get("method_steps") or [])]
+    for number, raw in rows:
+        clean = re.sub(r"\s*\(\s*[^()]+\s*\)\s*$", "", raw.strip().rstrip(".,;:")).strip()
+        if generic_end_re.search(clean) and not relation_re.search(clean):
+            out.append({"level":"Hata","message":f"Yöntem işlem adımı {number} teknikte uzman kişinin 'nasıl?' sorusuna cevap vermiyor; teknik taşıyıcı/girdi-kaynak/işlem/çıktı ilişkisi görünür olmalıdır."})
+        if take_re.search(clean) and not take_origin_re.search(clean):
+            out.append({"level":"Hata","message":f"Yöntem işlem adımı {number} 'alınması' diyor ancak verinin/isteğin nereden veya hangi teknik girdi üzerinden alındığını göstermiyor."})
+    return out
+
+
 def _generic_claim_term_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
     """İstemde teknik eleman türü yerine belirsiz 'unsur' placeholder'ı kullanılmasını engeller."""
     out: list[dict[str, str]] = []
@@ -423,6 +439,7 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
     findings.extend(_common_carrier_scope_findings(draft))
     findings.extend(_generic_claim_term_findings(draft))
     findings.extend(_method_step_language_findings(draft))
+    findings.extend(_method_claim_how_findings(draft))
     findings.extend(_main_claim_how_findings(draft))
     findings.extend(_formula_marker_findings(draft))
 

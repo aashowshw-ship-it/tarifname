@@ -8,8 +8,8 @@ from rules import (
 ROOT = Path(__file__).resolve().parent
 
 def test_version_and_notice_rule():
-    assert APP_VERSION == "v5.4.53"
-    assert RULESET_VERSION == "2026-09-07.v43"
+    assert APP_VERSION == "v5.4.44"
+    assert RULESET_VERSION == "2026-09-08.v46"
     assert EXTRA_CONTROLS_NOTICE == "EKSTRA KONTROLLER YAPILDI"
     assert "en az üç gelişmiş paragraf" in TARIFNAME_RULES
     assert "en az 2400 karakter" in TARIFNAME_RULES

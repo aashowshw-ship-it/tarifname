@@ -1,6 +1,6 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-09-07.v43**
+Kural sürümü: **2026-09-08.v46**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -605,7 +605,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Satırın tamamı kalındır ve Word kalite kapısı bunu zorunlu doğrular.
 
 
-## v5.4.53 / 2026-09-07.v43 — Tip 3 teslim kalite kapısı
+## v5.4.44 / 2026-09-07.v43 — Tip 3 teslim kalite kapısı
 1. Tip 3 model metninde noktalı virgül kullanılmaz. Yalnız patentten aynen aktarılan İngilizce Abstract ve bağlayıcı şablonun değiştirilmeyen sabit metni istisnadır.
 2. D1/D2 tablo sonrası yenilik değerlendirmesi tabloyu istem/şekil bazında tekrar etmez. Yeniliği bozmayan dokümanda son iki cümle `... ile ilgili bir emareye rastlanmamıştır. Bu kapsamda araştırma konusu buluşun D1/D2 dokümanı varlığında yeni olduğu düşünülmektedir.` kalıbına uyar.
 3. Uyarılar standart metin değildir. `Patent başvurusu yapılmasına karar verildiği taktirde:` sabit girişinden sonra en fazla iki kaynağa özgü dinamik uyarı kullanılabilir. İlki yalnız tarifname yazımı için gerçekten eksik kritik bilgi/çizimi, ikincisi yalnız varsa güvenilir araştırma raporu düzenlenmesini etkileyen somut riski belirtir. Kaynakta zaten bulunan bilgi tekrar istenmez.
@@ -614,7 +614,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 5. Tip 3 çıktı adlarında boşluk veya `%20` kullanılmaz. Normal çıktı `Ön_Araştırma_Raporu_<DP REF>.docx`, güncelleme çıktısı `Ön_Araştırma_Raporu_<DP REF>_rev.docx` biçimindedir.
 
 
-## v5.4.53 rev2 / 2026-09-07 — Tip 3 sayfa-2 yerleşimi
+## v5.4.44 rev2 / 2026-09-07 — Tip 3 sayfa-2 yerleşimi
 1. Anahtar Kelimeler ile IPC Kodu arasında sabit satır yüksekliği veya görünmez boş paragraf kaynaklı geniş boşluk bırakılmaz.
 2. IPC sonrasında `Araştırma kapsamının belirlenmesi...` metni gereksiz boşluk olmadan devam eder.
 3. `2. DEĞERLENDİRME` başlığı ve D1/D2 değerlendirme giriş paragrafının tamamı 2. sayfada yer almalıdır.
@@ -626,3 +626,29 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Anahtar Kelimeler 5x2 tablo boş bırakılmaz, tam 10 İngilizce teknik ifade kullanılır.
 - İkinci sayfada kriterler ve `2. DEĞERLENDİRME` başlığı kalır. Değerlendirme giriş paragrafı ile `2.1. Yenilik Değerlendirmesi` yeni sayfadan başlar.
 - D1+D2 buluş basamağı değerlendirmesi üç teknik olarak dolu paragraf olmalıdır.
+
+
+## v5.4.44 rev5 / 2026-09-08 — Yöntem NASIL + cache/checkpoint
+
+1. Ana yöntem istemindeki her işlem adımı ayrı uzman-`NASIL?` testine tabidir. `alınması` için kaynak/gönderici/arayüz; diğer genel işlem fiilleri için kaynak destekli teknik taşıyıcı + girdi/önceki çıktı + işlem mekanizması + çıktı/sonraki adım ilişkisi aranır.
+2. Tüm kullanıcı-görünür Türkçe metinde cümle içi gereksiz Title Case/büyük harf AI kalite turunda taranır. `sentence_case_clean` ve `method_how_steps_passed` zorunlu kalite bayraklarıdır.
+3. Tarifname oluşturma aynı kaynak/ayarlarla tekrarlandığında başarılı pahalı aşamalar SHA-256 tabanlı oturum-içi checkpoint'ten yüklenir.
+4. Görüş hazırlamada teknik analiz, kalite-audit geçmiş görüş ve nihai görüş paketi aynı şekilde checkpoint'lenir. Timeout/hata sonrası aynı girdilerle son başarılı aşamadan devam edilir.
+5. Cache yalnız PASS olmuş ara sonuçları saklar ve hiçbir kalite kapısını devre dışı bırakmaz. Model/kural/girdi değişikliği cache'i otomatik geçersiz kılar.
+
+
+## v5.4.44 rev7 / 2026-09-08 — Görüş kombinasyon savunması ana ağırlık kuralı
+
+- Y veya açık çoklu-doküman buluş basamağı itirazında uzmanın asıl saldırısı dokümanların birlikte öğretisi kabul edilir. Görüşün en güçlü ve kapsamlı savunması da birlikte değerlendirme bölümünde kurulmalıdır.
+- Her gerçek kombinasyon ayrı görünür başlık ve ayrı kapsamlı paragraf setidir. Numaralı Y grupları tek mega-kombinasyona birleştirilemez.
+- Her grup için uzman itirazının kombinasyon mantığı, teknik fark/NASIL, teknik etki, objektif teknik problem, motivasyon/yönlendirme, ilave değişiklikler ve özel unsur-işlev ilişkisi zorunlu savunma zinciridir.
+- Kısa/yüzeysel kombinasyon bölümü Word üretiminden önce fail-closed reddedilir.
+- Nihai model anlatımında `+` işaretiyle doküman kombinasyonu yazılmaz.
+
+## v5.4.44 rev6 / 2026-09-08 — Araştırma raporu Y1/Y2 kombinasyon grupları
+
+1. Araştırma raporundaki `X1`, `Y1`, `Y2`, `Y1,Y2` gibi işaretler X/Y savunma kategorisine normalize edilir, ancak özgün işaret ve grup bilgisi korunur.
+2. D1=`Y1,Y2`, D2=`Y1`, D3=`Y2` ise D1+D2 ve D1+D3 ayrı kombinasyonlardır; D1+D2+D3 tek kombinasyon değildir.
+3. Deterministik parser başarısızsa yalnız tablo okuma amacıyla AI fallback kullanılabilir. AI sonucu deterministik kaynak/kategori/grup doğrulamasından geçmezse süreç fail-closed durur.
+4. Yalnız PASS olmuş fallback sonucu checkpoint'e alınır; cache kalite kapılarını atlamaz.
+

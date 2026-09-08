@@ -5,8 +5,8 @@ ROOT = Path(__file__).resolve().parent
 
 def test_version_and_rules():
     from rules import APP_VERSION, RULESET_VERSION, GORUS_RULES
-    assert APP_VERSION == "v5.4.53"
-    assert RULESET_VERSION == "2026-09-07.v43"
+    assert APP_VERSION == "v5.4.44"
+    assert RULESET_VERSION == "2026-09-08.v46"
     low = GORUS_RULES.casefold()
     assert "savunma dokümanları görülmeden" in low
     assert "yapılan değişiklikler ve dayanakları" in low

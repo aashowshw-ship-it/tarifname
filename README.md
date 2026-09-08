@@ -1,6 +1,6 @@
-# Patent Atölyesi v5.4.53
+# Patent Atölyesi v5.4.44
 
-## Çok kullanıcılı giriş ekranı (v5.4.53 tabanı)
+## Çok kullanıcılı giriş ekranı (v5.4.44 tabanı)
 
 Bu paket, çekirdek patent üretim/görüş kurallarına dokunmadan uygulamanın önüne kullanıcı adı/şifre kapısı ekler. Kullanıcılar kod içine yazılmaz. Render **Environment** bölümünde `PATENT_USERS_JSON` tanımlanır.
 
@@ -171,7 +171,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-09-07.v43`
+Kural sürümü: `2026-09-08.v46`
 
 ## Yerel çalıştırma
 
@@ -562,7 +562,7 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 - Nihai Word kalite kapısı, tam biçimi ve kalınlığı deterministik olarak doğrular. Başlık eki veya normal yazı bulunursa indirme açılmaz.
 
 
-## v5.4.53 / 2026-09-07.v43 — Tip 3 fail-closed kalite ve adlandırma
+## v5.4.44 / 2026-09-07.v43 — Tip 3 fail-closed kalite ve adlandırma
 - Tip 3 model metninde noktalı virgül yasaktır. Özgün İngilizce Abstract ve şablonun değiştirilmeyen sabit metinleri kaynak istisnasıdır.
 - D1/D2 tablo sonrası yenilik değerlendirmesi istem/şekil dayanaklarını tekrar etmez, kısa kalır ve yeniliği bozmayan dokümanlarda `emareye rastlanmamıştır` + `D1/D2 dokümanı varlığında yeni olduğu düşünülmektedir` kalıbıyla biter.
 - Uyarılar standart değildir. Şablondaki sabit girişten sonra en fazla iki, yalnız kaynakta gerçekten eksik kritik yazım bilgi/çizimi veya somut araştırma riski için kaynağa özgü uyarı kullanılır.
@@ -571,7 +571,7 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 - Çıktı dosya adlarında boşluk/URL kodlaması yerine alt çizgi kullanılır. `Ön_Araştırma_Raporu_<DP REF>.docx` ve revizyonda `Ön_Araştırma_Raporu_<DP REF>_rev.docx` kullanılır.
 
 
-## v5.4.53 rev2 / 2026-09-07 — Tip 3 ikinci sayfa yerleşim kapısı
+## v5.4.44 rev2 / 2026-09-07 — Tip 3 ikinci sayfa yerleşim kapısı
 - `Anahtar Kelimeler` ile `IPC Kodu` arasındaki sabit satır yüksekliği ve görünmez boş paragraf kaynaklı beyaz alan kaldırıldı. Font, punto ve 5x2 anahtar kelime tablosu korunur.
 - IPC alanından sonra `Araştırma kapsamının belirlenmesi...` metni normal Word akışında gereksiz boşluk olmadan devam eder. İlk iki Tip 3 tablosu floating yerine inline akışta tutulur.
 - `2. DEĞERLENDİRME` başlığı ile D1/D2'yi bildiren değerlendirme giriş paragrafının tamamı 2. sayfada bulunmak zorundadır. LibreOffice render kapısı sayfa 2'de bu metinleri arar; taşma varsa Word indirmesi açılmaz.
@@ -583,3 +583,31 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 - Nihai D1 ve varsa D2 özgün patent PDF/DOCX dosyaları sonuç modu açılmadan önce zorunlu olarak yüklenir ve doküman kimliği doğrulanır.
 - D1+D2 bulunan raporlarda buluş basamağı değerlendirmesi üç ayrı güçlü paragraftır: D1 başlangıç noktası ve teknik farklar, D2 kombinasyon motivasyonu, kalan özellikler/sinerjik teknik etki ve ihtiyatlı sonuç.
 - İlk arama satırı `Totalpatent/Espaenet sorgusu: ...` etiketiyle gösterilir.
+
+
+## v5.4.44 rev5 / 2026-09-08 — Tarifname NASIL kapısı + oturum-içi cache/checkpoint
+
+- Ana yöntem istemindeki **her işlem adımı** bağımsız uzman-`NASIL?` kontrolünden geçer. Salt `... alınması / işlenmesi / dönüştürülmesi / oluşturulması` yeterli değildir; kaynak desteklediği ölçüde teknik taşıyıcı, girdi/kaynak, işlem mekanizması ve çıktı/sonraki-adım ilişkisi görünür olmalıdır. `alınması` kullanılıyorsa veri/isteğin nereden veya kimden ve hangi teknik kanal üzerinden alındığı açıklanır.
+- Cümle içindeki unsur/modül adlarında başlık biçimindeki gereksiz büyük harfler AI kalite turunda bütün kullanıcı-görünür metin boyunca kontrol edilir; `coverage_audit.sentence_case_clean` zorunlu PASS alanıdır.
+- `coverage_audit.method_how_steps_passed` zorunlu PASS alanıdır. Nihai Word kapısı `how_test` dahil bütün son kapılar PASS olmadan indirmeyi açmaz.
+- Tarifname oluşturma akışında aynı kaynak/ayar kombinasyonu SHA-256 + model + kural sürümü ile anahtarlanır. Başarılı `source_package`, `extracted`, `literature`, `final_draft_audit` ve `docx` aşamaları Streamlit oturumu içinde checkpoint olarak saklanır. Timeout/hata sonrası aynı girdilerle yeniden başlatıldığında son başarılı aşamadan devam edilir.
+- Görüş akışında savunma dokümanlarıyla tamamlanmış teknik analiz `analysis_source`, ham-kaynak ikinci okumasını geçmiş görüş taslağı `audited_opinion` ve tüm kapıları geçmiş nihai çıktı `final_bundle` checkpoint olarak saklanır. Aynı içerik ve seçimlerle tekrar çalıştırmada başarılı AI aşamaları tekrar çağrılmaz.
+- Cache kalite kapılarının yerine geçmez. Girdi, seçim, model veya kural sürümü değişince imza değişir ve eski checkpoint kullanılmaz.
+
+
+## v5.4.44 rev7 / 2026-09-08 — Görüşte çoklu-doküman buluş basamağı ana savunma kapısı
+
+- Y kategorisi veya uzmanın açık çoklu-doküman buluş basamağı itirazında, `Birlikte Değerlendirildiğinde / Considered Together` bölümü görüşün ana ve en ayrıntılı buluş basamağı savunmasıdır.
+- Y1/Y2 gibi ayrı kombinasyon grupları `combined_assessment.groups` içinde ayrı görünür başlıklarla tutulur. D1-D2 ve D1-D3 gibi gerçek gruplar tek toplu D1-D2-D3 başlığı altında birleştirilemez.
+- Her gerçek kombinasyon en az iki dolu paragrafta uzmanın kombinasyon mantığını, teknik farkın NASIL oluştuğunu, teknik etkiyi, objektif teknik problemi, motivasyon/yönlendirmeyi ve isteme ulaşmak için yine gereken ilave yapısal/işlevsel değişiklikleri tartışır. Kısa/genel kombinasyon savunması fail-closed reddedilir.
+- Nihai görüş anlatımında `D1+D2` gibi artı işaretli kombinasyon gösterimi yasaktır. `D1 ve D2` / `D1 and D2` kullanılır.
+- Word üretici her gerçek kombinasyon grubunu ayrı başlık olarak render eder. Eski checkpoint alanları yalnız geriye dönük uyumluluk için okunabilir.
+
+## v5.4.44 rev6 / 2026-09-08 — TÜRKPATENT Y1/Y2 kapsam parserı + fail-closed AI fallback
+
+- Türkiye/EP araştırma raporlarında `X1`, `Y1`, `Y2`, `Y1,Y2` kategori işaretleri temel X/Y kategorisine normalize edilir; özgün işaret ve kombinasyon grupları korunur.
+- D1=`Y1,Y2`, D2=`Y1`, D3=`Y2` örneğinde D1+D2 ve D1+D3 ayrı gerçek kombinasyonlar olarak tutulur; üç doküman tek bir kombinasyona dönüştürülmez.
+- Önce deterministik tablo parserı çalışır. Yalnız parser sonuç üretemezse AI fallback devreye girer; fallback yalnız rapordaki kategori tablosundan yayın numarası + kategori işaretini çıkarır.
+- AI fallback sonucu yayın numarası, X/Y kategori ve numaralı Y-grup validatorlarından geçmeden kabul edilmez. Belirsizlikte süreç fail-closed durur.
+- PASS olmuş fallback kapsamı SHA-256/model/kural sürümü imzasıyla checkpoint'e alınabilir; cache hiçbir kalite kapısını atlamaz.
+

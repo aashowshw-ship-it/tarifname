@@ -5,8 +5,8 @@ from source_guards import validate_detailed_description_source_transfer
 
 
 def test_version_and_lossless_patent_layer_rules():
-    assert APP_VERSION == "v5.4.53"
-    assert RULESET_VERSION == "2026-09-07.v43"
+    assert APP_VERSION == "v5.4.44"
+    assert RULESET_VERSION == "2026-09-08.v46"
     assert "KAYIPSIZ PATENT YENİDEN YAZIM KURALI" in TARIFNAME_RULES
     assert "TEKNİK LİTERAL KAYIP KAPISI" in TARIFNAME_RULES
 
