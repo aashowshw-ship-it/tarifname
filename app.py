@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import base64
 import io
 import json
@@ -19,6 +21,7 @@ from urllib.request import Request, urlopen
 import html as html_lib
 import hashlib
 import secrets
+import time
 
 import streamlit as st
 from docx import Document
@@ -32,6 +35,8 @@ from openai import OpenAI
 from PIL import Image
 
 from auth import authenticate, load_users
+from ai_metrics import metric_from_response
+from ai_cache import workflow_prompt_cache_kwargs
 
 try:
     import cairosvg  # SVG müşteri şekillerini teknik içerik değiştirmeden PNG önizlemeye/Word yerleşimine dönüştürmek için
@@ -78,6 +83,7 @@ from tarifname_figure_generation import (
 )
 
 from gorus_audit import (
+    build_page_line_index,
     annotate_quote_locations,
     validate_quote_locations_against_spec,
     extract_cited_original_figure_pages,
@@ -127,6 +133,7 @@ class UploadedAsset:
 
 
 _WORKFLOW_CHECKPOINT_KEY = "_patent_atolyesi_workflow_checkpoints_v1"
+_AI_METRICS_KEY = "_patent_atolyesi_ai_metrics_v1"
 
 def _workflow_signature(workflow: str, *, files: Iterable[tuple[str, bytes]] = (), options: dict[str, Any] | None = None) -> str:
     """Same-session cache/checkpoint key. Content hashes prevent name/size collisions and invalidate on rules/model changes."""
@@ -154,6 +161,61 @@ def _workflow_checkpoint_get(workflow: str, signature: str, stage: str) -> Any:
 def _workflow_checkpoint_set(workflow: str, signature: str, stage: str, value: Any) -> None:
     stages = _workflow_checkpoint_bucket(workflow, signature)
     stages[stage] = value
+
+def _ai_metrics_bucket(workflow: str, signature: str) -> list[dict[str, Any]]:
+    """Same-session telemetry for one immutable workflow signature. Never participates in quality decisions."""
+    root = st.session_state.setdefault(_AI_METRICS_KEY, {})
+    key = f"{workflow}:{signature}"
+    bucket = root.get(key)
+    if not isinstance(bucket, list):
+        bucket = []
+        root[key] = bucket
+    return bucket
+
+def _record_ai_metric(workflow: str, signature: str, metric: dict[str, Any]) -> None:
+    _ai_metrics_bucket(workflow, signature).append(dict(metric))
+
+def _show_tarifname_ai_metrics(signature: str) -> None:
+    rows = list(_ai_metrics_bucket("tarifname_create", signature))
+    if not rows:
+        return
+    total_seconds = sum(float(row.get("duration_seconds", 0.0) or 0.0) for row in rows)
+    total_input = sum(int(row.get("input_tokens", 0) or 0) for row in rows)
+    total_cached = sum(int(row.get("cached_input_tokens", 0) or 0) for row in rows)
+    total_cache_write = sum(int(row.get("cache_write_tokens", 0) or 0) for row in rows)
+    total_output = sum(int(row.get("output_tokens", 0) or 0) for row in rows)
+    total_reasoning = sum(int(row.get("reasoning_tokens", 0) or 0) for row in rows)
+    known_costs = [row.get("estimated_token_cost_try") for row in rows if row.get("estimated_token_cost_try") is not None]
+    total_cost = sum(float(value or 0.0) for value in known_costs) if len(known_costs) == len(rows) else None
+    display_rate = next((float(row.get("usd_try_rate") or 0.0) for row in rows if float(row.get("usd_try_rate") or 0.0) > 0), 0.0)
+    with st.expander("Tarifname AI süre ve kullanım ölçümü", expanded=False):
+        display_rows = []
+        for index, row in enumerate(rows, 1):
+            cost = row.get("estimated_token_cost_try")
+            display_rows.append({
+                "#": index,
+                "Aşama": row.get("stage", "AI çağrısı"),
+                "Süre (sn)": round(float(row.get("duration_seconds", 0.0) or 0.0), 2),
+                "Input": int(row.get("input_tokens", 0) or 0),
+                "Cached input": int(row.get("cached_input_tokens", 0) or 0),
+                "Cache write": int(row.get("cache_write_tokens", 0) or 0),
+                "Output": int(row.get("output_tokens", 0) or 0),
+                "Reasoning": int(row.get("reasoning_tokens", 0) or 0),
+                "Tahmini TL": "—" if cost is None else f"{float(cost):.2f} TL",
+            })
+        st.dataframe(display_rows, use_container_width=True, hide_index=True)
+        cost_text = "hesaplanamadı" if total_cost is None else f"{total_cost:.2f} TL"
+        st.caption(
+            f"Bu tarifname işi için bu oturumda biriken {len(rows)} AI çağrısı | "
+            f"AI bekleme süresi: {total_seconds:.2f} sn | input: {total_input:,} | cached: {total_cached:,} | "
+            f"cache write: {total_cache_write:,} | output: {total_output:,} | reasoning: {total_reasoning:,} | "
+            f"tahmini model-token maliyeti: {cost_text}. "
+            + (f"Yaklaşık kur: 1 USD = {display_rate:.4f} TL. " if display_rate else "")
+            + "Cache-write tokenları GPT-5.6 güncel cache-write katsayısıyla maliyete dahil edilir. "
+            "Reasoning tokenları output tokenlarının alt kümesidir; ayrıca ücret eklenmez. "
+            "Web search ve ayrı image-generation araç ücretleri bu tahmine dahil değildir. "
+            "Checkpoint'ten geri kullanılan aşamalar yeni API çağrısı oluşturmadığı için yeni satır eklemez."
+        )
 
 def _uploaded_file_parts(*groups: Any) -> list[tuple[str, bytes]]:
     parts: list[tuple[str, bytes]] = []
@@ -224,7 +286,14 @@ def image_content(asset: UploadedAsset) -> dict[str, Any]:
     return {"type": "input_image", "image_url": f"data:{mime};base64,{b64}", "detail": "high"}
 
 
-def ask_json(prompt: str, *, web_search: bool = False, images: Iterable[UploadedAsset] | None = None) -> dict[str, Any]:
+def ask_json(
+    prompt: str,
+    *,
+    web_search: bool = False,
+    images: Iterable[UploadedAsset] | None = None,
+    metric_stage: str | None = None,
+    metric_context: tuple[str, str] | None = None,
+) -> dict[str, Any]:
     client = get_client()
     content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
     for asset in images or []:
@@ -233,10 +302,25 @@ def ask_json(prompt: str, *, web_search: bool = False, images: Iterable[Uploaded
         "model": MODEL,
         "input": [{"role": "user", "content": content}],
     }
+    # v5.4.58: prompt içeriğini değiştirmeden bütün bağlayıcı ana iş akışı kural
+    # prefixleri için GPT-5.6 prompt cache gruplaması/30m TTL etkinleştirilir.
+    kwargs.update(workflow_prompt_cache_kwargs(prompt, MODEL))
     if web_search:
         kwargs["tools"] = [{"type": "web_search"}]
         kwargs["tool_choice"] = "required"
+    started = time.perf_counter()
     response = client.responses.create(**kwargs)
+    duration = time.perf_counter() - started
+    if metric_stage and metric_context:
+        workflow, signature = metric_context
+        metric = metric_from_response(
+            response,
+            stage=metric_stage,
+            model=MODEL,
+            duration_seconds=duration,
+            web_search=web_search,
+        )
+        _record_ai_metric(workflow, signature, metric.as_dict())
     return extract_json(response.output_text)
 
 
@@ -340,7 +424,98 @@ def legacy_doc_to_docx_bytes(data: bytes, filename: str) -> bytes:
         return files[0].read_bytes()
 
 
-def extract_text_from_asset(asset: UploadedAsset) -> str:
+PDF_VISUAL_FALLBACK_MIN_TOTAL_CHARS = 160
+PDF_VISUAL_FALLBACK_MIN_CHARS_PER_PAGE = 40
+PDF_VISUAL_FALLBACK_BATCH_PAGES = 6
+PDF_VISUAL_FALLBACK_MAX_PAGES = 80
+
+def _pdf_page_count(data: bytes) -> int:
+    try:
+        if fitz is not None:
+            pdf = fitz.open(stream=data, filetype="pdf")
+            try:
+                return len(pdf)
+            finally:
+                pdf.close()
+    except Exception:
+        pass
+    try:
+        return len(PdfReader(io.BytesIO(data)).pages)
+    except Exception:
+        return 0
+
+def _pdf_needs_visual_fallback(text: str, page_count: int) -> bool:
+    visible = re.sub(r"\s+", "", str(text or ""))
+    alnum = sum(1 for ch in visible if ch.isalnum())
+    threshold = max(PDF_VISUAL_FALLBACK_MIN_TOTAL_CHARS, max(1, int(page_count or 0)) * PDF_VISUAL_FALLBACK_MIN_CHARS_PER_PAGE)
+    return alnum < threshold
+
+def _render_pdf_pages_for_vision(asset: UploadedAsset) -> list[UploadedAsset]:
+    if fitz is None:
+        raise ValueError("Görsel PDF fallback için PyMuPDF kullanılamıyor.")
+    pdf = fitz.open(stream=asset.data, filetype="pdf")
+    try:
+        if len(pdf) > PDF_VISUAL_FALLBACK_MAX_PAGES:
+            raise ValueError(
+                f"{asset.name} taranmış/görsel PDF ve {len(pdf)} sayfa içeriyor. "
+                f"Görsel fallback güvenlik sınırı {PDF_VISUAL_FALLBACK_MAX_PAGES} sayfadır."
+            )
+        out: list[UploadedAsset] = []
+        matrix = fitz.Matrix(1.7, 1.7)
+        stem = Path(asset.name).stem
+        for page_no, page in enumerate(pdf, 1):
+            pix = page.get_pixmap(matrix=matrix, alpha=False)
+            out.append(UploadedAsset(f"{stem}_sayfa_{page_no}.png", pix.tobytes("png"), "image/png"))
+        return out
+    finally:
+        pdf.close()
+
+def _visual_pdf_text(
+    asset: UploadedAsset,
+    *,
+    metric_context: tuple[str, str] | None = None,
+) -> str:
+    pages = _render_pdf_pages_for_vision(asset)
+    if not pages:
+        raise ValueError(f"{asset.name} için görsel PDF sayfası üretilemedi.")
+    chunks: list[str] = []
+    for start in range(0, len(pages), PDF_VISUAL_FALLBACK_BATCH_PAGES):
+        batch = pages[start:start + PDF_VISUAL_FALLBACK_BATCH_PAGES]
+        first_page = start + 1
+        last_page = start + len(batch)
+        prompt = f'''Aşağıdaki görseller {asset.name} adlı PDF'nin {first_page}-{last_page}. sayfalarıdır.
+Bu bir kaynak-okuma işlemidir; yorum, özet, çeviri veya teknik çıkarım yapma.
+Her sayfadaki görünür metni mümkün olduğunca birebir ve okuma sırasına sadık biçimde aktar.
+Patent numarası, başlık, paragraf/istem numaraları, tablo metni ve şekil üzerindeki okunabilir metinleri koru.
+Okunamayan kısmı uydurma; [OKUNAMIYOR] yaz.
+Yalnız şu JSON biçimini döndür:
+{{"pages":[{{"page":1,"text":"..."}}]}}
+Sayfa numaralarını bu batch'in gerçek PDF sayfa numaralarıyla yaz.'''
+        result = ask_json(
+            prompt,
+            images=batch,
+            metric_stage=f"PDF görsel fallback — {asset.name} s.{first_page}-{last_page}",
+            metric_context=metric_context,
+        )
+        rows = result.get("pages") if isinstance(result, dict) else None
+        if not isinstance(rows, list):
+            raise ValueError(f"{asset.name} görsel PDF fallback çıktısı geçersiz.")
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            page_no = int(row.get("page") or 0)
+            text = str(row.get("text") or "").strip()
+            if text:
+                chunks.append(f"[PDF SAYFA {page_no}]\n{text}")
+    combined = "\n\n".join(chunks).strip()
+    if not combined:
+        raise ValueError(f"{asset.name} görsel PDF fallback ile de okunamadı.")
+    logging.getLogger(__name__).info(
+        "PDF visual fallback used: %s (%s pages, %s chars)", asset.name, len(pages), len(combined)
+    )
+    return combined
+
+def extract_text_from_asset(asset: UploadedAsset, *, metric_context: tuple[str, str] | None = None) -> str:
     suffix = Path(asset.name).suffix.lower()
     if suffix == ".docx":
         text = docx_text(asset.data)
@@ -348,6 +523,9 @@ def extract_text_from_asset(asset: UploadedAsset) -> str:
         text = legacy_doc_text(asset.data, asset.name)
     elif suffix == ".pdf":
         text = pdf_text(asset.data)
+        page_count = _pdf_page_count(asset.data)
+        if _pdf_needs_visual_fallback(text, page_count):
+            text = _visual_pdf_text(asset, metric_context=metric_context)
     elif suffix in {".txt", ".md"}:
         text = asset.data.decode("utf-8", errors="replace")
     elif suffix in IMAGE_SUFFIXES:
@@ -377,7 +555,12 @@ def assets_from_uploads(files: Iterable[Any] | None) -> list[UploadedAsset]:
     return out
 
 
-def combine_asset_text(label: str, assets: list[UploadedAsset]) -> tuple[str, list[UploadedAsset]]:
+def combine_asset_text(
+    label: str,
+    assets: list[UploadedAsset],
+    *,
+    metric_context: tuple[str, str] | None = None,
+) -> tuple[str, list[UploadedAsset]]:
     blocks: list[str] = []
     images: list[UploadedAsset] = []
     total = 0
@@ -387,7 +570,7 @@ def combine_asset_text(label: str, assets: list[UploadedAsset]) -> tuple[str, li
             images.append(_model_ready_image(asset))
             blocks.append(f"\n--- {label}: {asset.name} (teknik görsel ayrıca eklenmiştir; dosya adı ve görsel içeriği kaynak envanterine dahildir) ---\n")
             continue
-        text = extract_text_from_asset(asset)
+        text = extract_text_from_asset(asset, metric_context=metric_context)
         if not text:
             continue
         remain = MAX_TOTAL_TEXT - total
@@ -4558,7 +4741,7 @@ JSON dışında yazma.
      "inventive_step_paragraphs":[""]
    }}
  ],
- "combined_assessment":{{"heading":"","paragraphs":[""]}},
+ "combined_assessment":{{"heading":"","paragraphs":[],"groups":[{{"group":"Y1","labels":["D1","D2"],"heading":"D1 ve D2 Dokümanları Birlikte Değerlendirildiğinde","paragraphs":["",""]}}]}},
  "conclusion":[""], "signoff":"Saygılarımızla,\nDESTEK PATENT A.Ş."
 }}
 
@@ -4566,15 +4749,15 @@ JSON dışında yazma.
 - Şablon girişine uy: intro kısa olsun ve yalnız rapor tarihi/türü + istem/kriter sonucunu söylesin. Girişte D1/D2/D3 seçimini, `en yakın doküman` bilgisini veya hangi dokümana karşı savunma yapıldığını anlatma.
 - `applicant_override` boş değilse JSON `applicant` alanını aynen bu değer yap, değiştirme veya kısaltma. Boşsa yalnız rapor/tarifnameden güvenilir biçimde çıkar. Resmi raporda birden fazla başvuru sahibi ayrı satırlarda bulunuyorsa varsayılan olarak yalnız İLK başvuru sahibini `applicant` alanına yaz, diğerlerini otomatik birleştirme.
 - İnceleme raporunda X/Y etiketi yoksa category alanını boş bırak; uydurma kategori yazma.
-- Türkiye/EP araştırma raporunda `category` alanına yalnız normalize temel kategori `X` veya `Y` yaz. Raporda `Y1`, `Y2`, `Y1,Y2`, `X1` gibi işaret varsa `category_marker` alanında bu işareti koru ve numaralı Y gruplarını `combination_groups` listesine yaz. Örneğin D1=Y1,Y2, D2=Y1, D3=Y2 ise D1+D2 (Y1) ve D1+D3 (Y2) ayrı ayrı değerlendirilir; üçünü tek bir kombinasyon gibi ele alma. `combined_assessment` içinde her gerçek Y grubuna özgü, ilgili D etiketlerini açıkça içeren ayrı paragraf kur.
+- Türkiye/EP araştırma raporunda `category` alanına yalnız normalize temel kategori `X` veya `Y` yaz. Raporda `Y1`, `Y2`, `Y1,Y2`, `X1` gibi işaret varsa `category_marker` alanında bu işareti koru ve numaralı Y gruplarını `combination_groups` listesine yaz. Örneğin D1=Y1,Y2, D2=Y1, D3=Y2 ise D1 ile D2 (Y1) ve D1 ile D3 (Y2) ayrı ayrı değerlendirilir; üçünü tek bir kombinasyon gibi ele alma. Numarasız Y işaretinde aynı istem/istem grubu için en az iki Y dokümanı ve başka alt grup yoksa yalnız Y dokümanlarını tek kombinasyon grubu yap. Örneğin D1=X, D2=Y, D3=Y, D4=Y ise kombinasyon D2, D3 ve D4'tür; D1 otomatik olarak bu gruba girmez. Gerçek kombinasyon varsa `combined_assessment.groups` kullan. Her grup için `group`, gerçek `labels`, yalnız o etiketleri içeren ayrı `heading` ve en az iki kapsamlı `paragraphs` döndür. `combined_assessment.heading` ve `combined_assessment.paragraphs` yeni üretimde boş kalsın.
 - `cited_documents.title` analiz amacıyla tutulabilir, ancak nihai Word girişindeki bibliyografik satırlarda doküman başlığı kullanılmayacaktır. Bu satırlar yalnız `D1: <yayın numarası>`, `D2: <yayın numarası>`, `D3: <yayın numarası>` biçiminde ve tamamen kalın oluşturulur.
 - Uzman gerekçeli değerlendirmeyi yalnız D1 üzerinden kurmuşsa YALNIZ D1'i görüşe al. D2/D3 yalnız `ilgili dokümanlar` listesinde bulunuyor ancak gerekçede kullanılmıyorsa görüşe bölüm, şekil veya tamamlayıcı savunma olarak ekleme.
 - Her dokümanın teknik öğretisini gerçekten yüklenen metinden çıkar. Patentte bulunmayan unsur/işlev yazma.
 - Tarifname alıntıları spec metninde birebir geçen tam cümle/pasaj olsun.
 - Buluş basamağı zincirinde çekirdek sıra teknik fark → teknik etki → objektif teknik problem şeklinde görünür olsun. Ayrıca ayırt edici teknik katkıyı, motivasyon/yönlendirmeyi ve istemdeki çözüme ulaşmak için kaynaklarda açıkça öğretilmeyen somut ilave yapısal/işlevsel değişiklikleri açıkça kur. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp savunma kullanma.
-- Her bireysel D bölümü için yalnız ana D başlığını kullan. `novelty_heading` ve `inventive_step_heading` alanlarını DAİMA boş bırak. Araştırma raporunda category=`X` olan her dokümanda kısa objektif tanıtımdan sonra `novelty_paragraphs` içinde yenilik değerlendirmesini ve `inventive_step_paragraphs` içinde buluş basamağı değerlendirmesini akıcı paragraf olarak yaz. category=`Y` olan dokümanda `novelty_paragraphs` boş olsun, yalnız `inventive_step_paragraphs` yaz. Bireysel D bölümü içinde `D1 karşısında yenilik`, `D1 karşısında buluş basamağı`, `Novelty over D1`, `Inventive step over D1` gibi ara başlıklar kullanma. Her iki kategoride de kaynakta kullanılabilir ve Çince/Han yazı içermeyen özgün teknik şekil varsa en az bir şekil zorunludur.
+- Her bireysel D bölümü için yalnız ana D başlığını kullan. `novelty_heading` ve `inventive_step_heading` alanlarını DAİMA boş bırak. Araştırma raporunda category=`X` olan her dokümanda kısa objektif tanıtımdan sonra `novelty_paragraphs` içinde yenilik değerlendirmesini ve `inventive_step_paragraphs` içinde buluş basamağı değerlendirmesini akıcı ve ayrıntılı paragraf olarak yaz. category=`Y` olan dokümanda hem `novelty_paragraphs` hem `inventive_step_paragraphs` BOŞ olsun. Y dokümanının `blocks` alanında yalnız dokümanın kendi gerçek teknik öğretisini kısa ve objektif biçimde tanıt; başvuru/istem karşılaştırması, teknik problem, motivasyon/yönlendirme veya patentlenebilirlik sonucu yazma. Y buluş basamağı cevabını yalnız ilgili `Birlikte Değerlendirildiğinde` grubunda kur. Bireysel D bölümü içinde `D1 karşısında yenilik`, `D1 karşısında buluş basamağı`, `Novelty over D1`, `Inventive step over D1` gibi ara başlıklar kullanma. Her iki kategoride de kaynakta kullanılabilir ve Çince/Han yazı içermeyen özgün teknik şekil varsa en az bir şekil zorunludur.
 - Doküman sayısı iki veya daha fazla diye otomatik `combined_assessment` oluşturma. Yalnız X kategorisi dokümanlar varsa `combined_assessment` başlığı ve paragrafları TAMAMEN boş kalmalıdır. Her X dokümanını kendi bölümünde ayrı ayrı yenilik ve buluş basamağı yönünden güçlü biçimde savun.
-- `combined_assessment` yalnız raporda en az bir Y kategorisiyle gerçek doküman kombinasyonu kurulmuşsa veya inceleme/ofis aksiyonunda uzman iki ya da daha fazla dokümanı açıkça birlikte kullanarak buluş basamağı itirazı kurmuşsa oluşturulur. Bu durumda başlık fiilen kombine edilen D etiketlerini içerir ve kombinasyonun istemdeki çözüme neden götürmediğini ayrıntılı açıklar. Numaralı Y grupları varsa her grup ayrı savunma paragrafında ele alınır; farklı Y grupları tek toplu kombinasyona dönüştürülemez.
+- `combined_assessment` yalnız gerçek Y/çoklu-doküman buluş basamağı itirazında oluşturulur. Numaralı Y1/Y2 grupları aynen korunur. Numarasız Y kategorisinde aynı istem/istem grubu için iki veya daha fazla Y dokümanı varsa ve ayrıca alt grup ayrımı yoksa yalnız Y dokümanlarını tek grup yap; X dokümanı ancak rapor açıkça aynı çoklu-doküman itirazında onu Y dokümanlarıyla birlikte kullanmışsa gruba girer. Bireysel Y bölümleri yalnız objektif tanıtımdır ve savunma içermez. Asıl Y buluş basamağı savunması `combined_assessment.groups` içindeki ilgili görünür `Birlikte Değerlendirildiğinde` başlığında en az iki kapsamlı paragrafla kurulmalıdır.
 - Tek savunma dokümanı varsa ana buluş basamağı savunması o dokümanın kendi bölümünde ayrıntılı kurulur ve combined_assessment boş bırakılır.
 - ÖN ANALİZ içindeki `technical_contributions` listesini savunma önceliği olarak kullan. `defence_priority=high` olan ve istemde gerçekten bulunan katkıları nihai görüşte görünür biçimde öne çıkar. Teknik katkının hangi somut unsur/işlev ilişkisine dayandığını, teknik etkisini ve ilgili D dokümanının neden aynı katkıyı vermediğini açıkla. Bağımlı istemde yüksek öncelikli teknik katkı varsa o istemi topluca geçiştirme.
 - Tarifname quote bloğunu hemen önceki teknik savunmanın doğal devamı yap ve `attach_to_previous=true` döndür. `Tarifname sayfa...` ayrı paragraf olmayacak.
@@ -4614,7 +4797,7 @@ def gorus_quality_audit_prompt(
     opinion: dict[str, Any],
 ) -> str:
     return f"""{GORUS_RULES}
-Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül veya hindsight/geriye-dönük kalıp bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını, önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını, X dokümanında yenilik+buluş basamağı ve Y dokümanında yalnız buluş basamağı yapısının doğru uygulanıp uygulanmadığını, bireysel D bölümlerinde ayrıca yenilik/buluş basamağı ara başlığı açılmadığını, `devral.../inherit...` ve `mimari/architectur...` gibi yasak model dilinin bulunmadığını, `Bu farklardan...` gibi doğal devam cümlelerinin gereksiz yeni paragrafa bölünmediğini, `Considered Together/Birlikte Değerlendirildiğinde` bölümünün yalnız gerçek Y/kombinasyon itirazında bulunup bulunmadığını, yalnız X dokümanları varsa birleşik bölümün boş bırakılıp bırakılmadığını, gerçek kombinasyon varsa bu bölümün yeterince güçlü olup olmadığını, ÖN ANALİZDE high öncelikli olarak belirlenen doğrudan destekli teknik katkıların görüşte görünür biçimde öne çıkarılıp çıkarılmadığını ve müşteri kaynağındaki doğrudan destekli güçlü teknik bilgilerin sessizce atlanıp atlanmadığını, savunmaya alınan her D dokümanında yüklenen özgün kaynakta kullanılabilir ve Çince/Han yazı içermeyen teknik şekil bulunuyorsa şeklin zorunlu olarak seçilip seçilmediğini, Çince/Han yazı içeren şeklin yanlışlıkla kullanılmadığını ve seçilen alt şeklin teknik içeriğinin tamamının korunup korunmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu ve görüşte önce geldiğini de kontrol et.
+Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül veya hindsight/geriye-dönük kalıp bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını, önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını, X dokümanında yenilik+buluş basamağı savunmasının ayrıntılı kurulup kurulmadığını, Y dokümanının bireysel bölümünün yalnız kısa objektif tanıtım + şekil olarak kalıp ayrı yenilik/buluş basamağı savunması içerip içermediğini, bireysel D bölümlerinde ayrıca yenilik/buluş basamağı ara başlığı açılmadığını, `devral.../inherit...` ve `mimari/architectur...` gibi yasak model dilinin bulunmadığını, `Bu farklardan...` gibi doğal devam cümlelerinin gereksiz yeni paragrafa bölünmediğini, `Considered Together/Birlikte Değerlendirildiğinde` bölümünün yalnız gerçek Y/kombinasyon itirazında bulunup bulunmadığını, yalnız X dokümanları varsa birleşik bölümün boş bırakılıp bırakılmadığını, gerçek kombinasyon varsa bu bölümün yeterince güçlü olup olmadığını, ÖN ANALİZDE high öncelikli olarak belirlenen doğrudan destekli teknik katkıların görüşte görünür biçimde öne çıkarılıp çıkarılmadığını ve müşteri kaynağındaki doğrudan destekli güçlü teknik bilgilerin sessizce atlanıp atlanmadığını, savunmaya alınan her D dokümanında yüklenen özgün kaynakta kullanılabilir ve Çince/Han yazı içermeyen teknik şekil bulunuyorsa şeklin zorunlu olarak seçilip seçilmediğini, Çince/Han yazı içeren şeklin yanlışlıkla kullanılmadığını ve seçilen alt şeklin teknik içeriğinin tamamının korunup korunmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu ve görüşte önce geldiğini de kontrol et.
 
 JSON dışında yazma.
 ŞEMA:
@@ -4665,8 +4848,8 @@ def gorus_repair_prompt(
     audit: dict[str, Any],
 ) -> str:
     return f"""{GORUS_RULES}
-Aşağıdaki görüş JSON'u ikinci kalite kontrolünde başarısız oldu. Yalnız belirtilen sorunları düzelt ve AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu yeniden döndür. Metadata, onaylı istem seti, rapor sonucu ve kaynak dayanakları korunmalı. Yeni doküman veya yeni teknik özellik ekleme. Tarifname alıntıları birebir kalmalı. Model anlatımında noktalı virgül kullanma. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp kullanma. İç süreçteki BBF/müşteri formu ifadelerini nihai görüşe taşıma. X/Y savunma ayrımını koru. Yalnız X kategorisi dokümanlar varsa `combined_assessment` alanını boş bırak. `Considered Together/Birlikte Değerlendirildiğinde` bölümünü yalnız gerçek Y/kombinasyon itirazı varsa koru. Bireysel D bölümlerinde yenilik/buluş basamağı ara başlığı kullanma. `devral.../inherit...` ve `mimari/architectur...` dilini temizle. `Bu farklardan...` gibi önceki düşüncenin doğal devamını yeni paragrafa bölme. Doğrudan tarifname dayanağını önceki savunma paragrafına `attach_to_previous=true` ile bağla.
-Raporda numaralı Y grupları (`Y1`, `Y2`, `Y1,Y2`) varsa bunları koru; her gerçek kombinasyon grubunu ayrı paragrafta değerlendir ve farklı grupları tek bir toplu kombinasyona dönüştürme.
+Aşağıdaki görüş JSON'u ikinci kalite kontrolünde başarısız oldu. Yalnız belirtilen sorunları düzelt ve AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu yeniden döndür. Metadata, onaylı istem seti, rapor sonucu ve kaynak dayanakları korunmalı. Yeni doküman veya yeni teknik özellik ekleme. Tarifname alıntıları birebir kalmalı. Model anlatımında noktalı virgül kullanma. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp kullanma. İç süreçteki BBF/müşteri formu ifadelerini nihai görüşe taşıma. X/Y savunma ayrımını koru: X bireysel olarak ayrıntılı yenilik+buluş basamağı savunması alır; Y bireysel bölümü yalnız objektif teknik tanıtımdır ve savunma içermez. Yalnız X kategorisi dokümanlar varsa `combined_assessment` alanını boş bırak. `Considered Together/Birlikte Değerlendirildiğinde` bölümünü yalnız gerçek Y/kombinasyon itirazı varsa koru. Bireysel D bölümlerinde yenilik/buluş basamağı ara başlığı kullanma. `devral.../inherit...` ve `mimari/architectur...` dilini temizle. `Bu farklardan...` gibi önceki düşüncenin doğal devamını yeni paragrafa bölme. Doğrudan tarifname dayanağını önceki savunma paragrafına `attach_to_previous=true` ile bağla.
+Raporda numaralı Y grupları (`Y1`, `Y2`, `Y1,Y2`) varsa bunları koru. Numarasız birden fazla Y varsa ve alt grup yoksa yalnız Y dokümanlarını tek grup yap; X'i otomatik ekleme. Her gerçek kombinasyon grubunu `combined_assessment.groups` içinde ayrı görünür başlık ve en az iki kapsamlı paragrafla değerlendir; farklı grupları tek bir toplu kombinasyona dönüştürme.
 
 JSON dışında yazma.
 KALİTE RAPORU:\n{json.dumps(audit or {}, ensure_ascii=False, indent=2)}\n
@@ -4772,7 +4955,7 @@ def gorus_examiner_strengthen_prompt(
     return f"""{GORUS_RULES}
 Aşağıdaki görüş bütün normal kalite kapılarını geçmiştir ancak bağımsız uzman-perspektifi değerlendirmesinde ikna olasılığı daha da güçlendirilebilir görünmektedir. AYNI JSON ŞEMASIYLA görüşü yalnız bir kez teknik olarak güçlendir.
 
-Öncelik sırası: (1) istemde gerçekten bulunan ve ÖN ANALİZDE yüksek öncelikli belirlenen teknik katkı, (2) bu katkının kaynakta açık teknik işlev/etkisi, (3) D dokümanlarının somut teknik öğretisinin bu katkıyı neden vermediği, (4) yalnız gerçek Y/kombinasyon itirazı varsa `Considered Together/Birlikte Değerlendirildiğinde` bölümünün kombinasyon analizinin güçlendirilmesi. Yeni teknik özellik, yeni performans sonucu, yeni test sonucu veya dolaylı dayanak ekleme. Onaylı istemleri ve amendment bölümünü değiştirme. Tarifname quote metinlerini değiştirme. `hindsight`, `geriye dönük değerlendirme`, `working backwards`, noktalı virgül ve iç süreç/BBF/müşteri formu ifadeleri kullanma. X/Y yenilik-buluş basamağı ayrımını koru. Yalnız X dokümanları varsa combined_assessment boş kalmalıdır. Gerçek Y/kombinasyon itirazı varsa birleşik bölüm uygun ağırlıkta tutulur.
+Öncelik sırası: (1) istemde gerçekten bulunan ve ÖN ANALİZDE yüksek öncelikli belirlenen teknik katkı, (2) bu katkının kaynakta açık teknik işlev/etkisi, (3) D dokümanlarının somut teknik öğretisinin bu katkıyı neden vermediği, (4) yalnız gerçek Y/kombinasyon itirazı varsa `Considered Together/Birlikte Değerlendirildiğinde` bölümünün kombinasyon analizinin güçlendirilmesi. Yeni teknik özellik, yeni performans sonucu, yeni test sonucu veya dolaylı dayanak ekleme. Onaylı istemleri ve amendment bölümünü değiştirme. Tarifname quote metinlerini değiştirme. `hindsight`, `geriye dönük değerlendirme`, `working backwards`, noktalı virgül ve iç süreç/BBF/müşteri formu ifadeleri kullanma. X/Y ayrımını koru: X bireysel savunulur, Y bireysel bölümde savunulmaz ve Y savunması yalnız gerçek kombinasyon bölümünde kurulur. Yalnız X dokümanları varsa combined_assessment boş kalmalıdır. Gerçek Y/kombinasyon itirazı varsa birleşik bölüm uygun ağırlıkta tutulur.
 
 JSON dışında yazma.
 UZMAN-PERSPEKTİFİ BULGUSU:\n{json.dumps(examiner_assessment or {}, ensure_ascii=False, indent=2)}\n
@@ -4992,7 +5175,15 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
         _clone_blank(doc, template.paragraphs[23])
 
     combined = opinion.get("combined_assessment") or {}
-    if str(combined.get("heading", "")).strip() or (combined.get("paragraphs") or []):
+    combination_groups = [g for g in (combined.get("groups") or []) if isinstance(g, dict) and (str(g.get("heading", "")).strip() or (g.get("paragraphs") or []))]
+    if combination_groups:
+        for group in combination_groups:
+            _clone_paragraph_with_text(doc, template.paragraphs[33], group.get("heading", "Dokümanlar Birlikte Değerlendirildiğinde"), bold=True)
+            for par in group.get("paragraphs") or []:
+                _clone_paragraph_with_text(doc, template.paragraphs[34], par, bold=False)
+            _clone_blank(doc, template.paragraphs[35])
+    elif str(combined.get("heading", "")).strip() or (combined.get("paragraphs") or []):
+        # Backward-compatible rendering for old checkpoints only. New generation uses `groups`.
         _clone_paragraph_with_text(doc, template.paragraphs[33], combined.get("heading", "Dokümanların birlikte değerlendirilmesi"), bold=True)
         for par in combined.get("paragraphs") or []:
             _clone_paragraph_with_text(doc, template.paragraphs[34], par, bold=False)
@@ -6489,11 +6680,23 @@ def build_and_gate_gorus_opinion(
 
     Used both for the first generation and for every user-requested post-generation revision.
     """
+    # v5.4.54: render the FINAL specification once, then use the exact same
+    # SHA-256-bound physical page/line index for annotation and the hard gate.
+    # No quality rule is skipped; only redundant LibreOffice conversions are removed.
+    page_line_index = build_page_line_index(final_spec_name, final_spec_bytes)
     annotate_quote_locations(
-        current_opinion, final_spec_name, final_spec_bytes, source_state.get("language") or "Türkçe"
+        current_opinion,
+        final_spec_name,
+        final_spec_bytes,
+        source_state.get("language") or "Türkçe",
+        page_line_index=page_line_index,
     )
     validate_quote_locations_against_spec(
-        current_opinion, final_spec_name, final_spec_bytes, source_state.get("language") or "Türkçe"
+        current_opinion,
+        final_spec_name,
+        final_spec_bytes,
+        source_state.get("language") or "Türkçe",
+        page_line_index=page_line_index,
     )
     section_by_label = {str(sec.get("label", "")).upper(): sec for sec in current_opinion.get("sections") or []}
     requested_figure_docs = []
@@ -6896,6 +7099,7 @@ if work_type == "Tarifname oluşturma":
                         "jurisdiction": str(jurisdiction or "").strip() if literature else "",
                     },
                 )
+                tariff_metric_context = ("tarifname_create", tariff_signature)
 
                 source_package = _workflow_checkpoint_get("tarifname_create", tariff_signature, "source_package")
                 if source_package:
@@ -6940,11 +7144,15 @@ if work_type == "Tarifname oluşturma":
                     extracted_initial = ask_json(
                         tarifname_extraction_prompt(source, technical_text, example_text, language_choice),
                         images=model_images,
+                        metric_stage="1. BBF teknik envanteri",
+                        metric_context=tariff_metric_context,
                     )
                     progress.progress(22, text="BBF teknik bilgi envanteri ham kaynak pasajlarıyla ikinci kez, madde madde doğrulanıyor...")
                     extracted = ask_json(
                         tarifname_extraction_quality_prompt(source, technical_text, extracted_initial, source_passage_registry, language_choice),
                         images=model_images,
+                        metric_stage="2. Envanter ikinci kontrolü",
+                        metric_context=tariff_metric_context,
                     )
                     _validate_technical_fact_inventory(extracted)
                     validate_source_passage_audit(extracted, source_passage_registry)
@@ -6968,6 +7176,8 @@ if work_type == "Tarifname oluşturma":
                             ask_json(
                                 tarifname_literature_prompt(extracted, int(lit_count), jurisdiction, language_choice),
                                 web_search=True,
+                                metric_stage="3. Patent literatürü",
+                                metric_context=tariff_metric_context,
                             ).get("documents")
                             or []
                         )
@@ -6992,6 +7202,8 @@ if work_type == "Tarifname oluşturma":
                             language_choice,
                         ),
                         images=model_images,
+                        metric_stage="4. Tam tarifname taslağı",
+                        metric_context=tariff_metric_context,
                     )
 
                     progress.progress(73, text="BBF ile tamlık, istem mantığı ve şablon kuralları ikinci kez kontrol ediliyor...")
@@ -7006,6 +7218,8 @@ if work_type == "Tarifname oluşturma":
                             language_choice,
                         ),
                         images=model_images,
+                        metric_stage="5. Tarifname kalite kontrolü",
+                        metric_context=tariff_metric_context,
                     )
 
                     validation_feedback = ""
@@ -7031,6 +7245,8 @@ if work_type == "Tarifname oluşturma":
                                     source_passage_registry, draft, language_choice, final_raw_audit_nonce
                                 ),
                                 images=model_images,
+                                metric_stage=f"6. Final ham-kaynak ikinci okuma (tur {repair_round + 1})",
+                                metric_context=tariff_metric_context,
                             )
                             validate_final_raw_source_audit(
                                 final_raw_audit,
@@ -7051,6 +7267,8 @@ if work_type == "Tarifname oluşturma":
                                     source, technical_text, extracted, draft, mode, lit_docs, language_choice, validation_feedback
                                 ),
                                 images=model_images,
+                                metric_stage=f"7. Kalite düzeltmesi (tur {repair_round + 1})",
+                                metric_context=tariff_metric_context,
                             )
 
                     _workflow_checkpoint_set("tarifname_create", tariff_signature, "final_draft_audit", {
@@ -7106,6 +7324,7 @@ if work_type == "Tarifname oluşturma":
                     f"ayrıca {final_gates['technical_facts']} atomik teknik bilgi nihai Word kanıt zincirinde yeniden doğrulandı."
                 )
                 st.success("Kontrol kapıları tamamlandı: ✅ 1/6 Ham kaynak/BBF tamlığı  ✅ 2/6 Detaylı Açıklama tam kaynak aktarımı  ✅ 3/6 Ana + alt istemler  ✅ 4/6 Referanslar  ✅ 5/6 Tam şablon  ✅ 6/6 Unsur/yöntem dili")
+                _show_tarifname_ai_metrics(tariff_signature)
                 figure_data = None
                 figure_reports: list[dict[str, Any]] = []
                 figure_unresolved: list[str] = []
@@ -7656,16 +7875,30 @@ elif work_type == "Görüş hazırlama":
                 st.session_state.gorus_analysis = analysis
                 st.session_state.gorus_source = source_state_cached
             else:
-                report_text = extract_text_from_asset(UploadedAsset(report_file.name, report_file.getvalue(), report_file.type))
+                metric_context = ("gorus", str(analysis_upload_signature))
+                report_text = extract_text_from_asset(
+                    UploadedAsset(report_file.name, report_file.getvalue(), report_file.type),
+                    metric_context=metric_context,
+                )
                 spec_bytes = spec_file.getvalue()
-                spec_text = extract_text_from_asset(UploadedAsset(spec_file.name, spec_bytes, spec_file.type))
+                spec_text = extract_text_from_asset(
+                    UploadedAsset(spec_file.name, spec_bytes, spec_file.type),
+                    metric_context=metric_context,
+                )
                 prior_text = ""
                 if prior_file:
-                    prior_text = extract_text_from_asset(UploadedAsset(prior_file.name, prior_file.getvalue(), prior_file.type))
+                    prior_text = extract_text_from_asset(
+                        UploadedAsset(prior_file.name, prior_file.getvalue(), prior_file.type),
+                        metric_context=metric_context,
+                    )
                 sim_assets = assets_from_uploads(similar_files)
-                sim_text, sim_images = combine_asset_text("BENZER DOKÜMAN", sim_assets)
+                sim_text, sim_images = combine_asset_text(
+                    "BENZER DOKÜMAN", sim_assets, metric_context=metric_context
+                )
                 cust_assets = assets_from_uploads(customer_files)
-                cust_text, cust_images = combine_asset_text("MÜŞTERİ BİLGİSİ", cust_assets)
+                cust_text, cust_images = combine_asset_text(
+                    "MÜŞTERİ BİLGİSİ", cust_assets, metric_context=metric_context
+                )
                 model_images = [*sim_images, *cust_images]
 
                 progress.progress(35, text="Rapor itirazları, savunma dokümanları ve mevcut istemler analiz ediliyor...")

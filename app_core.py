@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import base64
 import io
 import json
@@ -43,6 +45,7 @@ except ImportError:  # pragma: no cover - bağımlılık Render üzerinde requir
 from pypdf import PdfReader
 
 from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES, EXTRA_CONTROLS_NOTICE, tarifname_extra_controls_completed
+from ai_cache import workflow_prompt_cache_kwargs
 from template_audit import validate_full_tarifname_template_fidelity
 from source_guards import (
     build_source_passage_registry,
@@ -174,6 +177,7 @@ def ask_json(prompt: str, *, web_search: bool = False, images: Iterable[Uploaded
         "model": MODEL,
         "input": [{"role": "user", "content": content}],
     }
+    kwargs.update(workflow_prompt_cache_kwargs(prompt, MODEL))
     if web_search:
         kwargs["tools"] = [{"type": "web_search"}]
         kwargs["tool_choice"] = "required"
@@ -258,7 +262,96 @@ def legacy_doc_text(data: bytes, filename: str) -> str:
     raise ValueError("Eski .doc dosyası okunamadı.")
 
 
-def extract_text_from_asset(asset: UploadedAsset) -> str:
+PDF_VISUAL_FALLBACK_MIN_TOTAL_CHARS = 160
+PDF_VISUAL_FALLBACK_MIN_CHARS_PER_PAGE = 40
+PDF_VISUAL_FALLBACK_BATCH_PAGES = 6
+PDF_VISUAL_FALLBACK_MAX_PAGES = 80
+
+def _pdf_page_count(data: bytes) -> int:
+    try:
+        if fitz is not None:
+            pdf = fitz.open(stream=data, filetype="pdf")
+            try:
+                return len(pdf)
+            finally:
+                pdf.close()
+    except Exception:
+        pass
+    try:
+        return len(PdfReader(io.BytesIO(data)).pages)
+    except Exception:
+        return 0
+
+def _pdf_needs_visual_fallback(text: str, page_count: int) -> bool:
+    visible = re.sub(r"\s+", "", str(text or ""))
+    alnum = sum(1 for ch in visible if ch.isalnum())
+    threshold = max(PDF_VISUAL_FALLBACK_MIN_TOTAL_CHARS, max(1, int(page_count or 0)) * PDF_VISUAL_FALLBACK_MIN_CHARS_PER_PAGE)
+    return alnum < threshold
+
+def _render_pdf_pages_for_vision(asset: UploadedAsset) -> list[UploadedAsset]:
+    if fitz is None:
+        raise ValueError("Görsel PDF fallback için PyMuPDF kullanılamıyor.")
+    pdf = fitz.open(stream=asset.data, filetype="pdf")
+    try:
+        if len(pdf) > PDF_VISUAL_FALLBACK_MAX_PAGES:
+            raise ValueError(
+                f"{asset.name} taranmış/görsel PDF ve {len(pdf)} sayfa içeriyor. "
+                f"Görsel fallback güvenlik sınırı {PDF_VISUAL_FALLBACK_MAX_PAGES} sayfadır."
+            )
+        out: list[UploadedAsset] = []
+        matrix = fitz.Matrix(1.7, 1.7)
+        stem = Path(asset.name).stem
+        for page_no, page in enumerate(pdf, 1):
+            pix = page.get_pixmap(matrix=matrix, alpha=False)
+            out.append(UploadedAsset(f"{stem}_sayfa_{page_no}.png", pix.tobytes("png"), "image/png"))
+        return out
+    finally:
+        pdf.close()
+
+def _visual_pdf_text(
+    asset: UploadedAsset,
+    *,
+    metric_context: tuple[str, str] | None = None,
+) -> str:
+    pages = _render_pdf_pages_for_vision(asset)
+    if not pages:
+        raise ValueError(f"{asset.name} için görsel PDF sayfası üretilemedi.")
+    chunks: list[str] = []
+    for start in range(0, len(pages), PDF_VISUAL_FALLBACK_BATCH_PAGES):
+        batch = pages[start:start + PDF_VISUAL_FALLBACK_BATCH_PAGES]
+        first_page = start + 1
+        last_page = start + len(batch)
+        prompt = f'''Aşağıdaki görseller {asset.name} adlı PDF'nin {first_page}-{last_page}. sayfalarıdır.
+Bu bir kaynak-okuma işlemidir; yorum, özet, çeviri veya teknik çıkarım yapma.
+Her sayfadaki görünür metni mümkün olduğunca birebir ve okuma sırasına sadık biçimde aktar.
+Patent numarası, başlık, paragraf/istem numaraları, tablo metni ve şekil üzerindeki okunabilir metinleri koru.
+Okunamayan kısmı uydurma; [OKUNAMIYOR] yaz.
+Yalnız şu JSON biçimini döndür:
+{{"pages":[{{"page":1,"text":"..."}}]}}
+Sayfa numaralarını bu batch'in gerçek PDF sayfa numaralarıyla yaz.'''
+        result = ask_json(
+            prompt,
+            images=batch,
+        )
+        rows = result.get("pages") if isinstance(result, dict) else None
+        if not isinstance(rows, list):
+            raise ValueError(f"{asset.name} görsel PDF fallback çıktısı geçersiz.")
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            page_no = int(row.get("page") or 0)
+            text = str(row.get("text") or "").strip()
+            if text:
+                chunks.append(f"[PDF SAYFA {page_no}]\n{text}")
+    combined = "\n\n".join(chunks).strip()
+    if not combined:
+        raise ValueError(f"{asset.name} görsel PDF fallback ile de okunamadı.")
+    logging.getLogger(__name__).info(
+        "PDF visual fallback used: %s (%s pages, %s chars)", asset.name, len(pages), len(combined)
+    )
+    return combined
+
+def extract_text_from_asset(asset: UploadedAsset, *, metric_context: tuple[str, str] | None = None) -> str:
     suffix = Path(asset.name).suffix.lower()
     if suffix == ".docx":
         text = docx_text(asset.data)
@@ -266,6 +359,9 @@ def extract_text_from_asset(asset: UploadedAsset) -> str:
         text = legacy_doc_text(asset.data, asset.name)
     elif suffix == ".pdf":
         text = pdf_text(asset.data)
+        page_count = _pdf_page_count(asset.data)
+        if _pdf_needs_visual_fallback(text, page_count):
+            text = _visual_pdf_text(asset, metric_context=metric_context)
     elif suffix in {".txt", ".md"}:
         text = asset.data.decode("utf-8", errors="replace")
     elif suffix in IMAGE_SUFFIXES:
@@ -295,7 +391,12 @@ def assets_from_uploads(files: Iterable[Any] | None) -> list[UploadedAsset]:
     return out
 
 
-def combine_asset_text(label: str, assets: list[UploadedAsset]) -> tuple[str, list[UploadedAsset]]:
+def combine_asset_text(
+    label: str,
+    assets: list[UploadedAsset],
+    *,
+    metric_context: tuple[str, str] | None = None,
+) -> tuple[str, list[UploadedAsset]]:
     blocks: list[str] = []
     images: list[UploadedAsset] = []
     total = 0
@@ -305,7 +406,7 @@ def combine_asset_text(label: str, assets: list[UploadedAsset]) -> tuple[str, li
             images.append(_model_ready_image(asset))
             blocks.append(f"\n--- {label}: {asset.name} (teknik görsel ayrıca eklenmiştir; dosya adı ve görsel içeriği kaynak envanterine dahildir) ---\n")
             continue
-        text = extract_text_from_asset(asset)
+        text = extract_text_from_asset(asset, metric_context=metric_context)
         if not text:
             continue
         remain = MAX_TOTAL_TEXT - total
@@ -4396,16 +4497,16 @@ JSON dışında yazma.
 - Şablon girişine birebir yapısal sadakat göster. TÜRKİYE ARAŞTIRMA RAPORU için `intro` serbest bir kurum özeti değildir ve `Türk Patent ve Marka Kurumu tarafından ...` diye BAŞLAYAMAZ. Taslaktaki kalıbı dosyaya göre doldur: `[rapor tarihi] tarihli araştırma raporunda, [ilgili istemler] numaralı istemlerin [ilgili D dokümanı/dokümanları] varlığında [raporda itiraz edilen kriter/kriterleri] kriterlerini sağlamadığı belirtilmiştir. Başvuru sahibinin görüşleri aşağıda dikkatinize sunulmaktadır. Araştırma raporunda [ilgili istemler] numaralı istemler bakımından gösterilen benzer dokümanlar aşağıdadır:`. X dokümanı varsa yenilik ve buluş basamağı, yalnız Y dokümanı varsa yalnız buluş basamağı mantığını rapora göre doğru kur. Bunun dışında girişe en yakın doküman, savunma stratejisi veya iç süreç açıklaması ekleme.
 - `applicant_override` boş değilse JSON `applicant` alanını aynen bu değer yap, değiştirme veya kısaltma. Boşsa yalnız rapor/tarifnameden güvenilir biçimde çıkar. Resmi raporda birden fazla başvuru sahibi ayrı satırlarda bulunuyorsa varsayılan olarak yalnız İLK başvuru sahibini `applicant` alanına yaz, diğerlerini otomatik birleştirme.
 - İnceleme raporunda X/Y etiketi yoksa category alanını boş bırak; uydurma kategori yazma.
-- Türkiye/EP araştırma raporunda `category` alanına yalnız normalize temel kategori `X` veya `Y` yaz. Raporda `Y1`, `Y2`, `Y1,Y2`, `X1` gibi işaret varsa `category_marker` alanında bu işareti koru ve numaralı Y gruplarını `combination_groups` listesine yaz. Örneğin D1=Y1,Y2, D2=Y1, D3=Y2 ise D1 ile D2 (Y1) ve D1 ile D3 (Y2) ayrı ayrı değerlendirilir; üçünü tek bir kombinasyon gibi ele alma. Gerçek kombinasyon varsa `combined_assessment.groups` kullan. Her grup için `group`, gerçek `labels`, yalnız o etiketleri içeren ayrı `heading` ve en az iki kapsamlı `paragraphs` döndür. Numaralı Y grubunu yalnız ayrı paragrafla değil AYRI GÖRÜNÜR BAŞLIKLA savun. `combined_assessment.heading` ve `combined_assessment.paragraphs` yeni üretimde boş kalsın; bunlar yalnız eski checkpoint uyumluluğu içindir.
+- Türkiye/EP araştırma raporunda `category` alanına yalnız normalize temel kategori `X` veya `Y` yaz. Raporda `Y1`, `Y2`, `Y1,Y2`, `X1` gibi işaret varsa `category_marker` alanında bu işareti koru ve numaralı Y gruplarını `combination_groups` listesine yaz. Örneğin D1=Y1,Y2, D2=Y1, D3=Y2 ise D1 ile D2 (Y1) ve D1 ile D3 (Y2) ayrı ayrı değerlendirilir; üçünü tek bir kombinasyon gibi ele alma. Numarasız Y işaretinde aynı istem/istem grubu için en az iki Y dokümanı ve başka alt grup yoksa yalnız Y dokümanlarını tek kombinasyon grubu yap. Örneğin D1=X, D2=Y, D3=Y, D4=Y ise kombinasyon D2, D3 ve D4'tür; D1 otomatik olarak bu gruba girmez. Gerçek kombinasyon varsa `combined_assessment.groups` kullan. Her grup için `group`, gerçek `labels`, yalnız o etiketleri içeren ayrı `heading` ve en az iki kapsamlı `paragraphs` döndür. Numaralı Y grubunu yalnız ayrı paragrafla değil AYRI GÖRÜNÜR BAŞLIKLA savun. `combined_assessment.heading` ve `combined_assessment.paragraphs` yeni üretimde boş kalsın; bunlar yalnız eski checkpoint uyumluluğu içindir.
 - `cited_documents.title` analiz amacıyla tutulabilir, ancak nihai Word girişindeki bibliyografik satırlarda doküman başlığı kullanılmayacaktır. Bu satırlar yalnız `D1: <yayın numarası>`, `D2: <yayın numarası>`, `D3: <yayın numarası>` biçiminde ve tamamen kalın oluşturulur.
 - Uzman gerekçeli değerlendirmeyi yalnız D1 üzerinden kurmuşsa YALNIZ D1'i görüşe al. D2/D3 yalnız `ilgili dokümanlar` listesinde bulunuyor ancak gerekçede kullanılmıyorsa görüşe bölüm, şekil veya tamamlayıcı savunma olarak ekleme.
 - Her dokümanın teknik öğretisini gerçekten yüklenen metinden çıkar. Patentte bulunmayan unsur/işlev yazma.
 - Tarifname alıntıları spec metninde birebir geçen tam cümle/pasaj olsun.
 - Buluş basamağı zincirinde çekirdek sıra teknik fark → teknik etki → objektif teknik problem şeklinde görünür olsun.
 - Nihai model anlatımında doküman kombinasyonlarını `D1+D2` / `D1 + D3` biçiminde yazma; Türkçede `D1 ve D2`, İngilizcede `D1 and D2` kullan. `+` yalnız değiştirilemeyen birebir kaynak alıntısında kalabilir. Ayrıca ayırt edici teknik katkıyı, motivasyon/yönlendirmeyi ve istemdeki çözüme ulaşmak için kaynaklarda açıkça öğretilmeyen somut ilave yapısal/işlevsel değişiklikleri açıkça kur. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp savunma kullanma.
-- Her bireysel D bölümü için yalnız ana D başlığını kullan. `novelty_heading` ve `inventive_step_heading` alanlarını DAİMA boş bırak. Araştırma raporunda category=`X` olan her dokümanda kısa objektif tanıtımdan sonra `novelty_paragraphs` içinde yenilik değerlendirmesini ve `inventive_step_paragraphs` içinde buluş basamağı değerlendirmesini akıcı paragraf olarak yaz. category=`Y` olan dokümanda `novelty_paragraphs` boş olsun, yalnız `inventive_step_paragraphs` yaz. Bireysel D bölümü içinde `D1 karşısında yenilik`, `D1 karşısında buluş basamağı`, `Novelty over D1`, `Inventive step over D1` gibi ara başlıklar kullanma. Her iki kategoride de kaynakta kullanılabilir ve Çince/Han yazı içermeyen özgün teknik şekil varsa en az bir şekil zorunludur.
+- Her bireysel D bölümü için yalnız ana D başlığını kullan. `novelty_heading` ve `inventive_step_heading` alanlarını DAİMA boş bırak. Araştırma raporunda category=`X` olan her dokümanda kısa objektif tanıtımdan sonra `novelty_paragraphs` içinde yenilik değerlendirmesini ve `inventive_step_paragraphs` içinde buluş basamağı değerlendirmesini akıcı ve ayrıntılı paragraf olarak yaz. category=`Y` olan dokümanda hem `novelty_paragraphs` hem `inventive_step_paragraphs` BOŞ olsun. Y dokümanının `blocks` alanında yalnız dokümanın kendi gerçek teknik öğretisini kısa ve objektif biçimde tanıt; başvuru/istem karşılaştırması, teknik problem, motivasyon/yönlendirme veya patentlenebilirlik sonucu yazma. Y buluş basamağı cevabını yalnız ilgili `Birlikte Değerlendirildiğinde` grubunda kur. Bireysel D bölümü içinde `D1 karşısında yenilik`, `D1 karşısında buluş basamağı`, `Novelty over D1`, `Inventive step over D1` gibi ara başlıklar kullanma. Her iki kategoride de kaynakta kullanılabilir ve Çince/Han yazı içermeyen özgün teknik şekil varsa en az bir şekil zorunludur.
 - Doküman sayısı iki veya daha fazla diye otomatik `combined_assessment` oluşturma. Yalnız X kategorisi dokümanlar varsa `combined_assessment` başlığı ve paragrafları TAMAMEN boş kalmalıdır. Her X dokümanını kendi bölümünde ayrı ayrı yenilik ve buluş basamağı yönünden güçlü biçimde savun.
-- `combined_assessment` yalnız raporda en az bir Y kategorisiyle gerçek doküman kombinasyonu kurulmuşsa veya inceleme/ofis aksiyonunda uzman iki ya da daha fazla dokümanı açıkça birlikte kullanarak buluş basamağı itirazı kurmuşsa oluşturulur. Bu durumda ASIL BULUŞ BASAMAĞI SALDIRISI dokümanların birlikte öğretisi olduğundan, görüşün ASIL VE EN İKNA EDİCİ savunması da burada kurulmalıdır. Bireysel D bölümlerinin kısa bir tekrarı yeterli değildir. Önce uzmanın neden bu dokümanları birleştirdiğini ve hangi tamamlayıcı öğretiden hareket ettiğini doğru biçimde yeniden kur, sonra kombinasyonu teknik olarak çürüt. Her gerçek kombinasyon `combined_assessment.groups` içinde ayrı görünür başlık altında ele alınır. Her grup için en az iki dolu paragrafta teknik başlangıç noktası, tamamlayıcı öğretinin rolü, ayırt edici teknik fark ve NASIL ilişkisi, teknik etki, objektif teknik problem, motivasyon/yönlendirme, kombinasyon sonrası yine gereken somut ilave değişiklikler ve özel unsur-işlev ilişkisinin neden çıkmadığı açıklanır. Numaralı Y grupları tek başlık veya tek toplu kombinasyona dönüştürülemez.
+- `combined_assessment` yalnız gerçek Y/çoklu-doküman buluş basamağı itirazında oluşturulur. Numaralı Y1/Y2 grupları aynen korunur. Numarasız Y kategorisinde aynı istem/istem grubu için iki veya daha fazla Y dokümanı varsa ve ayrıca alt grup ayrımı yoksa yalnız Y dokümanlarını tek grup yap; X dokümanı ancak rapor açıkça aynı çoklu-doküman itirazında onu Y dokümanlarıyla birlikte kullanmışsa gruba girer. Bu durumda ASIL BULUŞ BASAMAĞI SALDIRISI dokümanların birlikte öğretisi olduğundan, görüşün ASIL VE EN İKNA EDİCİ Y savunması burada kurulmalıdır. Bireysel Y bölümleri yalnız objektif tanıtımdır ve savunma içermez. Önce uzmanın neden bu dokümanları birleştirdiğini ve hangi tamamlayıcı öğretiden hareket ettiğini doğru biçimde yeniden kur, sonra kombinasyonu teknik olarak çürüt. Her gerçek kombinasyon `combined_assessment.groups` içinde ayrı görünür başlık altında ele alınır. Her grup için en az iki dolu paragrafta teknik başlangıç noktası, tamamlayıcı öğretinin rolü, ayırt edici teknik fark ve NASIL ilişkisi, teknik etki, objektif teknik problem, motivasyon/yönlendirme, kombinasyon sonrası yine gereken somut ilave değişiklikler ve özel unsur-işlev ilişkisinin neden çıkmadığı açıklanır. Numaralı Y grupları tek başlık veya tek toplu kombinasyona dönüştürülemez.
 - Tek savunma dokümanı varsa ana buluş basamağı savunması o dokümanın kendi bölümünde ayrıntılı kurulur ve combined_assessment boş bırakılır.
 - ÖN ANALİZ içindeki `technical_contributions` listesini savunma önceliği olarak kullan. `defence_priority=high` olan ve istemde gerçekten bulunan katkıları nihai görüşte görünür biçimde öne çıkar. Teknik katkının hangi somut unsur/işlev ilişkisine dayandığını, teknik etkisini ve ilgili D dokümanının neden aynı katkıyı vermediğini açıkla. Bağımlı istemde yüksek öncelikli teknik katkı varsa o istemi topluca geçiştirme.
 - Tarifname quote bloğunu hemen önceki teknik savunmanın doğal devamı yap ve `attach_to_previous=true` döndür. `Tarifname sayfa...` ayrı paragraf olmayacak.
@@ -4445,7 +4546,7 @@ def gorus_quality_audit_prompt(
     opinion: dict[str, Any],
 ) -> str:
     return f"""{GORUS_RULES}
-Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül veya hindsight/geriye-dönük kalıp bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını, önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını, X dokümanında yenilik+buluş basamağı ve Y dokümanında yalnız buluş basamağı yapısının doğru uygulanıp uygulanmadığını, bireysel D bölümlerinde ayrıca yenilik/buluş basamağı ara başlığı açılmadığını, `devral.../inherit...` ve `mimari/architectur...` gibi yasak model dilinin bulunmadığını, `Bu farklardan...` gibi doğal devam cümlelerinin gereksiz yeni paragrafa bölünmediğini, `Considered Together/Birlikte Değerlendirildiğinde` bölümünün yalnız gerçek Y/kombinasyon itirazında bulunup bulunmadığını, yalnız X dokümanları varsa birleşik bölümün boş bırakılıp bırakılmadığını, gerçek kombinasyon varsa her fiili kombinasyonun AYRI görünür başlık altında ele alınıp alınmadığını, bu kombinasyon bölümünün bireysel D savunmalarından daha kapsamlı olup olmadığını, uzmanın kombinasyon mantığını önce doğru kurup sonra teknik olarak çürütüp çürütmediğini ve her grup için teknik fark, NASIL ilişkisi, teknik etki, objektif teknik problem, motivasyon/yönlendirme ile kombinasyon sonrasında yine gereken somut ilave değişiklikleri ikna edici ayrıntıda kurup kurmadığını, ÖN ANALİZDE high öncelikli olarak belirlenen doğrudan destekli teknik katkıların görüşte görünür biçimde öne çıkarılıp çıkarılmadığını ve müşteri kaynağındaki doğrudan destekli güçlü teknik bilgilerin sessizce atlanıp atlanmadığını, savunmaya alınan her D dokümanında yüklenen özgün kaynakta kullanılabilir ve Çince/Han yazı içermeyen teknik şekil bulunuyorsa şeklin zorunlu olarak seçilip seçilmediğini, Çince/Han yazı içeren şeklin yanlışlıkla kullanılmadığını ve seçilen alt şeklin teknik içeriğinin tamamının korunup korunmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu ve görüşte önce geldiğini de kontrol et.
+Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül veya hindsight/geriye-dönük kalıp bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını, önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını, X dokümanında yenilik+buluş basamağı savunmasının ayrıntılı kurulup kurulmadığını, Y dokümanının bireysel bölümünün yalnız kısa objektif tanıtım + şekil olarak kalıp ayrı yenilik/buluş basamağı savunması içerip içermediğini, bireysel D bölümlerinde ayrıca yenilik/buluş basamağı ara başlığı açılmadığını, `devral.../inherit...` ve `mimari/architectur...` gibi yasak model dilinin bulunmadığını, `Bu farklardan...` gibi doğal devam cümlelerinin gereksiz yeni paragrafa bölünmediğini, `Considered Together/Birlikte Değerlendirildiğinde` bölümünün yalnız gerçek Y/kombinasyon itirazında bulunup bulunmadığını, yalnız X dokümanları varsa birleşik bölümün boş bırakılıp bırakılmadığını, gerçek kombinasyon varsa her fiili kombinasyonun AYRI görünür başlık altında ele alınıp alınmadığını, bu kombinasyon bölümünün bireysel Y dokümanı tanıtımlarından açıkça daha kapsamlı olup olmadığını, uzmanın kombinasyon mantığını önce doğru kurup sonra teknik olarak çürütüp çürütmediğini ve her grup için teknik fark, NASIL ilişkisi, teknik etki, objektif teknik problem, motivasyon/yönlendirme ile kombinasyon sonrasında yine gereken somut ilave değişiklikleri ikna edici ayrıntıda kurup kurmadığını, ÖN ANALİZDE high öncelikli olarak belirlenen doğrudan destekli teknik katkıların görüşte görünür biçimde öne çıkarılıp çıkarılmadığını ve müşteri kaynağındaki doğrudan destekli güçlü teknik bilgilerin sessizce atlanıp atlanmadığını, savunmaya alınan her D dokümanında yüklenen özgün kaynakta kullanılabilir ve Çince/Han yazı içermeyen teknik şekil bulunuyorsa şeklin zorunlu olarak seçilip seçilmediğini, Çince/Han yazı içeren şeklin yanlışlıkla kullanılmadığını ve seçilen alt şeklin teknik içeriğinin tamamının korunup korunmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu ve görüşte önce geldiğini de kontrol et.
 
 JSON dışında yazma.
 ŞEMA:
@@ -4499,8 +4600,8 @@ def gorus_repair_prompt(
     audit: dict[str, Any],
 ) -> str:
     return f"""{GORUS_RULES}
-Aşağıdaki görüş JSON'u ikinci kalite kontrolünde başarısız oldu. Yalnız belirtilen sorunları düzelt ve AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu yeniden döndür. Metadata, onaylı istem seti, rapor sonucu ve kaynak dayanakları korunmalı. Yeni doküman veya yeni teknik özellik ekleme. Tarifname alıntıları birebir kalmalı. Model anlatımında noktalı virgül kullanma. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp kullanma. İç süreçteki BBF/müşteri formu ifadelerini nihai görüşe taşıma. X/Y savunma ayrımını koru. Yalnız X kategorisi dokümanlar varsa `combined_assessment` alanını boş bırak. `Considered Together/Birlikte Değerlendirildiğinde` bölümünü yalnız gerçek Y/kombinasyon itirazı varsa koru. Bireysel D bölümlerinde yenilik/buluş basamağı ara başlığı kullanma. `devral.../inherit...` ve `mimari/architectur...` dilini temizle. `Bu farklardan...` gibi önceki düşüncenin doğal devamını yeni paragrafa bölme. Doğrudan tarifname dayanağını önceki savunma paragrafına `attach_to_previous=true` ile bağla.
-Raporda numaralı Y grupları (`Y1`, `Y2`, `Y1,Y2`) varsa bunları koru. Her gerçek kombinasyon grubunu `combined_assessment.groups` içinde AYRI görünür başlık ve en az iki kapsamlı savunma paragrafıyla değerlendir. Farklı grupları tek başlık veya tek toplu kombinasyona dönüştürme. Kombinasyon savunması bireysel D savunmalarından daha kapsamlı olmalı ve uzmanın birlikte kullanma mantığını doğru kurduktan sonra teknik fark, NASIL ilişkisi, teknik etki, objektif teknik problem, motivasyon/yönlendirme ve yine gereken somut ilave değişiklikler üzerinden çürütmelidir.
+Aşağıdaki görüş JSON'u ikinci kalite kontrolünde başarısız oldu. Yalnız belirtilen sorunları düzelt ve AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu yeniden döndür. Metadata, onaylı istem seti, rapor sonucu ve kaynak dayanakları korunmalı. Yeni doküman veya yeni teknik özellik ekleme. Tarifname alıntıları birebir kalmalı. Model anlatımında noktalı virgül kullanma. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp kullanma. İç süreçteki BBF/müşteri formu ifadelerini nihai görüşe taşıma. X/Y savunma ayrımını koru: X bireysel olarak ayrıntılı yenilik+buluş basamağı savunması alır; Y bireysel bölümü yalnız objektif teknik tanıtımdır ve savunma içermez. Yalnız X kategorisi dokümanlar varsa `combined_assessment` alanını boş bırak. `Considered Together/Birlikte Değerlendirildiğinde` bölümünü yalnız gerçek Y/kombinasyon itirazı varsa koru. Bireysel D bölümlerinde yenilik/buluş basamağı ara başlığı kullanma. `devral.../inherit...` ve `mimari/architectur...` dilini temizle. `Bu farklardan...` gibi önceki düşüncenin doğal devamını yeni paragrafa bölme. Doğrudan tarifname dayanağını önceki savunma paragrafına `attach_to_previous=true` ile bağla.
+Raporda numaralı Y grupları (`Y1`, `Y2`, `Y1,Y2`) varsa bunları koru. Numarasız birden fazla Y varsa ve alt grup yoksa yalnız Y dokümanlarını tek grup yap; X'i otomatik ekleme. Her gerçek kombinasyon grubunu `combined_assessment.groups` içinde AYRI görünür başlık ve en az iki kapsamlı savunma paragrafıyla değerlendir. Farklı grupları tek başlık veya tek toplu kombinasyona dönüştürme. Kombinasyon savunması bireysel D savunmalarından daha kapsamlı olmalı ve uzmanın birlikte kullanma mantığını doğru kurduktan sonra teknik fark, NASIL ilişkisi, teknik etki, objektif teknik problem, motivasyon/yönlendirme ve yine gereken somut ilave değişiklikler üzerinden çürütmelidir.
 
 JSON dışında yazma.
 KALİTE RAPORU:\n{json.dumps(audit or {}, ensure_ascii=False, indent=2)}\n
@@ -4606,7 +4707,7 @@ def gorus_examiner_strengthen_prompt(
     return f"""{GORUS_RULES}
 Aşağıdaki görüş bütün normal kalite kapılarını geçmiştir ancak bağımsız uzman-perspektifi değerlendirmesinde ikna olasılığı daha da güçlendirilebilir görünmektedir. AYNI JSON ŞEMASIYLA görüşü yalnız bir kez teknik olarak güçlendir.
 
-Öncelik sırası: (1) istemde gerçekten bulunan ve ÖN ANALİZDE yüksek öncelikli belirlenen teknik katkı, (2) bu katkının kaynakta açık teknik işlev/etkisi, (3) D dokümanlarının somut teknik öğretisinin bu katkıyı neden vermediği, (4) yalnız gerçek Y/kombinasyon itirazı varsa `Considered Together/Birlikte Değerlendirildiğinde` bölümünün kombinasyon analizinin güçlendirilmesi. Yeni teknik özellik, yeni performans sonucu, yeni test sonucu veya dolaylı dayanak ekleme. Onaylı istemleri ve amendment bölümünü değiştirme. Tarifname quote metinlerini değiştirme. `hindsight`, `geriye dönük değerlendirme`, `working backwards`, noktalı virgül ve iç süreç/BBF/müşteri formu ifadeleri kullanma. X/Y yenilik-buluş basamağı ayrımını koru. Yalnız X dokümanları varsa combined_assessment boş kalmalıdır. Gerçek Y/kombinasyon itirazı varsa birleşik bölüm uygun ağırlıkta değil, görüşün ANA buluş basamağı savunması olarak tutulur. Her gerçek kombinasyon ayrı görünür başlığa sahip olmalı ve bireysel D bölümlerinden daha ayrıntılı şekilde uzmanın kombinasyon mantığını, teknik farkı, NASIL ilişkisini, teknik etkiyi, objektif teknik problemi, motivasyon/yönlendirmeyi ve isteme ulaşmak için yine gereken somut ilave değişiklikleri tartışmalıdır.
+Öncelik sırası: (1) istemde gerçekten bulunan ve ÖN ANALİZDE yüksek öncelikli belirlenen teknik katkı, (2) bu katkının kaynakta açık teknik işlev/etkisi, (3) D dokümanlarının somut teknik öğretisinin bu katkıyı neden vermediği, (4) yalnız gerçek Y/kombinasyon itirazı varsa `Considered Together/Birlikte Değerlendirildiğinde` bölümünün kombinasyon analizinin güçlendirilmesi. Yeni teknik özellik, yeni performans sonucu, yeni test sonucu veya dolaylı dayanak ekleme. Onaylı istemleri ve amendment bölümünü değiştirme. Tarifname quote metinlerini değiştirme. `hindsight`, `geriye dönük değerlendirme`, `working backwards`, noktalı virgül ve iç süreç/BBF/müşteri formu ifadeleri kullanma. X/Y ayrımını koru: X bireysel savunulur, Y bireysel bölümde savunulmaz ve Y savunması yalnız gerçek kombinasyon bölümünde kurulur. Yalnız X dokümanları varsa combined_assessment boş kalmalıdır. Gerçek Y/kombinasyon itirazı varsa birleşik bölüm uygun ağırlıkta değil, görüşün ANA buluş basamağı savunması olarak tutulur. Her gerçek kombinasyon ayrı görünür başlığa sahip olmalı ve bireysel Y dokümanı tanıtımlarından daha ayrıntılı şekilde uzmanın kombinasyon mantığını, teknik farkı, NASIL ilişkisini, teknik etkiyi, objektif teknik problemi, motivasyon/yönlendirmeyi ve isteme ulaşmak için yine gereken somut ilave değişiklikleri tartışmalıdır.
 
 JSON dışında yazma.
 UZMAN-PERSPEKTİFİ BULGUSU:\n{json.dumps(examiner_assessment or {}, ensure_ascii=False, indent=2)}\n

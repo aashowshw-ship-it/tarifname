@@ -4,8 +4,8 @@ from rules import APP_VERSION, RULESET_VERSION, GORUS_RULES
 ROOT = Path(__file__).resolve().parent
 
 def test_v551_versions_and_rules():
-    assert APP_VERSION == "v5.4.44"
-    assert RULESET_VERSION == "2026-09-08.v46"
+    assert APP_VERSION == "v5.4.59"
+    assert RULESET_VERSION == "2026-09-11.v52"
     low = GORUS_RULES.casefold()
     assert "başvuru sahibi yazılır" in low
     assert "kategori işaretleri yalnız iç savunma" in low

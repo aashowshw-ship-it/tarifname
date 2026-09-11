@@ -45,8 +45,8 @@ def _plan(basis_source='existing_spec'):
 
 
 def test_versions_and_rules():
-    assert APP_VERSION == 'v5.4.44'
-    assert RULESET_VERSION == '2026-09-08.v46'
+    assert APP_VERSION == 'v5.4.59'
+    assert RULESET_VERSION == '2026-09-11.v52'
     assert 'EN AZ DEĞİŞİKLİK' in TARIFNAME_DUZENLEME_RULES
     assert 'Track Changes' in TARIFNAME_DUZENLEME_RULES
     assert 'Müşteriye gönderilecek mail zorunlu çıktıdır' in TARIFNAME_DUZENLEME_RULES

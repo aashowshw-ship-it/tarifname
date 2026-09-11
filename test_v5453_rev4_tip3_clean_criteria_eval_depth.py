@@ -6,7 +6,7 @@ from test_v5453_tip3_fail_closed_delivery import _base_report
 
 
 def test_rev4_ruleset_version():
-    assert RULESET_VERSION == "2026-09-08.v46"
+    assert RULESET_VERSION == "2026-09-11.v52"
 
 
 def test_evaluation_starts_on_separate_page_not_intro():

@@ -62,9 +62,9 @@ def _opinion():
             {"label": "D3", "number": "CN201360012Y", "category": "Y", "category_marker": "Y2", "combination_groups": ["Y2"], "summary": "D3 teknik öğretisi."},
         ],
         "sections": [
-            {"label": "D1", "blocks": [{"type": "paragraph", "text": "D1 dokümanının teknik öğretisi açıklanmış ve ayırt edici teknik fark belirtilmiştir."}], "novelty_heading": "", "novelty_paragraphs": [], "inventive_step_heading": "", "inventive_step_paragraphs": ["Teknik etki, objektif teknik problem ve motivasyon yönünden D1 tekil öğretisi değerlendirilmiştir."]},
-            {"label": "D2", "blocks": [{"type": "paragraph", "text": "D2 dokümanının teknik öğretisi açıklanmış ve işlevsel ilişki bakımından fark belirtilmiştir."}], "novelty_heading": "", "novelty_paragraphs": [], "inventive_step_heading": "", "inventive_step_paragraphs": ["D2 öğretisinin ilave yapısal değişiklikleri yönlendirmediği açıklanmıştır."]},
-            {"label": "D3", "blocks": [{"type": "paragraph", "text": "D3 dokümanının teknik öğretisi açıklanmış ve işlevsel ilişki bakımından fark belirtilmiştir."}], "novelty_heading": "", "novelty_paragraphs": [], "inventive_step_heading": "", "inventive_step_paragraphs": ["D3 öğretisinin ilave yapısal değişiklikleri yönlendirmediği açıklanmıştır."]},
+            {"label": "D1", "blocks": [{"type": "paragraph", "text": "D1 dokümanının gerçek teknik öğretisi kısa ve objektif olarak açıklanmıştır."}], "novelty_heading": "", "novelty_paragraphs": [], "inventive_step_heading": "", "inventive_step_paragraphs": []},
+            {"label": "D2", "blocks": [{"type": "paragraph", "text": "D2 dokümanının gerçek teknik öğretisi kısa ve objektif olarak açıklanmıştır."}], "novelty_heading": "", "novelty_paragraphs": [], "inventive_step_heading": "", "inventive_step_paragraphs": []},
+            {"label": "D3", "blocks": [{"type": "paragraph", "text": "D3 dokümanının gerçek teknik öğretisi kısa ve objektif olarak açıklanmıştır."}], "novelty_heading": "", "novelty_paragraphs": [], "inventive_step_heading": "", "inventive_step_paragraphs": []},
         ],
         "combined_assessment": {
             "heading": "",
@@ -80,8 +80,8 @@ def _opinion():
 
 
 def test_rev7_rules_make_combination_the_main_defence():
-    assert APP_VERSION == "v5.4.44"
-    assert RULESET_VERSION == "2026-09-08.v46"
+    assert APP_VERSION == "v5.4.59"
+    assert RULESET_VERSION == "2026-09-11.v52"
     low = GORUS_RULES.casefold()
     for phrase in [
         "asıl ve en ikna edici",

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import re
 import subprocess
 import tempfile
 import zipfile
+from collections import OrderedDict
 from pathlib import Path
+from threading import RLock
 from typing import Any, Iterable
 from lxml import etree
 
@@ -16,6 +19,46 @@ from docx.oxml.ns import qn
 
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+# v5.4.54 — The final specification's rendered page/line map is deterministic for
+# identical bytes. Keep a small SHA-256 keyed cache so quote annotation and the
+# independent deterministic validation gate reuse the SAME physical render instead
+# of launching LibreOffice once per quote. Content changes always produce a new key.
+_PAGE_LINE_INDEX_CACHE_MAX = 8
+_PAGE_LINE_INDEX_CACHE: OrderedDict[tuple[str, str], list[dict[str, Any]]] = OrderedDict()
+_PAGE_LINE_INDEX_CACHE_LOCK = RLock()
+
+
+def _page_line_index_cache_key(filename: str, data: bytes) -> tuple[str, str]:
+    suffix = Path(filename).suffix.lower()
+    digest = hashlib.sha256(bytes(data)).hexdigest()
+    return suffix, digest
+
+
+def clear_page_line_index_cache() -> None:
+    """Clear the bounded page/line cache (primarily for deterministic tests)."""
+    with _PAGE_LINE_INDEX_CACHE_LOCK:
+        _PAGE_LINE_INDEX_CACHE.clear()
+
+
+def _cached_page_line_index(filename: str, data: bytes) -> list[dict[str, Any]] | None:
+    key = _page_line_index_cache_key(filename, data)
+    with _PAGE_LINE_INDEX_CACHE_LOCK:
+        cached = _PAGE_LINE_INDEX_CACHE.get(key)
+        if cached is None:
+            return None
+        _PAGE_LINE_INDEX_CACHE.move_to_end(key)
+        return [dict(row) for row in cached]
+
+
+def _store_page_line_index(filename: str, data: bytes, index: list[dict[str, Any]]) -> None:
+    key = _page_line_index_cache_key(filename, data)
+    with _PAGE_LINE_INDEX_CACHE_LOCK:
+        _PAGE_LINE_INDEX_CACHE[key] = [dict(row) for row in index]
+        _PAGE_LINE_INDEX_CACHE.move_to_end(key)
+        while len(_PAGE_LINE_INDEX_CACHE) > _PAGE_LINE_INDEX_CACHE_MAX:
+            _PAGE_LINE_INDEX_CACHE.popitem(last=False)
 
 
 def _to_pdf_bytes(filename: str, data: bytes) -> bytes:
@@ -66,12 +109,17 @@ def _page_lines(page: fitz.Page) -> list[dict[str, Any]]:
 
 
 def build_page_line_index(filename: str, data: bytes) -> list[dict[str, Any]]:
-    """Build page/physical-line index from Word-style printed line numbers.
+    """Build or reuse the deterministic physical page/line index for a specification.
 
     Patent specification templates commonly print every fifth line in the left
     margin. We anchor to those numbers and interpolate the intervening rendered
-    text lines. This makes page/line citations deterministic rather than LLM guesses.
+    text lines. The result is cached only by file type + SHA-256 of the exact source
+    bytes; any content change forces a fresh physical render.
     """
+    cached = _cached_page_line_index(filename, data)
+    if cached is not None:
+        return cached
+
     pdf = fitz.open(stream=_to_pdf_bytes(filename, data), filetype="pdf")
     indexed: list[dict[str, Any]] = []
     for page_no, page in enumerate(pdf, start=1):
@@ -115,28 +163,64 @@ def build_page_line_index(filename: str, data: bytes) -> list[dict[str, Any]]:
             if line_no < 1 or line_no > 80:
                 line_no = None
             indexed.append({"page": page_no, "line": line_no, "text": line["text"], "y": line["y0"]})
-    return indexed
+    _store_page_line_index(filename, data, indexed)
+    return [dict(row) for row in indexed]
+
+
+def _iter_quote_objects_with_context(opinion: dict[str, Any]):
+    """Yield (quote, immediately preceding narrative text) in document order."""
+    amendment = opinion.get("amendment_assessment") or {}
+    prev_text = ""
+    for block in amendment.get("blocks") or []:
+        typ = str(block.get("type", "")).lower()
+        if typ == "quote":
+            yield block, prev_text
+        elif typ == "paragraph":
+            prev_text = str(block.get("text", "") or "")
+    for section in opinion.get("sections") or []:
+        prev_text = ""
+        for block in section.get("blocks") or []:
+            typ = str(block.get("type", "")).lower()
+            if typ == "quote":
+                yield block, prev_text
+            elif typ == "paragraph":
+                prev_text = str(block.get("text", "") or "")
+        for quote in section.get("quotes") or []:  # legacy schema compatibility
+            yield quote, prev_text
 
 
 def _iter_quote_objects(opinion: dict[str, Any]):
-    amendment = opinion.get("amendment_assessment") or {}
-    for block in amendment.get("blocks") or []:
-        if str(block.get("type", "")).lower() == "quote":
-            yield block
-    for section in opinion.get("sections") or []:
-        for block in section.get("blocks") or []:
-            if str(block.get("type", "")).lower() == "quote":
-                yield block
-        for quote in section.get("quotes") or []:  # legacy schema compatibility
-            yield quote
+    for quote, _previous in _iter_quote_objects_with_context(opinion):
+        yield quote
 
 
-def locate_quote_page_line_span(filename: str, data: bytes, quote: str) -> tuple[int, int, int, int]:
+def _previous_narrative_names_spec_basis(text: str, language: str) -> bool:
+    """True only when the immediately preceding sentence already names the specification as the basis.
+
+    This prevents clumsy repetitions such as
+    `Tarifnamedeki dayanak şöyledir: Tarifname sayfa 6...` while preserving the
+    full source label when the preceding argument did not already name it.
+    """
+    tail = _norm(text)[-260:].casefold()
+    if not tail:
+        return False
+    english = str(language or "").strip().casefold().startswith(("ing", "en"))
+    if english:
+        return bool(re.search(r"\bdescription\b.{0,140}\b(?:basis|support|states?|discloses?|specified)\b", tail))
+    return bool(re.search(r"\btarifname(?:deki|de|nin|ye|den)?\b.{0,140}\b(?:dayanak|belirtil|açıklan|şu\s+şekilde|yer\s+al)\w*", tail))
+
+
+def locate_quote_page_line_span(
+    filename: str,
+    data: bytes,
+    quote: str,
+    page_line_index: list[dict[str, Any]] | None = None,
+) -> tuple[int, int, int, int]:
     """Locate a verbatim quote on the final rendered specification, including cross-page spans."""
     q = _norm(quote)
     if not q:
         raise ValueError("Boş tarifname alıntısı için sayfa/satır bulunamaz.")
-    index = build_page_line_index(filename, data)
+    index = page_line_index if page_line_index is not None else build_page_line_index(filename, data)
     pieces: list[str] = []
     spans: list[tuple[int, int, dict[str, Any]]] = []
     cursor = 0
@@ -175,45 +259,66 @@ def locate_quote_page_lines(filename: str, data: bytes, quote: str) -> tuple[int
     return p1, l1, l2
 
 
-def _lead_for_span(p1: int, l1: int, p2: int, l2: int, language: str) -> str:
+def _lead_for_span(
+    p1: int, l1: int, p2: int, l2: int, language: str, *, source_already_named: bool = False
+) -> str:
     english = str(language or "").strip().casefold().startswith("ing") or str(language or "").strip().casefold().startswith("en")
     if english:
+        source = "" if source_already_named else "Description "
         if p1 == p2:
             unit = "line" if l1 == l2 else "lines"
             span = str(l1) if l1 == l2 else f"{l1}-{l2}"
-            return f"Description page {p1}, {unit} {span} states:"
-        return f"Description page {p1}, line {l1} and page {p2}, line {l2} state:"
+            return f"{source}page {p1}, {unit} {span} states:"
+        return f"{source}page {p1}, line {l1} and page {p2}, line {l2} state:"
+    source = "" if source_already_named else "Tarifname "
     if p1 == p2:
         if l1 == l2:
-            return f"Tarifname sayfa {p1}, satır {l1}’de bu durum şu şekilde belirtilmiştir:"
-        return f"Tarifname sayfa {p1}, satır {l1}-{l2}’de bu durum şu şekilde belirtilmiştir:"
-    return f"Tarifname sayfa {p1}, satır {l1} ile sayfa {p2}, satır {l2} arasında bu durum şu şekilde belirtilmiştir:"
+            return f"{source}sayfa {p1}, satır {l1}’de bu durum şu şekilde belirtilmiştir:"
+        return f"{source}sayfa {p1}, satır {l1}-{l2}’de bu durum şu şekilde belirtilmiştir:"
+    return f"{source}sayfa {p1}, satır {l1} ile sayfa {p2}, satır {l2} arasında bu durum şu şekilde belirtilmiştir:"
 
 
 def annotate_quote_locations(
-    opinion: dict[str, Any], spec_filename: str, spec_bytes: bytes, output_language: str = "Türkçe"
+    opinion: dict[str, Any],
+    spec_filename: str,
+    spec_bytes: bytes,
+    output_language: str = "Türkçe",
+    page_line_index: list[dict[str, Any]] | None = None,
 ) -> None:
-    for q in _iter_quote_objects(opinion):
+    index = page_line_index if page_line_index is not None else build_page_line_index(spec_filename, spec_bytes)
+    for q, previous_text in _iter_quote_objects_with_context(opinion):
         text = str(q.get("text", "")).strip()
         if not text:
             continue
-        p1, l1, p2, l2 = locate_quote_page_line_span(spec_filename, spec_bytes, text)
+        p1, l1, p2, l2 = locate_quote_page_line_span(
+            spec_filename, spec_bytes, text, page_line_index=index
+        )
         q["page"] = p1
         q["line_start"] = l1
         q["page_end"] = p2
         q["line_end"] = l2
-        q["lead"] = _lead_for_span(p1, l1, p2, l2, output_language)
+        q["lead"] = _lead_for_span(
+            p1, l1, p2, l2, output_language,
+            source_already_named=_previous_narrative_names_spec_basis(previous_text, output_language),
+        )
 
 
 def validate_quote_locations_against_spec(
-    opinion: dict[str, Any], spec_filename: str, spec_bytes: bytes, output_language: str = "Türkçe"
+    opinion: dict[str, Any],
+    spec_filename: str,
+    spec_bytes: bytes,
+    output_language: str = "Türkçe",
+    page_line_index: list[dict[str, Any]] | None = None,
 ) -> None:
     """Hard gate: every stored page/line citation must match the FINAL physical markup render."""
-    for q in _iter_quote_objects(opinion):
+    index = page_line_index if page_line_index is not None else build_page_line_index(spec_filename, spec_bytes)
+    for q, previous_text in _iter_quote_objects_with_context(opinion):
         text = str(q.get("text", "")).strip()
         if not text:
             continue
-        expected = locate_quote_page_line_span(spec_filename, spec_bytes, text)
+        expected = locate_quote_page_line_span(
+            spec_filename, spec_bytes, text, page_line_index=index
+        )
         actual = (
             int(q.get("page", 0) or 0), int(q.get("line_start", 0) or 0),
             int(q.get("page_end", q.get("page", 0)) or 0), int(q.get("line_end", 0) or 0),
@@ -223,7 +328,10 @@ def validate_quote_locations_against_spec(
                 "Görüş son-Markup sayfa/satır kapısı: kayıtlı dayanak fiziksel render ile eşleşmiyor. "
                 f"Beklenen {expected}, kayıtlı {actual}."
             )
-        expected_lead = _lead_for_span(*expected, output_language)
+        expected_lead = _lead_for_span(
+            *expected, output_language,
+            source_already_named=_previous_narrative_names_spec_basis(previous_text, output_language),
+        )
         if _norm(q.get("lead", "")) != _norm(expected_lead):
             raise ValueError("Görüş son-Markup sayfa/satır kapısı: dayanak giriş metni fiziksel konumla senkron değil.")
 
@@ -380,7 +488,7 @@ def _validate_combination_group_depth(group: dict[str, Any], largest_individual:
         raise ValueError("Görüş kombinasyon kapısı: uzmanın çoklu-doküman saldırı mantığı açıkça yeniden kurulmadan doğrudan sonuca geçilmiş.")
 
 def validate_y_combination_group_coverage(opinion: dict[str, Any], report_text: str) -> None:
-    """Numbered Y1/Y2 groups require separate visible headings and group-specific substantive defences."""
+    """Every real Y group, numbered or flat, requires its own visible substantive defence."""
     expected = detect_defense_documents(report_text)
     expected_groups = _y_combination_sets(expected)
     if not expected_groups:
@@ -431,12 +539,22 @@ def opinion_requires_combined_assessment(opinion: dict[str, Any], report_text: s
     docs = opinion.get("cited_documents") or []
     if len(docs) < 2:
         return False
-    categories = {(_parse_xy_category_marker(str(d.get("category", ""))) or (str(d.get("category", "")).strip().upper(), "", []))[0] for d in docs}
-    # A Y citation is, by definition, used with another document for inventive step.
-    if "Y" in categories:
+    expected = detect_defense_documents(report_text)
+    if _y_combination_sets(expected):
         return True
     labels = [str(d.get("label", "")).strip().upper() for d in docs if str(d.get("label", "")).strip()]
-    return _explicit_multi_document_combination(report_text, labels)
+    if _explicit_multi_document_combination(report_text, labels):
+        return True
+    # Synthetic/legacy callers may provide category metadata while the report excerpt itself
+    # is too short to reconstruct scope. Preserve that compatibility without overriding a
+    # successfully parsed real report.
+    if not expected:
+        categories = {
+            (_parse_xy_category_marker(str(d.get("category", ""))) or (str(d.get("category", "")).strip().upper(), "", []))[0]
+            for d in docs if str(d.get("category", "")).strip()
+        }
+        return "Y" in categories
+    return False
 
 
 def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_text: str) -> None:
@@ -469,18 +587,20 @@ def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_tex
     inventive_objection = any(x in report_norm for x in ["buluş basamağı", "buluş basamagi", "inventive step"])
     if inventive_objection:
         sections = opinion.get("sections") or []
-        individual_lengths = []
+        individual_length_by_label: dict[str, int] = {}
         for sec in sections:
             sec_parts = [str(b.get("text", "")) for b in sec.get("blocks") or [] if str(b.get("type", "paragraph")).lower() == "paragraph"]
             sec_parts += [str(x) for x in sec.get("novelty_paragraphs") or []]
             sec_parts += [str(x) for x in sec.get("inventive_step_paragraphs") or []]
-            individual_lengths.append(len(_norm(" ".join(sec_parts))))
+            individual_length_by_label[str(sec.get("label", "")).strip().upper()] = len(_norm(" ".join(sec_parts)))
+        category_by_label = {
+            str(d.get("label", "")).strip().upper(): (_parse_xy_category_marker(str(d.get("category", ""))) or (str(d.get("category", "")).strip().upper(), "", []))[0]
+            for d in docs if str(d.get("label", "")).strip()
+        }
         combined_required = opinion_requires_combined_assessment(opinion, report_text)
         if combined_required:
             if not combination_groups:
                 raise ValueError("Görüş kombinasyon kapısı: Y/açık çoklu-doküman itirazında ayrı birlikte değerlendirme bölümü zorunludur.")
-            largest = max(individual_lengths or [0])
-            # Numbered Y groups are scope-validated first so depth is enforced per actual pair/group.
             validate_y_combination_group_coverage(opinion, report_text)
             for group in combination_groups:
                 heading = _norm(group.get("heading", ""))
@@ -490,14 +610,20 @@ def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_tex
                     raise ValueError("Görüş kombinasyon kapısı: her gerçek kombinasyon için ayrı `Birlikte Değerlendirildiğinde/Considered Together` başlığı zorunludur.")
                 if len(labels) < 2:
                     raise ValueError("Görüş kombinasyon kapısı: birlikte değerlendirme başlığı en az iki fiilen kombine edilen D etiketini içermelidir.")
-                _validate_combination_group_depth(group, largest)
+                # A Y-combination must dominate its short Y introductions, but an independent X defence may properly be longer.
+                largest_y_intro = max(
+                    [individual_length_by_label.get(str(lab).upper(), 0) for lab in labels if category_by_label.get(str(lab).upper()) == "Y"] or [0]
+                )
+                _validate_combination_group_depth(group, largest_y_intro)
         else:
             # Several independent X documents do not create a combination objection.
             if combination_groups or combined_text or _norm(combined.get("heading", "")):
                 raise ValueError("Görüş X-doküman kapsamı kapısı: yalnız X kategorisi/ayrı tek-doküman itirazları varken `Birlikte Değerlendirildiğinde` bölümü oluşturulamaz.")
         if len(docs) == 1:
             # With one document, the main inventive-step defence belongs in that document section.
-            if not individual_lengths or individual_lengths[0] < 750:
+            only_label = str((docs[0] or {}).get("label", "")).strip().upper()
+            only_len = individual_length_by_label.get(only_label, 0)
+            if only_len < 750:
                 raise ValueError("Görüş tek-doküman buluş basamağı savunması yeterince ayrıntılı değil.")
 
 
@@ -616,14 +742,28 @@ def _xy_doc(number: str, category: str, marker: str, groups: list[str], label: s
 
 
 def _y_combination_sets(documents: list[dict[str, Any]]) -> list[tuple[str, list[str]]]:
+    """Return the examiner's Y-combination groups.
+
+    Numbered Y1/Y2 markers remain authoritative. If a search report uses only flat,
+    unnumbered Y markers, two or more such Y documents form one Y group among
+    themselves. X documents are never pulled into that flat-Y group automatically.
+    """
     grouped: dict[str, list[str]] = {}
+    flat_y: list[str] = []
     for d in documents or []:
         label = str(d.get("label", "") or "").strip().upper()
-        for group in d.get("combination_groups") or []:
-            g = str(group or "").strip().upper()
-            if re.fullmatch(r"Y\d+", g) and label and label not in grouped.setdefault(g, []):
+        raw_groups = [str(x or "").strip().upper() for x in (d.get("combination_groups") or [])]
+        groups = [g for g in raw_groups if re.fullmatch(r"Y\d+", g)]
+        for g in groups:
+            if label and label not in grouped.setdefault(g, []):
                 grouped[g].append(label)
-    return [(g, labels) for g, labels in grouped.items() if len(labels) >= 2]
+        category = str(d.get("category", "") or "").strip().upper()
+        if category == "Y" and not groups and label and label not in flat_y:
+            flat_y.append(label)
+    out = [(g, labels) for g, labels in grouped.items() if len(labels) >= 2]
+    if len(flat_y) >= 2:
+        out.append(("Y", flat_y))
+    return out
 
 
 def validate_xy_scope_documents(report_text: str, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -885,7 +1025,8 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
         if any(x in low_text for x in forbidden_opinion_diction):
             raise ValueError(f"Görüş dil kapısı: devralma/mimari gibi yasak veya soyut model dili kullanılamaz ({kind}).")
 
-    # Research-report X/Y structure: X => novelty + inventive step, Y => inventive step only.
+    # Research-report X/Y structure: X is defended individually; Y is only introduced individually.
+    # The substantive inventive-step response to Y belongs in the actual combined-assessment group.
     sections_by_label = {str(x.get("label", "")).upper(): x for x in opinion.get("sections") or []}
     for d in opinion.get("cited_documents") or []:
         label = str(d.get("label", "")).upper()
@@ -895,16 +1036,27 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
         sec = sections_by_label.get(label, {})
         novelty_text = _norm(" ".join(sec.get("novelty_paragraphs") or []))
         inventive_text = _norm(" ".join(sec.get("inventive_step_paragraphs") or []))
+        block_text = _norm(" ".join(
+            str(b.get("text", "")) for b in sec.get("blocks") or []
+            if str(b.get("type", "paragraph")).lower() == "paragraph"
+        ))
         if _norm(sec.get("novelty_heading", "")) or _norm(sec.get("inventive_step_heading", "")):
             raise ValueError(f"Görüş başlık kapısı: {label} bireysel doküman bölümünde ayrı yenilik/buluş basamağı ara başlığı kullanılamaz.")
         if category == "X":
             if not novelty_text or not inventive_text:
                 raise ValueError(f"Görüş X/Y kapısı: {label} X dokümanı için hem yenilik hem buluş basamağı savunması zorunludur.")
         elif category == "Y":
-            if novelty_text:
-                raise ValueError(f"Görüş X/Y kapısı: {label} Y dokümanı için yenilik savunması yazılamaz.")
-            if not inventive_text:
-                raise ValueError(f"Görüş X/Y kapısı: {label} Y dokümanı için buluş basamağı savunması zorunludur.")
+            if novelty_text or inventive_text:
+                raise ValueError(f"Görüş X/Y kapısı: {label} Y dokümanının bireysel bölümünde yenilik veya buluş basamağı savunması yazılamaz; savunma ilgili birlikte değerlendirme bölümünde kurulmalıdır.")
+            low_block = block_text.casefold()
+            forbidden_y_defence = [
+                "başvuru konusu", "başvurumuz", "istem ", "buluş basamağı", "objektif teknik problem",
+                "motivasyon", "yönlendirme", "ayırt edici teknik", "patentlenebilir", "claimed subject-matter",
+                "claim ", "inventive step", "objective technical problem", "motivation", "suggestion",
+                "distinguishing technical", "patentable",
+            ]
+            if any(x in low_block for x in forbidden_y_defence):
+                raise ValueError(f"Görüş Y-bireysel bölüm kapısı: {label} yalnız dokümanın objektif teknik öğretisini tanıtabilir; karşılaştırmalı/patentlenebilirlik savunması birlikte değerlendirme bölümüne taşınmalıdır.")
 
     full = _norm(" ".join(t for _, t in narratives))
     low = full.casefold()
@@ -1078,7 +1230,7 @@ def validate_gorus_docx_content_flow(docx_data: bytes) -> None:
         text = p.text.strip()
         if not text:
             continue
-        if text.startswith("Tarifname sayfa ") or text.startswith("Description page "):
+        if text.startswith("Tarifname sayfa ") or text.startswith("Description page ") or text.startswith("Sayfa ") or text.startswith("Page "):
             raise ValueError("Görüş paragraf devamlılığı kapısı: tarifname dayanağı ayrı paragraf başlamış.")
         narrative_only = re.sub(r"“[^”]*”", "", text, flags=re.S)
         if ";" in narrative_only:
@@ -1437,15 +1589,15 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
     # Physical page/line quote lead + bold verbatim quote must be visible in the same paragraph and continue the substantive argument.
     quote_count = 0
     for p in doc.paragraphs:
-        if re.search(r"Tarifname sayfa\s+\d+,\s*satır\s+\d+[-–]\d+", p.text) or re.search(r"Description page\s+\d+,\s*lines?\s+\d+(?:[-–]\d+)?", p.text, flags=re.I):
+        if re.search(r"(?:Tarifname\s+)?sayfa\s+\d+,\s*satır\s+\d+(?:[-–]\d+)?", p.text, flags=re.I) or re.search(r"(?:Description\s+)?page\s+\d+,\s*lines?\s+\d+(?:[-–]\d+)?", p.text, flags=re.I):
             quote_count += 1
-            if p.text.strip().startswith("Tarifname sayfa ") or p.text.strip().startswith("Description page "):
+            if p.text.strip().startswith(("Tarifname sayfa ", "Description page ", "Sayfa ", "Page ")):
                 raise ValueError("Görüş paragraf devamlılığı kapısı: tarifname dayanağı ayrı paragraf olarak başlamış.")
             if "“" not in p.text or "”" not in p.text:
                 raise ValueError("Görüş dayanak kapısı: sayfa/satır atfının yanında tırnak içi birebir pasaj yok.")
             if not any(bool(r.bold) and ("“" in r.text or "”" in r.text or len(r.text.strip()) > 20) for r in p.runs):
                 raise ValueError("Görüş dayanak kapısı: tarifname alıntısı kalın biçimde değil.")
-            lead_runs = [r for r in p.runs if ("Description page" in r.text or "Tarifname sayfa" in r.text)]
+            lead_runs = [r for r in p.runs if re.search(r"(?:Description\s+)?page\s+\d+|(?:Tarifname\s+)?sayfa\s+\d+", r.text, flags=re.I)]
             if not lead_runs or any(bool(r.bold) for r in lead_runs):
                 raise ValueError("Görüş dayanak kapısı: Description/Tarifname sayfa-satır giriş kısmı normal yazı olmalıdır.")
     expected_quotes = sum(1 for _ in _iter_quote_objects(opinion))

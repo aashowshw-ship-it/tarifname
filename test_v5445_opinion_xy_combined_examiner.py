@@ -65,11 +65,11 @@ def _opinion():
             },
             {
                 "label": "D2",
-                "blocks": [{"type": "paragraph", "text": "D2 is briefly explained and its technical teaching is distinguished from the claimed arrangement."}],
+                "blocks": [{"type": "paragraph", "text": "D2 is briefly and objectively explained as a second technical arrangement and its disclosed operation is summarized."}],
                 "novelty_heading": "",
                 "novelty_paragraphs": [],
                 "inventive_step_heading": "",
-                "inventive_step_paragraphs": ["The technical effect and objective technical problem are addressed, and D2 provides no motivation or suggestion for the additional structural modification required by the claim."],
+                "inventive_step_paragraphs": [],
             },
         ],
         "combined_assessment": {
@@ -81,8 +81,8 @@ def _opinion():
 
 
 def test_version_v546_and_binding_rules_present():
-    assert APP_VERSION == "v5.4.44"
-    assert RULESET_VERSION == "2026-09-08.v46"
+    assert APP_VERSION == "v5.4.59"
+    assert RULESET_VERSION == "2026-09-11.v52"
     low = GORUS_RULES.casefold()
     for phrase in [
         "x kategorisindeki", "y kategorisindeki", "considered together",
@@ -97,11 +97,15 @@ def test_xy_detection_preserves_x_y_categories_and_excludes_a():
     assert [(d["label"], d["category"]) for d in docs] == [("D1", "X"), ("D2", "Y")]
 
 
-def test_xy_structure_x_has_novelty_y_must_not_have_novelty():
+def test_xy_structure_x_is_defended_y_is_only_objectively_introduced():
     op = _opinion()
     validate_opinion_narrative_rules(op, "Inventive step objection", "technical specification")
     bad = _opinion()
     bad["sections"][1]["novelty_paragraphs"] = ["Not disclosed."]
+    with pytest.raises(ValueError, match="Y dokümanı"):
+        validate_opinion_narrative_rules(bad, "Inventive step objection", "technical specification")
+    bad = _opinion()
+    bad["sections"][1]["inventive_step_paragraphs"] = ["D2 does not render the claim obvious."]
     with pytest.raises(ValueError, match="Y dokümanı"):
         validate_opinion_narrative_rules(bad, "Inventive step objection", "technical specification")
 

@@ -7,6 +7,8 @@ from typing import Any
 
 from openai import OpenAI
 
+from ai_cache import workflow_prompt_cache_kwargs
+
 
 def _extract_json(text: str) -> dict[str, Any]:
     text = text.strip()
@@ -37,6 +39,7 @@ def ask_json(prompt: str, *, use_web: bool = False) -> dict[str, Any]:
         "model": model,
         "input": prompt,
     }
+    kwargs.update(workflow_prompt_cache_kwargs(prompt, model))
     if use_web:
         kwargs["tools"] = [{"type": "web_search"}]
     response = client.responses.create(**kwargs)

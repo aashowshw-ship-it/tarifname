@@ -25,8 +25,8 @@ def _bw_source_png() -> bytes:
 
 
 def test_versions_and_new_figure_rules():
-    assert APP_VERSION == "v5.4.44"
-    assert RULESET_VERSION == "2026-09-08.v46"
+    assert APP_VERSION == "v5.4.59"
+    assert RULESET_VERSION == "2026-09-11.v52"
     assert "sistem şekline" in TARIFNAME_RULES.casefold()
     assert "ayrı yöntem/akış" in TARIFNAME_RULES.casefold()
     assert "arial 11" in TARIFNAME_RULES.casefold() and "kalın" in TARIFNAME_RULES.casefold()

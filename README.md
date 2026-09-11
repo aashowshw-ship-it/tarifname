@@ -1,6 +1,6 @@
-# Patent Atölyesi v5.4.44
+# Patent Atölyesi v5.4.59
 
-## Çok kullanıcılı giriş ekranı (v5.4.44 tabanı)
+## Çok kullanıcılı giriş ekranı (v5.4.59 tabanı)
 
 Bu paket, çekirdek patent üretim/görüş kurallarına dokunmadan uygulamanın önüne kullanıcı adı/şifre kapısı ekler. Kullanıcılar kod içine yazılmaz. Render **Environment** bölümünde `PATENT_USERS_JSON` tanımlanır.
 
@@ -19,7 +19,7 @@ python -c "from auth import make_password_hash; print(make_password_hash('GucluS
 Çıkan değeri ilgili kullanıcıda `password_hash` alanına koyun. Aynı Render servisini farklı kullanıcılar aynı anda kullanabilir. Streamlit oturum verileri tarayıcı oturumuna özeldir ve mevcut çalışma dosyaları `TemporaryDirectory` ile benzersiz geçici klasörlerde işlenir. Bu sürüm yalnız giriş/oturum ayrımını ekler; kullanıcıya özel kalıcı dosya arşivi veya kullanım kotası henüz eklenmemiştir.
 
 
-Bu paket, mevcut Render/GitHub tabanlı **Patent Atölyesi** uygulamasının 04.09.2026 tarihli güncel tam sürümüdür.
+Bu paket, mevcut GitHub tabanlı **Patent Atölyesi** uygulamasının 09.09.2026 tarihli güncel tam sürümüdür.
 
 ## GitHub'a yükleme — ESKİ DOSYALARIN KALMAMASI ÖNEMLİ
 
@@ -611,3 +611,57 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 - AI fallback sonucu yayın numarası, X/Y kategori ve numaralı Y-grup validatorlarından geçmeden kabul edilmez. Belirsizlikte süreç fail-closed durur.
 - PASS olmuş fallback kapsamı SHA-256/model/kural sürümü imzasıyla checkpoint'e alınabilir; cache hiçbir kalite kapısını atlamaz.
 
+
+
+
+
+
+## v5.4.59 / 2026-09-11.v52 — Image-only PDF görsel okuma fallback'i
+
+- PDF metin katmanı önce mevcut hızlı çıkarıcıyla okunur; yeterli metin varsa hiçbir ek AI/görsel çağrısı yapılmaz.
+- PDF metin katmanı boş veya sayfa sayısına göre aşırı yetersizse sayfalar PyMuPDF ile görsele çevrilir ve GPT-5.6 görsel girdisiyle 6 sayfalık gruplar halinde kaynak-sadık metin aktarımı yapılır.
+- Görsel fallback yorum/özet/çeviri yapmaz; görünür metni, patent/paragraf/istem numaralarını ve okunabilir şekil metnini aktarır. Okunamayan içerik uydurulmaz.
+- Görsel fallback de metin üretemezse işlem fail-closed durur; boş kaynakla görüş/tarifname/araştırma akışına devam edilmez.
+- Güvenlik sınırı 80 PDF sayfasıdır. Görsel fallback çağrıları AI telemetrisinde ayrı aşama olarak kaydedilebilir; normal metinli PDF'lerin süre ve maliyeti değişmez.
+- Bu fallback ortak PDF kaynak okuma katmanında olduğundan tarifname, tarifname düzenleme, görüş, görüş düzenleme, Tip 3 araştırma ve araştırma güncelleme akışlarında kullanılabilir.
+
+## v5.4.58 / 2026-09-11.v51 — X/Y savunma ağırlığı ve numarasız Y kombinasyon kapısı
+
+1. Araştırma raporunda X kategorisindeki doküman tek başına yenilik ve/veya buluş basamağına etkili görüldüğünden kendi D bölümünde ayrıntılı yenilik + buluş basamağı savunması alır.
+2. Y kategorisindeki dokümanın bireysel D bölümü artık yalnız kısa, objektif teknik tanıtım ve uygun özgün şekilden oluşur. Bireysel Y bölümünde başvuru/istem karşılaştırması, yenilik savunması, ayrı buluş basamağı savunması, objektif teknik problem, motivasyon/yönlendirme veya patentlenebilirlik sonucu yazılmaz.
+3. Y kaynaklı buluş basamağı savunmasının tamamı ilgili `... Dokümanları Birlikte Değerlendirildiğinde` bölümünde kurulur. Bu bölüm en az iki kapsamlı paragrafla teknik başlangıç noktası, tamamlayıcı öğreti, ayırt edici teknik fark/NASIL ilişkisi, teknik etki, objektif teknik problem, motivasyon/yönlendirme ve yine gereken somut ilave değişiklikleri açıklar.
+4. Numaralı `Y1/Y2` grupları aynen korunur. Numarasız Y kategorisinde aynı istem/istem grubu için iki veya daha fazla Y dokümanı bulunuyor ve başka alt grup ayrımı yoksa yalnız Y dokümanları kendi aralarında tek kombinasyon grubu kabul edilir. Örnek: D1=X, D2=Y, D3=Y, D4=Y → D1 ayrıntılı bireysel X savunması, D2-D4 kısa objektif tanıtım, ana Y savunması `D2, D3 ve D4 Dokümanları Birlikte Değerlendirildiğinde`.
+5. X dokümanı sırf X olduğu için numarasız Y kombinasyonuna eklenmez. X ancak rapor açıkça aynı çoklu-doküman itirazında onu Y dokümanlarıyla birlikte kullanmışsa kombinasyona alınabilir.
+6. Fail-closed validator, bireysel Y bölümünde savunma metni bulunmasını ve Y grubuna yanlış X dokümanı eklenmesini reddeder. Kombinasyon derinliği artık bağımsız X savunmasının uzunluğuyla yarışmak zorunda değildir; kombinasyondaki kısa Y tanıtımlarından açıkça daha kapsamlı olması aranır.
+
+## v5.4.57 / 2026-09-11.v50 — Tüm ana iş akışlarında prompt cache + görüş dayanak tekrar temizliği + TL maliyet gösterimi
+- Prompt cache artık yalnız tarifname oluşturmayla sınırlı değildir; tarifname oluşturma, tarifname düzenleme, görüş/görüş revizyonu, Tip 3 ön araştırma ve araştırma güncelleme promptlarının bağlayıcı sabit kural prefixleri GPT-5.6 çağrılarında aynı güvenli 30 dakikalık cache mantığını kullanır. Dinamik BBF, müşteri, rapor ve patent verileri cache anahtarına girmez; prompt metni değiştirilmez.
+- Görüş dayanak formatında bağlam-duyarlı tekrar kuralı eklendi. Hemen önceki savunma cümlesi `Tarifnamedeki dayanak şöyledir:` veya eşdeğer biçimde tarifnameyi zaten kaynak olarak adlandırıyorsa fiziksel atıf `Sayfa X, satır Y-Z...` diye başlar; `Tarifnamedeki ... Tarifname sayfa ...` tekrarı yasaktır. Önceki cümle kaynak adını vermiyorsa tam `Tarifname sayfa X, satır Y-Z...` biçimi korunur. Bu davranış deterministik konumlandırma ve ikinci doğrulama kapısına bağlıdır.
+- AI token maliyet telemetrisi TL olarak gösterilir. API maliyeti dahili olarak USD tarifesinden hesaplanıp yaklaşık USD/TRY kuru ile TL'ye çevrilir. Varsayılan 11.09.2026 referans kuru 48.6031'dir; dağıtım ortamında `USD_TRY_RATE` ile güncellenebilir.
+- Hiçbir teknik kalite kapısı, fail-closed davranışı, istem/dayanak kontrolü veya Word şablon kuralı gevşetilmemiştir.
+
+## v5.4.56 / 2026-09-09.v49 — Tarifname prompt cache optimizasyonu
+
+1. Tarifname AI çağrılarında prompt metni, model, reasoning, görsel girdiler, web-search davranışı, retry sayısı ve kalite kapıları değiştirilmez.
+2. İsteğin başı bağlayıcı `TARIFNAME_RULES` metniyle birebir başlıyorsa ve model GPT-5.6 ailesiyse sabit `prompt_cache_key` kullanılır; anahtar doğrudan kural metninin SHA-256 özetinden türetilir ve kullanıcı/BBF içeriği taşımaz.
+3. OpenAI Responses API prompt cache seçeneklerinde implicit breakpoint korunur ve `ttl=30m` uygulanır. Ortak, değişmeyen kural prefix'i uygun çağrılarda yeniden kullanılabilir; dinamik BBF/taslak içeriği cache anahtarına dönüştürülmez.
+4. Tarifname dışındaki görüş, Tip 3, araştırma güncelleme ve diğer AI çağrıları bu değişiklikten etkilenmez. GPT-5.6 dışına manuel model override yapılırsa cache parametreleri gönderilmez.
+5. Telemetriye `cache_write_tokens` eklenmiştir. GPT-5.6 cache yazımları güncel 1.25x uncached-input katsayısıyla tahmini maliyete dahil edilir; cached-input ve cache-write değerleri ayrı gösterilir.
+6. Prompt cache hiçbir kalite kararını bypass etmez. Cache hit yalnız aynı prompt prefix'inin model tarafında tekrar işlenmesini optimize eder; bütün NASIL/BBF tamlığı/ham-kaynak/Word/fail-closed kapıları aynen çalışır.
+
+## v5.4.55 / 2026-09-09.v48 — Tarifname AI süre ve token/maliyet ölçümü
+
+1. Tarifname oluşturma çekirdek AI zincirindeki her çağrı aşama etiketiyle ayrı ölçülür: BBF teknik envanteri, envanter ikinci kontrolü, patent literatürü (seçilmişse), tam tarifname taslağı, kalite kontrolü, final ham-kaynak ikinci okuma ve varsa kalite düzeltme turları.
+2. Ölçüm yalnız gözlemdir: prompt, model, reasoning davranışı, retry sayısı, validator, checkpoint, Word üretimi ve fail-closed kalite kapıları değiştirilmez.
+3. Süre `time.perf_counter()` ile gerçek API bekleme süresinden ölçülür. Token değerleri tahmin edilmez; Responses API cevabındaki `usage.input_tokens`, `input_tokens_details.cached_tokens`, `usage.output_tokens` ve `output_tokens_details.reasoning_tokens` alanlarından okunur.
+4. GPT-5.6 Sol için tahmini model-token maliyeti mevcut fiyat tablosuna göre hesaplanır. 272.000 input token üstündeki uzun bağlam katsayısı uygulanır. Reasoning tokenları output tokenlarının alt kümesi olduğundan ikinci kez ücretlendirilmez.
+5. Web search ve ayrı image-generation araç ücretleri token tahminine dahil edilmez; arayüz bunu açıkça belirtir. Model GPT-5.6/Sol dışında ayarlanırsa yanlış fiyat göstermemek için maliyet `—`/hesaplanamadı olarak bırakılır.
+6. Aynı workflow imzasında checkpoint'ten geri kullanılan PASS aşamaları yeni API çağrısı üretmediği için yeni ölçüm satırı oluşturmaz. Telemetri hiçbir kalite kararına veya cache anahtarına katılmaz.
+
+## v5.4.54 / 2026-09-09.v47 — Görüş sayfa/satır render performans düzeltmesi
+
+1. Görüşte final tarifname DOC/DOCX/PDF kaynağının fiziksel sayfa/satır indeksi, dosya türü + kaynak baytlarının SHA-256 özetiyle bağlanır.
+2. Aynı final tarifname değişmedikçe alıntı işaretleme ve son-Markup sayfa/satır doğrulaması aynı fiziksel indeks üzerinde çalışır; her alıntı için LibreOffice yeniden başlatılmaz.
+3. Tarifname içeriğinde tek baytlık değişiklik dahi SHA-256 anahtarını değiştirir ve eski indeks kullanılmaz; yeni fiziksel render zorunlu olur.
+4. Alıntının birebir bulunması, basılı satır numarasının doğrulanması, kayıtlı sayfa/satırın tekrar hesaplanması ve dayanak giriş metni senkronizasyonu dahil mevcut fail-closed kalite kapılarının hiçbiri kaldırılmamıştır.
+5. Önbellek yalnız fiziksel sayfa/satır indeksini tekrar kullanır; görüş metni, AI kalite denetimi, istem revizyonu, şekil ve Word teslim kapılarında herhangi bir bypass oluşturmaz.

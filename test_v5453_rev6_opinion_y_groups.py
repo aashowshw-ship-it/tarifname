@@ -35,8 +35,8 @@ Kategorilerin Açıklaması:
 
 
 def test_rev6_ruleset_and_binding_y_group_rules_present():
-    assert APP_VERSION == "v5.4.44"
-    assert RULESET_VERSION == "2026-09-08.v46"
+    assert APP_VERSION == "v5.4.59"
+    assert RULESET_VERSION == "2026-09-11.v52"
     low = GORUS_RULES.casefold()
     for phrase in ["y1,y2", "gerçek kombinasyon grupları", "deterministik parser", "ai fallback", "fail-closed"]:
         assert phrase in low
