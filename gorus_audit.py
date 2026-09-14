@@ -21,6 +21,159 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
+def _style_chain_bold(style) -> bool | None:
+    """Resolve bold through a Word style/base-style chain without guessing."""
+    seen: set[int] = set()
+    cur = style
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        try:
+            value = cur.font.bold
+        except Exception:
+            value = None
+        if value is not None:
+            return bool(value)
+        try:
+            cur = cur.base_style
+        except Exception:
+            cur = None
+    return None
+
+
+def _effective_run_bold(run, paragraph) -> bool:
+    """Return the bold state that Word will effectively apply to a generated body run."""
+    direct = run.bold
+    if direct is not None:
+        return bool(direct)
+    value = _style_chain_bold(getattr(run, "style", None))
+    if value is not None:
+        return value
+    value = _style_chain_bold(getattr(paragraph, "style", None))
+    if value is not None:
+        return value
+    try:
+        value = _style_chain_bold(paragraph.part.document.styles["Normal"])
+    except Exception:
+        value = None
+    return bool(value) if value is not None else False
+
+
+def _paragraph_run_spans(paragraph) -> tuple[str, list[tuple[int, int, bool]]]:
+    """Build character spans with effective bold state for deterministic Word-format gates."""
+    text_parts: list[str] = []
+    spans: list[tuple[int, int, bool]] = []
+    pos = 0
+    for run in paragraph.runs:
+        chunk = str(run.text or "")
+        if not chunk:
+            continue
+        start = pos
+        pos += len(chunk)
+        text_parts.append(chunk)
+        spans.append((start, pos, _effective_run_bold(run, paragraph)))
+    return "".join(text_parts), spans
+
+
+def _segment_has_wrong_bold(text: str, spans: list[tuple[int, int, bool]], start: int, end: int, *, expected_bold: bool) -> bool:
+    """Ignore whitespace and require every visible character in [start,end) to have the expected bold state."""
+    for span_start, span_end, is_bold in spans:
+        lo = max(start, span_start)
+        hi = min(end, span_end)
+        if lo >= hi:
+            continue
+        visible = text[lo:hi]
+        if not any(not ch.isspace() for ch in visible):
+            continue
+        if bool(is_bold) != bool(expected_bold):
+            return True
+    return False
+
+
+def validate_opinion_quote_run_formatting(doc, opinion: dict[str, Any]) -> None:
+    """Fail closed unless each specification basis paragraph is normal → bold quote → normal.
+
+    The check is based on effective Word formatting, including inherited paragraph/character
+    styles, so a paragraph cannot pass merely because ``run.bold`` is ``None``.
+    """
+    quote_objects = [q for q in _iter_quote_objects(opinion) if _norm(q.get("text", ""))]
+    checked_paragraph_ids: set[int] = set()
+    for q in quote_objects:
+        quote_text = str(q.get("text", "")).strip()
+        lead = str(q.get("lead", "")).strip()
+        wrapped = f"“{quote_text}”"
+        candidates = []
+        for paragraph in doc.paragraphs:
+            paragraph_text = paragraph.text
+            if wrapped not in paragraph_text:
+                continue
+            if lead and lead not in paragraph_text:
+                continue
+            candidates.append(paragraph)
+        if not candidates:
+            raise ValueError("Görüş dayanak biçim kapısı: birebir tarifname alıntısı Word paragrafında bulunamadı.")
+        # Duplicate use of the exact same quote is allowed; every matching rendered occurrence must pass.
+        for paragraph in candidates:
+            pid = id(paragraph._p)
+            if pid in checked_paragraph_ids:
+                continue
+            rendered_text, spans = _paragraph_run_spans(paragraph)
+            if rendered_text != paragraph.text:
+                raise ValueError("Görüş dayanak biçim kapısı: paragraf run yapısı deterministik olarak çözümlenemedi.")
+            quote_start = rendered_text.find(wrapped)
+            if quote_start < 0:
+                raise ValueError("Görüş dayanak biçim kapısı: dış tırnaklarla çevrili tarifname pasajı bulunamadı.")
+            quote_end = quote_start + len(wrapped)
+            if _segment_has_wrong_bold(rendered_text, spans, 0, quote_start, expected_bold=False):
+                raise ValueError("Görüş dayanak biçim kapısı: alıntı öncesindeki teknik savunma ve sayfa/satır girişi normal yazı olmalıdır.")
+            if _segment_has_wrong_bold(rendered_text, spans, quote_start, quote_end, expected_bold=True):
+                raise ValueError("Görüş dayanak biçim kapısı: yalnız birebir tarifname alıntısı kalın olmalıdır ve alıntının tamamı kalın olmalıdır.")
+            if _segment_has_wrong_bold(rendered_text, spans, quote_end, len(rendered_text), expected_bold=False):
+                raise ValueError("Görüş dayanak biçim kapısı: tarifname alıntısından sonraki savunma normal yazı olmalıdır.")
+            checked_paragraph_ids.add(pid)
+
+
+def validate_opinion_body_not_accidentally_all_bold(doc, opinion: dict[str, Any]) -> None:
+    """Reject long substantive opinion paragraphs that are entirely bold outside allowed template headings."""
+    allowed: set[str] = {
+        "Saygılarımızla,",
+        "DESTEK PATENT A.Ş.",
+    }
+    for d in opinion.get("cited_documents") or []:
+        label = _norm(d.get("label", ""))
+        number = _norm(d.get("number", ""))
+        if label and number:
+            allowed.add(f"{label}: {number}")
+    amendment = opinion.get("amendment_assessment") or {}
+    if _norm(amendment.get("heading", "")):
+        allowed.add(_norm(amendment.get("heading", "")))
+    for section in opinion.get("sections") or []:
+        if _norm(section.get("heading", "")):
+            allowed.add(_norm(section.get("heading", "")))
+    combined = opinion.get("combined_assessment") or {}
+    if _norm(combined.get("heading", "")):
+        allowed.add(_norm(combined.get("heading", "")))
+    for group in combined.get("groups") or []:
+        if isinstance(group, dict) and _norm(group.get("heading", "")):
+            allowed.add(_norm(group.get("heading", "")))
+
+    for paragraph in doc.paragraphs:
+        text = _norm(paragraph.text)
+        if len(text) < 80 or text in allowed:
+            continue
+        # Quote paragraphs are checked by the stronger segment-level gate above.
+        if "“" in paragraph.text and "”" in paragraph.text and re.search(r"(?:sayfa|page)\s+\d+", paragraph.text, flags=re.I):
+            continue
+        rendered_text, spans = _paragraph_run_spans(paragraph)
+        if not rendered_text or not spans:
+            continue
+        visible_states: list[bool] = []
+        for start, end, is_bold in spans:
+            if any(not ch.isspace() for ch in rendered_text[start:end]):
+                visible_states.append(bool(is_bold))
+        if visible_states and all(visible_states):
+            raise ValueError("Görüş gövde kalınlık kapısı: teknik savunma paragrafının tamamı kalın olamaz.")
+
+
 # v5.4.54 — The final specification's rendered page/line map is deterministic for
 # identical bytes. Keep a small SHA-256 keyed cache so quote annotation and the
 # independent deterministic validation gate reuse the SAME physical render instead
@@ -195,19 +348,64 @@ def _iter_quote_objects(opinion: dict[str, Any]):
 
 
 def _previous_narrative_names_spec_basis(text: str, language: str) -> bool:
-    """True only when the immediately preceding sentence already names the specification as the basis.
+    # v5.4.62: retained only for backward compatibility; Turkish output no longer uses contextual short leads.
+    return False
 
-    This prevents clumsy repetitions such as
-    `Tarifnamedeki dayanak şöyledir: Tarifname sayfa 6...` while preserving the
-    full source label when the preceding argument did not already name it.
+
+def _quote_semantic_boundary_ok(
+    quote: str, page_line_index: list[dict[str, Any]]
+) -> bool:
+    """Accept only a sentence boundary or a real source list/bullet boundary.
+
+    This catches clipped starts such as `oluşturmaktadır. Bu buluş...` where the
+    quote begins with the tail of the preceding sentence merely because a physical
+    line happened to start there.
     """
-    tail = _norm(text)[-260:].casefold()
-    if not tail:
+    q = _norm(quote)
+    if not q:
         return False
-    english = str(language or "").strip().casefold().startswith(("ing", "en"))
-    if english:
-        return bool(re.search(r"\bdescription\b.{0,140}\b(?:basis|support|states?|discloses?|specified)\b", tail))
-    return bool(re.search(r"\btarifname(?:deki|de|nin|ye|den)?\b.{0,140}\b(?:dayanak|belirtil|açıklan|şu\s+şekilde|yer\s+al)\w*", tail))
+    rows = [ln for ln in page_line_index if _norm(ln.get("text", ""))]
+    q_head = q[: min(len(q), 80)]
+    for i, ln in enumerate(rows):
+        raw = _norm(ln.get("text", ""))
+        # True source bullet/list item start is always a valid semantic boundary.
+        m = re.match(r"^(?:[•▪◦‣-]|\(?\d+[.)])\s*(.*)$", raw)
+        if m and _norm(m.group(1)).startswith(q_head):
+            return True
+        pos = raw.find(q_head)
+        if pos < 0:
+            continue
+        if pos > 0:
+            before = raw[:pos].rstrip()
+            return bool(before) and before[-1] in ".?!:"
+        # Quote starts at the beginning of a physical line. A line break alone is not
+        # a semantic boundary: the previous visible line must terminate the sentence.
+        j = i - 1
+        while j >= 0 and not _norm(rows[j].get("text", "")):
+            j -= 1
+        if j < 0:
+            return True
+        prev = _norm(rows[j].get("text", "")).rstrip()
+        return bool(prev) and prev[-1] in ".?!:"
+    # Fallback for a sentence beginning mid-line and spanning later lines.
+    joined = " ".join(_norm(ln.get("text", "")) for ln in rows)
+    pos = joined.find(q)
+    if pos < 0:
+        return False
+    before = joined[:pos].rstrip()
+    return not before or before[-1] in ".?!:•▪◦‣"
+
+
+def validate_quote_semantic_boundaries(
+    opinion: dict[str, Any], page_line_index: list[dict[str, Any]]
+) -> None:
+    for q in _iter_quote_objects(opinion):
+        text = str(q.get("text", "")).strip()
+        if text and not _quote_semantic_boundary_ok(text, page_line_index):
+            raise ValueError(
+                "Görüş tarifname alıntı başlangıç kapısı: birebir dayanak tam bir cümle veya kaynakta açık madde/list başlangıcından başlamıyor. "
+                f"Alıntı başlangıcı: {text[:90]}"
+            )
 
 
 def locate_quote_page_line_span(
@@ -262,20 +460,18 @@ def locate_quote_page_lines(filename: str, data: bytes, quote: str) -> tuple[int
 def _lead_for_span(
     p1: int, l1: int, p2: int, l2: int, language: str, *, source_already_named: bool = False
 ) -> str:
-    english = str(language or "").strip().casefold().startswith("ing") or str(language or "").strip().casefold().startswith("en")
+    english = str(language or "").strip().casefold().startswith(("ing", "en"))
     if english:
-        source = "" if source_already_named else "Description "
         if p1 == p2:
             unit = "line" if l1 == l2 else "lines"
             span = str(l1) if l1 == l2 else f"{l1}-{l2}"
-            return f"{source}page {p1}, {unit} {span} states:"
-        return f"{source}page {p1}, line {l1} and page {p2}, line {l2} state:"
-    source = "" if source_already_named else "Tarifname "
+            return f"In the description, page {p1}, {unit} {span} state as follows:"
+        return f"In the description, page {p1}, line {l1} to page {p2}, line {l2} state as follows:"
     if p1 == p2:
         if l1 == l2:
-            return f"{source}sayfa {p1}, satır {l1}’de bu durum şu şekilde belirtilmiştir:"
-        return f"{source}sayfa {p1}, satır {l1}-{l2}’de bu durum şu şekilde belirtilmiştir:"
-    return f"{source}sayfa {p1}, satır {l1} ile sayfa {p2}, satır {l2} arasında bu durum şu şekilde belirtilmiştir:"
+            return f"Tarifnamede sayfa {p1}, satır {l1}’de bu durum şu şekilde belirtilmiştir:"
+        return f"Tarifnamede sayfa {p1}, satır {l1}-{l2}’de bu durum şu şekilde belirtilmiştir:"
+    return f"Tarifnamede sayfa {p1}, satır {l1} ile sayfa {p2}, satır {l2} arasında bu durum şu şekilde belirtilmiştir:"
 
 
 def annotate_quote_locations(
@@ -286,6 +482,7 @@ def annotate_quote_locations(
     page_line_index: list[dict[str, Any]] | None = None,
 ) -> None:
     index = page_line_index if page_line_index is not None else build_page_line_index(spec_filename, spec_bytes)
+    validate_quote_semantic_boundaries(opinion, index)
     for q, previous_text in _iter_quote_objects_with_context(opinion):
         text = str(q.get("text", "")).strip()
         if not text:
@@ -297,10 +494,7 @@ def annotate_quote_locations(
         q["line_start"] = l1
         q["page_end"] = p2
         q["line_end"] = l2
-        q["lead"] = _lead_for_span(
-            p1, l1, p2, l2, output_language,
-            source_already_named=_previous_narrative_names_spec_basis(previous_text, output_language),
-        )
+        q["lead"] = _lead_for_span(p1, l1, p2, l2, output_language)
 
 
 def validate_quote_locations_against_spec(
@@ -312,6 +506,7 @@ def validate_quote_locations_against_spec(
 ) -> None:
     """Hard gate: every stored page/line citation must match the FINAL physical markup render."""
     index = page_line_index if page_line_index is not None else build_page_line_index(spec_filename, spec_bytes)
+    validate_quote_semantic_boundaries(opinion, index)
     for q, previous_text in _iter_quote_objects_with_context(opinion):
         text = str(q.get("text", "")).strip()
         if not text:
@@ -328,10 +523,7 @@ def validate_quote_locations_against_spec(
                 "Görüş son-Markup sayfa/satır kapısı: kayıtlı dayanak fiziksel render ile eşleşmiyor. "
                 f"Beklenen {expected}, kayıtlı {actual}."
             )
-        expected_lead = _lead_for_span(
-            *expected, output_language,
-            source_already_named=_previous_narrative_names_spec_basis(previous_text, output_language),
-        )
+        expected_lead = _lead_for_span(*expected, output_language)
         if _norm(q.get("lead", "")) != _norm(expected_lead):
             raise ValueError("Görüş son-Markup sayfa/satır kapısı: dayanak giriş metni fiziksel konumla senkron değil.")
 
@@ -456,6 +648,108 @@ def _combined_assessment_text(opinion: dict[str, Any]) -> str:
 
 def _opinion_sentence_count(text: str) -> int:
     return len([x for x in re.split(r"(?<=[.!?])\s+", _norm(text)) if x.strip()])
+
+
+def _opinion_word_count(text: str) -> int:
+    return len(re.findall(r"\b[\wÇĞİÖŞÜçğıöşü-]+\b", _norm(text), flags=re.UNICODE))
+
+
+def _section_model_paragraphs(sec: dict[str, Any]) -> list[str]:
+    paragraphs = [
+        _norm(str(b.get("text", "")))
+        for b in (sec.get("blocks") or [])
+        if str(b.get("type", "paragraph")).lower() == "paragraph" and _norm(str(b.get("text", "")))
+    ]
+    paragraphs += [_norm(str(x)) for x in (sec.get("novelty_paragraphs") or []) if _norm(str(x))]
+    paragraphs += [_norm(str(x)) for x in (sec.get("inventive_step_paragraphs") or []) if _norm(str(x))]
+    return paragraphs
+
+
+def validate_opinion_long_form_depth(opinion: dict[str, Any], report_text: str) -> None:
+    """Fail-closed long-form gate for generated opinions. Called only by UI flow with preanalysis."""
+    docs = opinion.get("cited_documents") or []
+    if not docs:
+        return
+    category_by_label = {
+        str(d.get("label", "")).strip().upper(): (_parse_xy_category_marker(str(d.get("category", ""))) or (str(d.get("category", "")).strip().upper(), "", []))[0]
+        for d in docs if str(d.get("label", "")).strip()
+    }
+    if not ({"X", "Y"} & set(category_by_label.values())):
+        return
+
+    total_parts: list[str] = []
+    sections = opinion.get("sections") or []
+    for sec in sections:
+        label = str(sec.get("label", "")).strip().upper()
+        if category_by_label.get(label) != "X":
+            continue
+        pars = _section_model_paragraphs(sec)
+        text = _norm(" ".join(pars))
+        words = _opinion_word_count(text)
+        if len(pars) < 4 or words < 700:
+            raise ValueError(
+                f"Görüş uzunluk/derinlik kapısı: {label} X savunması en az dört dolu teknik paragraf ve 700 kelime olmalıdır (mevcut: {len(pars)} paragraf, {words} kelime)."
+            )
+        total_parts.append(text)
+
+    for group in _combined_assessment_groups(opinion):
+        pars = [_norm(str(x)) for x in (group.get("paragraphs") or []) if _norm(str(x))]
+        text = _norm(" ".join(pars))
+        words = _opinion_word_count(text)
+        group_name = str(group.get("group", "") or group.get("heading", "") or "kombinasyon").strip()
+        if len(pars) < 4 or words < 900:
+            raise ValueError(
+                f"Görüş uzunluk/derinlik kapısı: {group_name} Y kombinasyon savunması en az dört dolu teknik paragraf ve 900 kelime olmalıdır (mevcut: {len(pars)} paragraf, {words} kelime)."
+            )
+        total_parts.append(text)
+
+    conclusion_text = _norm(" ".join(str(x) for x in (opinion.get("conclusion") or []) if _norm(str(x))))
+    if conclusion_text:
+        total_parts.append(conclusion_text)
+    total_words = _opinion_word_count(" ".join(total_parts))
+    if total_words < 2200:
+        raise ValueError(
+            f"Görüş uzunluk/derinlik kapısı: esas savunma gövdesi en az 2200 kelime olmalıdır; mevcut {total_words} kelime. Giriş, Y objektif tanıtımları, şekil başlıkları ve birebir alıntılar bu sayıya dahil edilmez."
+        )
+
+
+def _opinion_model_text_for_customer_coverage(opinion: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for sec in opinion.get("sections") or []:
+        parts.extend(_section_model_paragraphs(sec))
+    for group in _combined_assessment_groups(opinion):
+        parts.extend([_norm(str(x)) for x in (group.get("paragraphs") or []) if _norm(str(x))])
+    parts.extend([_norm(str(x)) for x in (opinion.get("conclusion") or []) if _norm(str(x))])
+    return _norm(" ".join(parts)).casefold()
+
+
+def validate_customer_defence_point_coverage(
+    opinion: dict[str, Any], preanalysis: dict[str, Any] | None, customer_text: str
+) -> None:
+    if not preanalysis or len(_norm(customer_text)) < 40:
+        return
+    points = preanalysis.get("customer_defence_points") or []
+    if not points:
+        raise ValueError("Görüş müşteri-kapsam kapısı: müşteri bilgisi mevcut ancak ön analizde customer_defence_points envanteri yok.")
+    required = [p for p in points if bool(p.get("use_required"))]
+    used = {str(x).strip() for x in (opinion.get("customer_point_ids_used") or []) if str(x).strip()}
+    required_ids = {str(p.get("id", "")).strip() for p in required if str(p.get("id", "")).strip()}
+    missing_ids = sorted(required_ids - used)
+    if missing_ids:
+        raise ValueError("Görüş müşteri-kapsam kapısı: zorunlu müşteri savunma maddeleri kullanılmamış: " + ", ".join(missing_ids))
+    known_ids = {str(p.get("id", "")).strip() for p in points if str(p.get("id", "")).strip()}
+    extra = sorted(used - known_ids)
+    if extra:
+        raise ValueError("Görüş müşteri-kapsam kapısı: ön analizde bulunmayan müşteri madde kimlikleri işaretlenmiş: " + ", ".join(extra))
+    visible = _opinion_model_text_for_customer_coverage(opinion)
+    for point in required:
+        pid = str(point.get("id", "")).strip()
+        terms = [_norm(str(x)).casefold() for x in (point.get("coverage_terms") or []) if _norm(str(x))]
+        hits = sum(1 for term in terms if term in visible)
+        if terms and hits < min(2, len(terms)):
+            raise ValueError(
+                f"Görüş müşteri-kapsam kapısı: {pid} kullanılmış olarak işaretlenmiş ancak teknik içeriği görüş metninde görünür biçimde doğrulanamadı."
+            )
 
 
 def _validate_combination_group_depth(group: dict[str, Any], largest_individual: int = 0) -> None:
@@ -1130,6 +1424,7 @@ def validate_opinion_against_raw_sources(
     similar_text: str = "",
     customer_text: str = "",
     allowed_documents: list[dict[str, str]] | None = None,
+    preanalysis: dict[str, Any] | None = None,
 ) -> None:
     """Raw-source gate over all provided inputs before Word generation."""
     validate_opinion_payload(opinion, report_text, spec_text)
@@ -1144,6 +1439,9 @@ def validate_opinion_against_raw_sources(
         if missing:
             raise ValueError("Görüş doküman kapsamı kapısı: uzman gerekçesinde kullanılan doküman görüşte eksik: " + ", ".join(missing))
     validate_opinion_narrative_rules(opinion, report_text, spec_text)
+    if preanalysis is not None:
+        validate_opinion_long_form_depth(opinion, report_text)
+        validate_customer_defence_point_coverage(opinion, preanalysis, customer_text)
 
 
 def _tracked_text(node, ns: dict[str, str], deleted: bool = False) -> str:
@@ -1230,7 +1528,11 @@ def validate_gorus_docx_content_flow(docx_data: bytes) -> None:
         text = p.text.strip()
         if not text:
             continue
-        if text.startswith("Tarifname sayfa ") or text.startswith("Description page ") or text.startswith("Sayfa ") or text.startswith("Page "):
+        if "Tarifnamedeki dayanak şöyledir:" in text:
+            raise ValueError("Görüş dayanak ifade kapısı: Türkçe dayanak yalnız `Tarifnamede sayfa X, satır Y-Z’de bu durum şu şekilde belirtilmiştir:` biçiminde yazılmalıdır.")
+        if re.search(r"\bsayfa\s+\d+,\s*satır\s+\d+", text, flags=re.I) and not re.search(r"Tarifnamede\s+sayfa\s+\d+,\s*satır\s+\d+", text, flags=re.I):
+            raise ValueError("Görüş dayanak ifade kapısı: Türkçe dayanak yalnız `Tarifnamede sayfa X, satır Y-Z’de bu durum şu şekilde belirtilmiştir:` biçiminde yazılmalıdır.")
+        if text.startswith("Tarifnamede sayfa ") or text.startswith("In the description, page "):
             raise ValueError("Görüş paragraf devamlılığı kapısı: tarifname dayanağı ayrı paragraf başlamış.")
         narrative_only = re.sub(r"“[^”]*”", "", text, flags=re.S)
         if ";" in narrative_only:
@@ -1589,20 +1891,23 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
     # Physical page/line quote lead + bold verbatim quote must be visible in the same paragraph and continue the substantive argument.
     quote_count = 0
     for p in doc.paragraphs:
-        if re.search(r"(?:Tarifname\s+)?sayfa\s+\d+,\s*satır\s+\d+(?:[-–]\d+)?", p.text, flags=re.I) or re.search(r"(?:Description\s+)?page\s+\d+,\s*lines?\s+\d+(?:[-–]\d+)?", p.text, flags=re.I):
+        if re.search(r"Tarifnamede\s+sayfa\s+\d+,\s*satır\s+\d+(?:[-–]\d+)?", p.text, flags=re.I) or re.search(r"In the description,\s*page\s+\d+,\s*lines?\s+\d+(?:[-–]\d+)?", p.text, flags=re.I):
             quote_count += 1
-            if p.text.strip().startswith(("Tarifname sayfa ", "Description page ", "Sayfa ", "Page ")):
+            if p.text.strip().startswith(("Tarifnamede sayfa ", "In the description, page ")):
                 raise ValueError("Görüş paragraf devamlılığı kapısı: tarifname dayanağı ayrı paragraf olarak başlamış.")
             if "“" not in p.text or "”" not in p.text:
                 raise ValueError("Görüş dayanak kapısı: sayfa/satır atfının yanında tırnak içi birebir pasaj yok.")
             if not any(bool(r.bold) and ("“" in r.text or "”" in r.text or len(r.text.strip()) > 20) for r in p.runs):
                 raise ValueError("Görüş dayanak kapısı: tarifname alıntısı kalın biçimde değil.")
-            lead_runs = [r for r in p.runs if re.search(r"(?:Description\s+)?page\s+\d+|(?:Tarifname\s+)?sayfa\s+\d+", r.text, flags=re.I)]
+            lead_runs = [r for r in p.runs if re.search(r"In the description,\s*page\s+\d+|Tarifnamede\s+sayfa\s+\d+", r.text, flags=re.I)]
             if not lead_runs or any(bool(r.bold) for r in lead_runs):
-                raise ValueError("Görüş dayanak kapısı: Description/Tarifname sayfa-satır giriş kısmı normal yazı olmalıdır.")
+                raise ValueError("Görüş dayanak kapısı: standart Tarifnamede/In the description sayfa-satır giriş kısmı normal yazı olmalıdır.")
     expected_quotes = sum(1 for _ in _iter_quote_objects(opinion))
     if expected_quotes and quote_count < expected_quotes:
         raise ValueError("Görüş dayanak kapısı: bazı birebir tarifname alıntılarında sayfa/satır görünmüyor.")
+    # v5.4.62: enforce the binding normal → bold verbatim quote → normal run pattern using effective Word formatting.
+    validate_opinion_quote_run_formatting(doc, opinion)
+    validate_opinion_body_not_accidentally_all_bold(doc, opinion)
     # A combined inventive-step section is valid only for an actual Y/explicit combination objection.
     docs = opinion.get("cited_documents") or []
     combined = opinion.get("combined_assessment") or {}

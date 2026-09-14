@@ -1,6 +1,6 @@
-# Patent Atölyesi v5.4.59
+# Patent Atölyesi v5.4.63
 
-## Çok kullanıcılı giriş ekranı (v5.4.59 tabanı)
+## Çok kullanıcılı giriş ekranı (v5.4.61 tabanı)
 
 Bu paket, çekirdek patent üretim/görüş kurallarına dokunmadan uygulamanın önüne kullanıcı adı/şifre kapısı ekler. Kullanıcılar kod içine yazılmaz. Render **Environment** bölümünde `PATENT_USERS_JSON` tanımlanır.
 
@@ -293,7 +293,7 @@ Görüş hazırlama akışında dil seçimi arayüzün bağlayıcı girdisidir. 
 
 `Gorus_metni_696809_template.docx` görüş çıktısı için bağlayıcıdır. Kurum başlıkları, 3x3 metadata tablosu, metadata sonrası fiziksel boş paragraf, `Sayın Uzman,` girişi, kısa giriş paragrafı ve ardından fiziksel boş paragraf deterministik olarak denetlenir. D1/D2/D3 şekil tablolarından önce taslaktaki iki fiziksel boş paragraf korunur; şekiller modelce yeniden çizilmez, yüklenen özgün patent PDF'lerinden alınır.
 
-Tarifname dayanaklarında model sayfa/satır numarası üretmez. Birebir alıntı önce tarifname metninde doğrulanır, ardından DOC/DOCX/PDF fiziksel sayfası render edilerek basılı satır numaraları üzerinden `Tarifname sayfa X, satır Y-Z’te bu durum şu şekilde belirtilmiştir: “...”` biçiminde deterministik atıf eklenir.
+Tarifname dayanaklarında model sayfa/satır numarası üretmez. Birebir alıntı önce tarifname metninde doğrulanır, ardından DOC/DOCX/PDF fiziksel sayfası render edilerek basılı satır numaraları üzerinden `Tarifnamede sayfa X, satır Y-Z’de bu durum şu şekilde belirtilmiştir: “...”` biçiminde deterministik atıf eklenir.
 
 Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kullandığı doküman kapsamına göre kurulur. Tek D1 gerekçesi varsa tek-doküman genel değerlendirmesi, gerçek bir kombinasyon gerekçesi varsa dokümanların birlikte değerlendirilmesi kullanılır. Çıktı kapısı teknik fark → teknik katkı/teknik etki → objektif teknik problem → motivasyon/yönlendirme → gereken ilave yapısal/işlevsel değişiklikler → geriye dönük değerlendirme riskinin kurulmasını ve yeterli teknik derinliği zorunlu tutar. Raporun gerekçeli değerlendirmesinde fiilen kullanılan savunma dokümanları objektif incelenir; yalnız `ilgili dokümanlar` listesinde bulunup gerekçede kullanılmayan D-dokümanları görüşe taşınmaz. Raporda olmayan X/Y kategorisi uydurulmaz; mevcut istemlerle devam kararı verilmişse görüş içinde yeni istem revizyonu yapılmaz.
 
@@ -616,6 +616,40 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 
 
 
+
+
+## v5.4.63 / 2026-09-14.v56 — Tip 3 dış-okuyucu dili + zorunlu Uyarılar kapısı
+
+- Tip 3 ön araştırma raporu dış okuyucuya sunulan bağımsız uzman raporu diliyle yazılır. `doğrulanan`, `doğrulanmış`, `kaynak doğrulama`, `nihai D1/D2 seçimi`, `ikinci okuma`, `kalite kapısı`, `ham kaynak`, `prompt` ve `yapay zekâ` gibi iç çalışma süreci ifadeleri deterministik içerik kapısında reddedilir.
+- `Uyarılar` bölümü artık yalnız `Patent başvurusu yapılmasına karar verildiği taktirde:` satırıyla boş bırakılamaz. İlk dinamik uyarı buluş türüne göre yöntem, sistem/ürün veya karma temel uyarı olarak zorunludur.
+- Yöntem/algoritma araştırmalarında `Buluşun yöntem işlem adımlarının ve işlem adımları arasındaki teknik ilişkilerin netleştirilmesini rica ederiz.`; ürün/sistem araştırmalarında `Buluş unsurlarının tümünün ve unsurlar arasındaki teknik ilişkilerin netleştirilmesini ve açıklanmasını rica ederiz.` kullanılır. Sistem+yöntem birlikte esas ise karma temel uyarı kullanılır.
+- İkinci dinamik uyarı yalnız kaynağa özgü gerçek kritik eksik bilgi/çizim veya somut araştırma riski varsa eklenir.
+
+## v5.4.62 / 2026-09-11.v55 — Görüş dayanak tek-cümle kalıbı + anlamlı alıntı başlangıç kapısı
+
+- Türkçe görüşte her tarifname dayanağı tek standart kalıpla yazılır: `Tarifnamede sayfa X, satır Y-Z’de bu durum şu şekilde belirtilmiştir:`. `Tarifnamedeki dayanak şöyledir:`, `Tarifname sayfa...` ve yalnız `Sayfa X...` biçimleri fail-closed reddedilir.
+- Tarifname dayanağı iki ayrı cümleye bölünmez; standart sayfa/satır girişi desteklediği teknik savunmanın doğal devamı olarak aynı paragrafta bulunur.
+- Birebir tarifname alıntısı tam cümle veya kaynakta gerçek madde/list başlangıcından başlamak zorundadır. Önceki cümlenin son yüklemi/yarım devamı ile başlayan `oluşturmaktadır. Bu buluş...` benzeri kırpılmış başlangıçlar fail-closed reddedilir.
+- Fiziksel sayfa/satır indeksi hem alıntının konumunu hem de başlangıç sınırını doğrular; gerekirse alıntı geriye doğru tam cümle/madde başlangıcına genişletilir ve satır aralığı yeniden hesaplanır.
+- v5.4.61 uzun-form görüş kapısı aynen korunur: esas savunma gövdesi en az 2200 kelime, her X savunması en az 700 kelime/dört dolu paragraf ve her gerçek Y kombinasyonu en az 900 kelime/dört dolu paragraf olmalıdır. Müşteri görüş formundaki doğrudan destekli kullanılabilir teknik noktaların zorunlu kapsama kapısı da aynen devam eder.
+
+## v5.4.61 / 2026-09-11.v54 — Görüş uzun-form teknik derinlik + müşteri savunma kapsama kapısı
+
+- Görüşlerde kelime hedefi D-dokümanı sayısına lineer bağlanmaz; ancak yenilik/buluş basamağı savunması kısa özet seviyesinde bırakılamaz. Modelin esas savunma gövdesi en az 2200 kelime olmalıdır. X dokümanı savunması en az 700 kelime ve dört dolu teknik paragraf, her gerçek Y kombinasyon grubu en az 900 kelime ve dört dolu teknik paragraf içermelidir. Intro, bibliyografi, bireysel Y objektif tanıtımı, şekil caption'ı, birebir quote ve imza bu minimumu doldurmaz.
+- Uzunluk dolgu ile sağlanamaz. Her savunma paragrafı somut teknik fark, teknik etki, NASIL ilişkisi, objektif teknik problem, motivasyon/yönlendirme, gerekli ilave değişiklik veya tarifname dayanağı bakımından yeni teknik içerik taşır. Kaynak yeterli değilse uydurma yerine fail-closed durulur.
+- Müşteri görüş formu/teknik notu varsa ön analizde tamamı ikinci kez taranır ve `customer_defence_points` envanterine ayrılır. Her madde müşteri kaynağındaki birebir `source_quote` ve tarifname/istemdeki birebir `basis_quote` ile doğrulanır.
+- İtiraza cevap veren ve kaynakla destekli her müşteri maddesi `use_required=true` olur ve nihai görüşte zorunlu kullanılır. Kullanılmayan madde ancak dayanak yokluğu, ilgisizlik veya gerçek tekrar nedeniyle `use_required=false` olabilir ve `omission_reason` zorunludur.
+- Nihai görüş `customer_point_ids_used` iç alanında kullanılan zorunlu maddeleri işaretler. Zorunlu id eksikse veya maddede tanımlanan ayırt edici teknik terimler nihai savunma metninde görünmüyorsa Word teslimi fail-closed engellenir. Bu iç kimlikler Word'e yazılmaz.
+- Aynı uzun-form ve müşteri-kapsam kapıları ilk üretim, otomatik repair, uzman-perspektifi güçlendirme, kullanıcı revizyonu ve manuel düzenleme sonrasında yeniden çalışır.
+
+## v5.4.60 / 2026-09-11.v53 — Görüş tarifname dayanağı run-biçim fail-closed kapısı
+
+- Görüş Word çıktısındaki her birebir tarifname dayanağı artık run/karakter düzeyinde deterministik biçim kontrolünden geçer. Alıntı öncesindeki teknik savunma + kaynak/sayfa-satır girişi normal, yalnız dış `“...”` arasındaki birebir pasaj kalın, varsa alıntı sonrası savunma tekrar normal olmak zorundadır.
+- Kontrol yalnız `run.bold` alanına bakmaz. Run karakter stili ve paragraf stilinden gelen kalınlık mirasını da çözerek Word'de fiilen görünecek kalınlığı denetler. Böylece `Normal` stili kalın olsa bile yalnız açık `bold=False` normal metin olarak kabul edilir.
+- Tüm paragrafın tek kalın run'a veya tek normal run'a dönüşmesi, quote/lead biçim ayrımının kaybolması veya normal savunma paragrafının tamamen kalınlaşması fail-closed reddedilir.
+- İzin verilen tam-kalın alanlar yalnız bağlayıcı şablon başlıkları, D bibliyografik satırları, D/combined bölüm başlıkları, şekil başlıkları ve kapanıştır. Teknik savunma gövdesi tamamen kalın olamaz.
+- Bu kapı görüş oluşturma ve görüş revizyonu tesliminden önce çalışan mevcut `validate_gorus_template_fidelity` zincirine bağlıdır; başarısızsa Word indirmesi açılmaz.
+
 ## v5.4.59 / 2026-09-11.v52 — Image-only PDF görsel okuma fallback'i
 
 - PDF metin katmanı önce mevcut hızlı çıkarıcıyla okunur; yeterli metin varsa hiçbir ek AI/görsel çağrısı yapılmaz.
@@ -636,7 +670,7 @@ Yeni tarifname üretiminde mevcut uygulama/önceki teknik ve teknik problem pasa
 
 ## v5.4.57 / 2026-09-11.v50 — Tüm ana iş akışlarında prompt cache + görüş dayanak tekrar temizliği + TL maliyet gösterimi
 - Prompt cache artık yalnız tarifname oluşturmayla sınırlı değildir; tarifname oluşturma, tarifname düzenleme, görüş/görüş revizyonu, Tip 3 ön araştırma ve araştırma güncelleme promptlarının bağlayıcı sabit kural prefixleri GPT-5.6 çağrılarında aynı güvenli 30 dakikalık cache mantığını kullanır. Dinamik BBF, müşteri, rapor ve patent verileri cache anahtarına girmez; prompt metni değiştirilmez.
-- Görüş dayanak formatında bağlam-duyarlı tekrar kuralı eklendi. Hemen önceki savunma cümlesi `Tarifnamedeki dayanak şöyledir:` veya eşdeğer biçimde tarifnameyi zaten kaynak olarak adlandırıyorsa fiziksel atıf `Sayfa X, satır Y-Z...` diye başlar; `Tarifnamedeki ... Tarifname sayfa ...` tekrarı yasaktır. Önceki cümle kaynak adını vermiyorsa tam `Tarifname sayfa X, satır Y-Z...` biçimi korunur. Bu davranış deterministik konumlandırma ve ikinci doğrulama kapısına bağlıdır.
+- (Tarihsel) v5.4.57 bağlam-duyarlı kısa dayanak kalıbı getirmişti. Bu davranış v5.4.62 ile yürürlükten kaldırılmıştır; güncel tek Türkçe biçim `Tarifnamede sayfa X, satır Y-Z’de bu durum şu şekilde belirtilmiştir:` kalıbıdır.
 - AI token maliyet telemetrisi TL olarak gösterilir. API maliyeti dahili olarak USD tarifesinden hesaplanıp yaklaşık USD/TRY kuru ile TL'ye çevrilir. Varsayılan 11.09.2026 referans kuru 48.6031'dir; dağıtım ortamında `USD_TRY_RATE` ile güncellenebilir.
 - Hiçbir teknik kalite kapısı, fail-closed davranışı, istem/dayanak kontrolü veya Word şablon kuralı gevşetilmemiştir.
 

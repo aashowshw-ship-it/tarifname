@@ -34,9 +34,9 @@ def _response(*, input_tokens=10_000, cached=2_000, cache_write=1_000, output=1_
 
 
 def test_release_version_and_manifest():
-    assert APP_VERSION == "v5.4.59"
-    assert RULESET_VERSION == "2026-09-11.v52"
-    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.59")
+    assert APP_VERSION == "v5.4.63"
+    assert RULESET_VERSION == "2026-09-14.v56"
+    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.63")
     manifest = (ROOT / "REPO_FILE_MANIFEST.txt").read_text(encoding="utf-8").splitlines()
     assert "test_v5457_global_cache_gorus_lead_try.py" in manifest
 
@@ -79,8 +79,8 @@ def test_try_cost_metric_uses_configurable_rate(monkeypatch):
 
 
 def test_gorus_rules_forbid_double_tarifname_source_wording():
-    assert "Tarifnamedeki dayanak şöyledir: Tarifname sayfa" in GORUS_RULES
-    assert "çift `Tarifname` tekrarı yasaktır" in GORUS_RULES
+    assert "Tarifnamedeki dayanak şöyledir:" in GORUS_RULES and "YASAKTIR" in GORUS_RULES
+    assert "çift `tarifname` tekrarı yasaktır" in GORUS_RULES.casefold()
 
 
 def test_contextual_quote_lead_omits_second_tarifname(monkeypatch):
@@ -89,7 +89,7 @@ def test_contextual_quote_lead_omits_second_tarifname(monkeypatch):
         "sections": [
             {
                 "blocks": [
-                    {"type": "paragraph", "text": "Tarifnamedeki dayanak şöyledir:"},
+                    {"type": "paragraph", "text": "Teknik fark tarifname ile desteklenmektedir."},
                     {"type": "quote", "text": "Birebir teknik pasaj", "attach_to_previous": True},
                 ]
             }
@@ -97,13 +97,13 @@ def test_contextual_quote_lead_omits_second_tarifname(monkeypatch):
     }
     monkeypatch.setattr(gorus_audit, "locate_quote_page_line_span", lambda *a, **k: (6, 13, 6, 17))
     gorus_audit.annotate_quote_locations(
-        opinion, "spec.docx", b"dummy", "Türkçe", page_line_index=[{"page": 1, "line": 1, "text": "x"}]
+        opinion, "spec.docx", b"dummy", "Türkçe", page_line_index=[{"page": 1, "line": 1, "text": "Önceki cümle."}, {"page": 1, "line": 2, "text": "Birebir teknik pasaj"}]
     )
     quote = opinion["sections"][0]["blocks"][1]
-    assert quote["lead"] == "sayfa 6, satır 13-17’de bu durum şu şekilde belirtilmiştir:" or quote["lead"] == "Sayfa 6, satır 13-17’de bu durum şu şekilde belirtilmiştir:"
+    assert quote["lead"] == "Tarifnamede sayfa 6, satır 13-17’de bu durum şu şekilde belirtilmiştir:"
     assert "Tarifname sayfa" not in quote["lead"]
     gorus_audit.validate_quote_locations_against_spec(
-        opinion, "spec.docx", b"dummy", "Türkçe", page_line_index=[{"page": 1, "line": 1, "text": "x"}]
+        opinion, "spec.docx", b"dummy", "Türkçe", page_line_index=[{"page": 1, "line": 1, "text": "Önceki cümle."}, {"page": 1, "line": 2, "text": "Birebir teknik pasaj"}]
     )
 
 
@@ -121,7 +121,7 @@ def test_contextual_quote_lead_keeps_tarifname_when_previous_sentence_does_not_n
     }
     monkeypatch.setattr(gorus_audit, "locate_quote_page_line_span", lambda *a, **k: (6, 13, 6, 17))
     gorus_audit.annotate_quote_locations(
-        opinion, "spec.docx", b"dummy", "Türkçe", page_line_index=[{"page": 1, "line": 1, "text": "x"}]
+        opinion, "spec.docx", b"dummy", "Türkçe", page_line_index=[{"page": 1, "line": 1, "text": "Önceki cümle."}, {"page": 1, "line": 2, "text": "Birebir teknik pasaj"}]
     )
     quote = opinion["sections"][0]["blocks"][1]
-    assert quote["lead"].startswith("Tarifname sayfa 6")
+    assert quote["lead"] == "Tarifnamede sayfa 6, satır 13-17’de bu durum şu şekilde belirtilmiştir:"

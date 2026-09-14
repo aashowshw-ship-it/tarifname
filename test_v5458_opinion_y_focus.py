@@ -82,8 +82,8 @@ def _opinion():
 
 
 def test_v5458_version_and_rules_present():
-    assert APP_VERSION == "v5.4.59"
-    assert RULESET_VERSION == "2026-09-11.v52"
+    assert APP_VERSION == "v5.4.63"
+    assert RULESET_VERSION == "2026-09-14.v56"
     low = GORUS_RULES.casefold()
     for phrase in ["bireysel y", "numarasız y", "d2, d3 ve d4", "x dokümanı", "objektif teknik"]:
         assert phrase in low

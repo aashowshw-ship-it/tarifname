@@ -77,5 +77,9 @@ test_v5456_tarifname_prompt_cache.py
 test_v5457_global_cache_gorus_lead_try.py
 test_v5458_opinion_y_focus.py
 test_v5459_visual_pdf_fallback.py
+test_v5460_opinion_quote_format_gate.py
+test_v5461_opinion_long_form_customer_coverage.py
+test_v5462_opinion_basis_phrase_boundary.py
+test_v5463_tip3_external_language_warnings.py
 validators.py
 word_math.py

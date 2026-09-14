@@ -56,7 +56,7 @@ def _report() -> dict:
             "Kalan özellikler, bilinen sensör, haberleşme ve kayıt bileşenlerinin olağan kullanımının ötesinde teknik bir etki oluşturup oluşturmadığı yönünden ele alınmalıdır. Özelliklerin yalnız yan yana getirilmesi yeterli olmayıp aralarındaki işlevsel ilişkinin beklenmeyen veya sinerjik bir sonuç üretmesi gerekir. Mevcut değerlendirmede bu ilişkinin araştırma konusu buluşun buluş basamağı kriterini sağladığı yönündeki ön kanaati desteklediği düşünülmektedir."
         ],
         "conclusion_paragraphs": ["Araştırma konusu yenilik kriterini sağladığı ve buluş basamağı kriterini sağladığı düşünülmektedir."],
-        "warnings": ["Patent başvurusu yapılmasına karar verildiği taktirde:", "Tarifname yazımı için sistem unsurları arasındaki veri akışının netleştirilmesini rica ederiz."],
+        "warnings": ["Patent başvurusu yapılmasına karar verildiği taktirde:", "Buluş unsurlarının tümünün ve unsurlar arasındaki teknik ilişkilerin netleştirilmesini ve açıklanmasını rica ederiz."],
         "attachments": ["Benzer Dokümanlar", "Ön İnceleme Raporu", "Makine Tercümeleri"],
     }
 

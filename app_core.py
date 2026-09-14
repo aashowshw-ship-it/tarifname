@@ -4311,6 +4311,7 @@ Ana dosya referansı: {reference}
 Türkiye araştırma raporunda kategori `Y1`, `Y2`, `Y1,Y2`, `X1` gibi numaralı yazılmışsa temel kategori X/Y olarak normalize edilir ancak numaralı işaretler kaybedilmez. `Y1/Y2` gerçek kombinasyon gruplarıdır; örneğin D1=Y1,Y2, D2=Y1, D3=Y2 ise D1 ile D2 ve D1 ile D3 ayrı kombinasyonlardır, üç doküman tek kombinasyon sayılmaz.
 İstem değişikliği sırf daha iyi yazılabilir diye önerilmez. Yalnızca itirazı gidermek için gerçekten zorunluysa amendment_required=true yap.
 Ayrıca tarifname ve istemleri ayrı bir TEKNİK KATKI taramasından geçir. İstemde gerçekten bulunan ve savunmayı güçlendirebilecek teknik katkıları `technical_contributions` alanında çıkar. Salt amaç, estetik, prestij veya genel avantajı teknik katkı sayma. Unsurların özel işlevsel ilişkisi, ayrı sensör/veri işleme ilişkisi, ölçüm kararlılığı/sinyal kalitesi sağlayan fiziksel düzenleme, teknik girdi→işlem→çıktı zinciri ve bağımlı istemlerdeki gerçek fallback teknik özelliklerini özellikle tara. Her katkının teknik etkisi ve savunma önceliği doğrudan kaynakla desteklenmeli. Kaynaksız performans sonucu uydurma.
+Müşteri bilgisi boş değilse MÜŞTERİ SAVUNMA ENVANTERİ çıkar. Müşteri kaynağının tamamını ikinci kez tara. Her teknik savunma maddesini `customer_defence_points` içinde ayrı kimlikle sınıflandır. `source_quote` müşteri kaynağında birebir bulunmalı. `basis_quote` istem/tarifnamede birebir bulunmalı. Mevcut itiraza cevap veren ve kaynakla destekli madde `use_required=true` olmalıdır. Yalnız dayanak yokluğu, itirazla ilgisizlik veya gerçek tekrar halinde `use_required=false` yap ve `omission_reason` yaz. Kullanılabilir güçlü müşteri maddesini sessizce atlama.
 Revizyon gerekiyorsa EN AZ DEĞİŞİKLİK ilkesini uygula. Her old_text, TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olsun; tüm istemi old_text olarak verme. Değişmeyen kelimeyi old_text/new_text içine alma: artikel değişiyorsa yalnız artikel, unsur adı değişiyorsa yalnız değişen unsur adı, eksik harf varsa yalnız gerekli karakter farkı öner.
 EP raporunda Rule 42(1)(b) gereği önceki teknik dokümanlarının tarifnameye eklenmesi isteniyorsa description_prior_art_updates üret. Bu alanda D1/D2 etiketi kullanma. Mevcut `As a result of the research on the subject...` formatını izle. objective_summary yalnız ilgili X/Y kaynağın gerçek içeriği olsun. however_difference yalnız as-filed tarifnamede/istemlerde açıkça bulunan teknik farkı kullansın, yeni özellik veya yeni teknik etki eklemesin.
 Her basis_quote tarifnamede birebir bulunan dayanak pasajı olsun. Kapsam aşımı/yeni konu yaratma.
@@ -4331,6 +4332,19 @@ JSON dışında yazma.
       "technical_effect":"",
       "basis_quote":"",
       "defence_priority":"high|medium|low"
+    }}
+  ],
+  "customer_defence_points":[
+    {{
+      "id":"C1",
+      "claim_numbers":["1"],
+      "source_quote":"",
+      "point":"",
+      "technical_effect":"",
+      "basis_quote":"",
+      "coverage_terms":["",""],
+      "use_required":true,
+      "omission_reason":""
     }}
   ],
   "amendments":[
@@ -4388,7 +4402,7 @@ BENZER DOKÜMANLAR:\n{similar_text}\n
 MÜŞTERİ BİLGİLERİ:\n{customer_text}\n"""
 
 
-def validate_gorus_analysis(analysis: dict[str, Any], spec_text: str) -> None:
+def validate_gorus_analysis(analysis: dict[str, Any], spec_text: str, customer_text: str = "") -> None:
     required = bool(analysis.get("amendment_required"))
     amendments = analysis.get("amendments") or []
     if required and not amendments:
@@ -4420,6 +4434,37 @@ def validate_gorus_analysis(analysis: dict[str, Any], spec_text: str) -> None:
             raise ValueError("Teknik katkı savunma önceliği high/medium/low olmalıdır.")
         if basis not in normalized_spec:
             raise ValueError("Teknik katkı dayanağı tarifnamede birebir doğrulanamadı.")
+
+    normalized_customer = re.sub(r"\s+", " ", str(customer_text or "")).strip()
+    customer_points = analysis.get("customer_defence_points") or []
+    if len(normalized_customer) >= 40 and not customer_points:
+        raise ValueError("Müşteri savunma envanteri kapısı: müşteri bilgisi mevcut ancak customer_defence_points boş bırakılamaz.")
+    seen_ids: set[str] = set()
+    for point in customer_points:
+        pid = str(point.get("id", "")).strip()
+        source_quote = re.sub(r"\s+", " ", str(point.get("source_quote", ""))).strip()
+        defence_point = re.sub(r"\s+", " ", str(point.get("point", ""))).strip()
+        effect = re.sub(r"\s+", " ", str(point.get("technical_effect", ""))).strip()
+        basis = re.sub(r"\s+", " ", str(point.get("basis_quote", ""))).strip()
+        use_required = bool(point.get("use_required"))
+        omission_reason = re.sub(r"\s+", " ", str(point.get("omission_reason", ""))).strip()
+        terms = [re.sub(r"\s+", " ", str(x)).strip() for x in (point.get("coverage_terms") or []) if re.sub(r"\s+", " ", str(x)).strip()]
+        if not pid or pid in seen_ids:
+            raise ValueError("Müşteri savunma envanteri kapısı: her customer_defence_points kaydı benzersiz bir id içermelidir.")
+        seen_ids.add(pid)
+        if not source_quote or not defence_point:
+            raise ValueError(f"Müşteri savunma envanteri kapısı: {pid} için source_quote ve point zorunludur.")
+        if normalized_customer and source_quote not in normalized_customer:
+            raise ValueError(f"Müşteri savunma envanteri kapısı: {pid} source_quote müşteri kaynağında birebir doğrulanamadı.")
+        if use_required:
+            if not basis or basis not in normalized_spec:
+                raise ValueError(f"Müşteri savunma envanteri kapısı: {pid} zorunlu kullanım için tarifname/istem dayanağı birebir doğrulanmalıdır.")
+            if not effect:
+                raise ValueError(f"Müşteri savunma envanteri kapısı: {pid} zorunlu kullanım için technical_effect boş bırakılamaz.")
+            if len(terms) < 2:
+                raise ValueError(f"Müşteri savunma envanteri kapısı: {pid} zorunlu kullanım için en az iki ayırt edici coverage_terms gerekir.")
+        elif not omission_reason:
+            raise ValueError(f"Müşteri savunma envanteri kapısı: {pid} kullanılmıyorsa omission_reason zorunludur.")
 
     for upd in analysis.get("description_prior_art_updates") or []:
         kind=str(upd.get("source_kind", "")).strip().lower()
@@ -4490,6 +4535,7 @@ JSON dışında yazma.
    }}
  ],
  "combined_assessment":{{"heading":"","paragraphs":[],"groups":[{{"group":"Y1","labels":["D1","D2"],"heading":"D1 ve D2 Dokümanları Birlikte Değerlendirildiğinde","paragraphs":["",""]}}]}},
+ "customer_point_ids_used":["C1"],
  "conclusion":[""], "signoff":"Saygılarımızla,\nDESTEK PATENT A.Ş."
 }}
 
@@ -4508,6 +4554,7 @@ JSON dışında yazma.
 - Doküman sayısı iki veya daha fazla diye otomatik `combined_assessment` oluşturma. Yalnız X kategorisi dokümanlar varsa `combined_assessment` başlığı ve paragrafları TAMAMEN boş kalmalıdır. Her X dokümanını kendi bölümünde ayrı ayrı yenilik ve buluş basamağı yönünden güçlü biçimde savun.
 - `combined_assessment` yalnız gerçek Y/çoklu-doküman buluş basamağı itirazında oluşturulur. Numaralı Y1/Y2 grupları aynen korunur. Numarasız Y kategorisinde aynı istem/istem grubu için iki veya daha fazla Y dokümanı varsa ve ayrıca alt grup ayrımı yoksa yalnız Y dokümanlarını tek grup yap; X dokümanı ancak rapor açıkça aynı çoklu-doküman itirazında onu Y dokümanlarıyla birlikte kullanmışsa gruba girer. Bu durumda ASIL BULUŞ BASAMAĞI SALDIRISI dokümanların birlikte öğretisi olduğundan, görüşün ASIL VE EN İKNA EDİCİ Y savunması burada kurulmalıdır. Bireysel Y bölümleri yalnız objektif tanıtımdır ve savunma içermez. Önce uzmanın neden bu dokümanları birleştirdiğini ve hangi tamamlayıcı öğretiden hareket ettiğini doğru biçimde yeniden kur, sonra kombinasyonu teknik olarak çürüt. Her gerçek kombinasyon `combined_assessment.groups` içinde ayrı görünür başlık altında ele alınır. Her grup için en az iki dolu paragrafta teknik başlangıç noktası, tamamlayıcı öğretinin rolü, ayırt edici teknik fark ve NASIL ilişkisi, teknik etki, objektif teknik problem, motivasyon/yönlendirme, kombinasyon sonrası yine gereken somut ilave değişiklikler ve özel unsur-işlev ilişkisinin neden çıkmadığı açıklanır. Numaralı Y grupları tek başlık veya tek toplu kombinasyona dönüştürülemez.
 - Tek savunma dokümanı varsa ana buluş basamağı savunması o dokümanın kendi bölümünde ayrıntılı kurulur ve combined_assessment boş bırakılır.
+- GÖRÜŞÜ KISA TUTMA. Kelime sayısını D-dokümanı sayısına lineer bağlama. Yenilik/buluş basamağı savunmasının model tarafından yazılan esas gövdesi toplam en az 2200 kelime olsun. Her X bölümü en az 700 kelime ve en az dört dolu teknik savunma paragrafı, her gerçek Y kombinasyon grubu en az 900 kelime ve en az dört dolu teknik savunma paragrafı içersin. Bireysel Y objektif tanıtımları, intro, bibliyografi, şekil başlıkları, birebir quote ve imza bu savunma kelime hedefini doldurmak için kullanılmaz. Tekrarla şişirme yapma; her paragraf yeni ve kaynak destekli teknik fark/etki/NASIL/problem/motivasyon/ilave değişiklik/dayanak katkısı taşısın.
 - ÖN ANALİZ içindeki `technical_contributions` listesini savunma önceliği olarak kullan. `defence_priority=high` olan ve istemde gerçekten bulunan katkıları nihai görüşte görünür biçimde öne çıkar. Teknik katkının hangi somut unsur/işlev ilişkisine dayandığını, teknik etkisini ve ilgili D dokümanının neden aynı katkıyı vermediğini açıkla. Bağımlı istemde yüksek öncelikli teknik katkı varsa o istemi topluca geçiştirme.
 - Tarifname quote bloğunu hemen önceki teknik savunmanın doğal devamı yap ve `attach_to_previous=true` döndür. `Tarifname sayfa...` ayrı paragraf olmayacak.
 - `Bu farklardan...`, `Bu farkların...`, `Bu teknik farkın...`, `Bu teknik etki...`, `Bu yapının teknik etkisi...`, `Buna göre objektif teknik problem...` gibi bir önceki argümanın doğal devamını yeni paragrafa bölme, önceki ilgili paragrafın devamında yaz.
@@ -4516,7 +4563,7 @@ JSON dışında yazma.
 - Model anlatımında `mimari`, `architecture`, `architectural`, `benzersiz sinerji`, `paradigma`, `sofistike yaklaşım` ifadelerini kullanma. Kaynağa uygun somut `yapı`, `düzenleme`, `işlevsel ilişki`, `işlem sırası` ve teknik unsur adlarını kullan. Birebir alıntıyı değiştirme.
 - Önceki teknik dokümanının unsur referans numaralarını (ör. piezoelektrik eleman 120, oturma tespit anahtarı 150) savunma için zorunlu olmadıkça yazma. Başvurunun kendi tarifname referansları gerektiğinde kullanılabilir.
 - Genel değerlendirme en az birkaç güçlü paragraf olsun, yalnız dokümanı özetleme, uzmanı teknik katkı üzerinden ikna et.
-- Müşteri bilgisinin tarifname dayanağı yoksa kullanma. Müşteri kaynaklarının TAMAMINI ikinci kez tara ve uzman itirazına cevap veren, tarifname/istem/D-dokümanı ile doğrulanabilen güçlü teknik bilgileri atlama. Test sonucu veya performans avantajı yalnız kaynakta gerçek veri varsa olgu olarak yazılabilir.
+- Müşteri bilgisinin tarifname dayanağı yoksa kullanma. ÖN ANALİZ içindeki `customer_defence_points` listesini bağlayıcı kapsama envanteri olarak kullan. `use_required=true` olan HER müşteri maddesinin teknik içeriğini nihai görüşte görünür biçimde işle ve kullanılan tüm kimlikleri `customer_point_ids_used` alanına yaz. Zorunlu bir müşteri maddesini yalnız başka bir cümlede gerçekten aynı teknik içerik açıkça karşılanıyorsa konsolide et; yine de id'yi `customer_point_ids_used` içinde tut. `use_required=false` maddesini nihai görüşe taşımak zorunda değilsin. Müşteri kaynaklarının TAMAMINI ikinci kez tara ve uzman itirazına cevap veren, tarifname/istem/D-dokümanı ile doğrulanabilen güçlü teknik bilgileri atlama. Test sonucu veya performans avantajı yalnız kaynakta gerçek veri varsa olgu olarak yazılabilir.
 - Nihai görüşte `BBF`, `buluş bildirim formu`, `müşteri görüş formu`, `müşteri bilgisi`, `müşteriden gelen bilgi`, `client form`, `customer form`, `client information`, `customer information` gibi iç süreç/kaynak ifadeleri kullanma. Kaynaktan doğrulanan teknik bilgiyi doğrudan Applicant savunması olarak yaz.
 - Onaylı istem setine yeni değişiklik ekleme.
 - `revision_status` kullanıcı tarafından onaylanmış revize istem setini gösteriyorsa `amendment_assessment` ZORUNLUDUR ve önceki teknik savunmasından ayrı tutulur. Başlığı Türkçe çıktıda `İstemlerde Yapılan Değişiklikler ve Dayanakları`, İngilizce çıktıda `Amendments and Basis in the Application as Filed` mantığında kur. Her esas değişikliği önce kısa teknik gerekçeyle açıkla, hemen ardından final onaylı tarifnamede birebir bulunan bir `quote` bloğunu `attach_to_previous=true` ile ekle. Bu bölümde D1/D2/X/Y dokümanlarına karşı yenilik veya buluş basamağı savunması yapma.
@@ -4546,7 +4593,7 @@ def gorus_quality_audit_prompt(
     opinion: dict[str, Any],
 ) -> str:
     return f"""{GORUS_RULES}
-Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül veya hindsight/geriye-dönük kalıp bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını, önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını, X dokümanında yenilik+buluş basamağı savunmasının ayrıntılı kurulup kurulmadığını, Y dokümanının bireysel bölümünün yalnız kısa objektif tanıtım + şekil olarak kalıp ayrı yenilik/buluş basamağı savunması içerip içermediğini, bireysel D bölümlerinde ayrıca yenilik/buluş basamağı ara başlığı açılmadığını, `devral.../inherit...` ve `mimari/architectur...` gibi yasak model dilinin bulunmadığını, `Bu farklardan...` gibi doğal devam cümlelerinin gereksiz yeni paragrafa bölünmediğini, `Considered Together/Birlikte Değerlendirildiğinde` bölümünün yalnız gerçek Y/kombinasyon itirazında bulunup bulunmadığını, yalnız X dokümanları varsa birleşik bölümün boş bırakılıp bırakılmadığını, gerçek kombinasyon varsa her fiili kombinasyonun AYRI görünür başlık altında ele alınıp alınmadığını, bu kombinasyon bölümünün bireysel Y dokümanı tanıtımlarından açıkça daha kapsamlı olup olmadığını, uzmanın kombinasyon mantığını önce doğru kurup sonra teknik olarak çürütüp çürütmediğini ve her grup için teknik fark, NASIL ilişkisi, teknik etki, objektif teknik problem, motivasyon/yönlendirme ile kombinasyon sonrasında yine gereken somut ilave değişiklikleri ikna edici ayrıntıda kurup kurmadığını, ÖN ANALİZDE high öncelikli olarak belirlenen doğrudan destekli teknik katkıların görüşte görünür biçimde öne çıkarılıp çıkarılmadığını ve müşteri kaynağındaki doğrudan destekli güçlü teknik bilgilerin sessizce atlanıp atlanmadığını, savunmaya alınan her D dokümanında yüklenen özgün kaynakta kullanılabilir ve Çince/Han yazı içermeyen teknik şekil bulunuyorsa şeklin zorunlu olarak seçilip seçilmediğini, Çince/Han yazı içeren şeklin yanlışlıkla kullanılmadığını ve seçilen alt şeklin teknik içeriğinin tamamının korunup korunmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu ve görüşte önce geldiğini de kontrol et.
+Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül veya hindsight/geriye-dönük kalıp bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını, önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını, X dokümanında yenilik+buluş basamağı savunmasının ayrıntılı kurulup kurulmadığını, Y dokümanının bireysel bölümünün yalnız kısa objektif tanıtım + şekil olarak kalıp ayrı yenilik/buluş basamağı savunması içerip içermediğini, bireysel D bölümlerinde ayrıca yenilik/buluş basamağı ara başlığı açılmadığını, `devral.../inherit...` ve `mimari/architectur...` gibi yasak model dilinin bulunmadığını, `Bu farklardan...` gibi doğal devam cümlelerinin gereksiz yeni paragrafa bölünmediğini, `Considered Together/Birlikte Değerlendirildiğinde` bölümünün yalnız gerçek Y/kombinasyon itirazında bulunup bulunmadığını, yalnız X dokümanları varsa birleşik bölümün boş bırakılıp bırakılmadığını, gerçek kombinasyon varsa her fiili kombinasyonun AYRI görünür başlık altında ele alınıp alınmadığını, bu kombinasyon bölümünün bireysel Y dokümanı tanıtımlarından açıkça daha kapsamlı olup olmadığını, uzun-form kapısının (esas savunma en az 2200 kelime, her X en az 700 kelime/dört paragraf, her Y kombinasyonu en az 900 kelime/dört paragraf) sağlanıp sağlanmadığını, Türkçe tarifname dayanaklarının tek standart `Tarifnamede sayfa X, satır Y-Z’de bu durum şu şekilde belirtilmiştir:` kalıbında olup olmadığını ve birebir alıntıların tam cümle veya gerçek kaynak madde sınırından başlayıp başlamadığını, uzmanın kombinasyon mantığını önce doğru kurup sonra teknik olarak çürütüp çürütmediğini ve her grup için teknik fark, NASIL ilişkisi, teknik etki, objektif teknik problem, motivasyon/yönlendirme ile kombinasyon sonrasında yine gereken somut ilave değişiklikleri ikna edici ayrıntıda kurup kurmadığını, ÖN ANALİZDE high öncelikli olarak belirlenen doğrudan destekli teknik katkıların görüşte görünür biçimde öne çıkarılıp çıkarılmadığını ve müşteri kaynağındaki doğrudan destekli güçlü teknik bilgilerin sessizce atlanıp atlanmadığını, savunmaya alınan her D dokümanında yüklenen özgün kaynakta kullanılabilir ve Çince/Han yazı içermeyen teknik şekil bulunuyorsa şeklin zorunlu olarak seçilip seçilmediğini, Çince/Han yazı içeren şeklin yanlışlıkla kullanılmadığını ve seçilen alt şeklin teknik içeriğinin tamamının korunup korunmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu ve görüşte önce geldiğini de kontrol et.
 
 JSON dışında yazma.
 ŞEMA:
@@ -4570,6 +4617,7 @@ JSON dışında yazma.
     "opinion_diction": {{"pass":true,"note":""}},
     "paragraph_cohesion": {{"pass":true,"note":""}},
     "combined_document_defence_scope_and_depth": {{"pass":true,"note":""}},
+    "long_form_substantive_depth": {{"pass":true,"note":""}},
     "combination_separate_headings": {{"pass":true,"note":""}},
     "examiner_combination_attack_reconstruction": {{"pass":true,"note":""}},
     "technical_contribution_priority_coverage": {{"pass":true,"note":""}},
@@ -4601,7 +4649,7 @@ def gorus_repair_prompt(
 ) -> str:
     return f"""{GORUS_RULES}
 Aşağıdaki görüş JSON'u ikinci kalite kontrolünde başarısız oldu. Yalnız belirtilen sorunları düzelt ve AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu yeniden döndür. Metadata, onaylı istem seti, rapor sonucu ve kaynak dayanakları korunmalı. Yeni doküman veya yeni teknik özellik ekleme. Tarifname alıntıları birebir kalmalı. Model anlatımında noktalı virgül kullanma. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp kullanma. İç süreçteki BBF/müşteri formu ifadelerini nihai görüşe taşıma. X/Y savunma ayrımını koru: X bireysel olarak ayrıntılı yenilik+buluş basamağı savunması alır; Y bireysel bölümü yalnız objektif teknik tanıtımdır ve savunma içermez. Yalnız X kategorisi dokümanlar varsa `combined_assessment` alanını boş bırak. `Considered Together/Birlikte Değerlendirildiğinde` bölümünü yalnız gerçek Y/kombinasyon itirazı varsa koru. Bireysel D bölümlerinde yenilik/buluş basamağı ara başlığı kullanma. `devral.../inherit...` ve `mimari/architectur...` dilini temizle. `Bu farklardan...` gibi önceki düşüncenin doğal devamını yeni paragrafa bölme. Doğrudan tarifname dayanağını önceki savunma paragrafına `attach_to_previous=true` ile bağla.
-Raporda numaralı Y grupları (`Y1`, `Y2`, `Y1,Y2`) varsa bunları koru. Numarasız birden fazla Y varsa ve alt grup yoksa yalnız Y dokümanlarını tek grup yap; X'i otomatik ekleme. Her gerçek kombinasyon grubunu `combined_assessment.groups` içinde AYRI görünür başlık ve en az iki kapsamlı savunma paragrafıyla değerlendir. Farklı grupları tek başlık veya tek toplu kombinasyona dönüştürme. Kombinasyon savunması bireysel D savunmalarından daha kapsamlı olmalı ve uzmanın birlikte kullanma mantığını doğru kurduktan sonra teknik fark, NASIL ilişkisi, teknik etki, objektif teknik problem, motivasyon/yönlendirme ve yine gereken somut ilave değişiklikler üzerinden çürütmelidir.
+Raporda numaralı Y grupları (`Y1`, `Y2`, `Y1,Y2`) varsa bunları koru. Numarasız birden fazla Y varsa ve alt grup yoksa yalnız Y dokümanlarını tek grup yap; X'i otomatik ekleme. Her gerçek kombinasyon grubunu `combined_assessment.groups` içinde AYRI görünür başlık ve en az iki kapsamlı savunma paragrafıyla değerlendir. Farklı grupları tek başlık veya tek toplu kombinasyona dönüştürme. Kombinasyon savunması bireysel D savunmalarından daha kapsamlı olmalı ve uzmanın birlikte kullanma mantığını doğru kurduktan sonra teknik fark, NASIL ilişkisi, teknik etki, objektif teknik problem, motivasyon/yönlendirme ve yine gereken somut ilave değişiklikler üzerinden çürütmelidir. Uzun-form alt sınırlarını koru: esas savunma gövdesi en az 2200 kelime, her X savunması en az 700 kelime/dört dolu teknik paragraf, her gerçek Y kombinasyonu en az 900 kelime/dört dolu teknik paragraf. `customer_defence_points` içindeki use_required=true maddelerin tamamını kullan ve `customer_point_ids_used` alanını eksiksiz koru/güncelle.
 
 JSON dışında yazma.
 KALİTE RAPORU:\n{json.dumps(audit or {}, ensure_ascii=False, indent=2)}\n
@@ -4639,6 +4687,7 @@ BAĞLAYICI REVİZYON KURALLARI:
 - Kullanıcının şekil ekleme/kaldırma/kırpma talebi varsa yalnız yüklenen özgün patent/doküman kaynağında gerçekten bulunan şekli seç. Kaynakta kullanılabilir ve Çince/Han yazı içermeyen özgün teknik şekil varsa şekil zorunludur. Çince/Han yazı içeren şekli kullanma. Alt şekil seçiliyorsa alt şeklin tamamını koru.
 - Metadata alanlarını yalnız kullanıcı açıkça bunu talep etmişse ve rapor/kullanıcı girdisi destekliyorsa değiştir.
 - Kullanıcının talebi ile kaynak/dayanak/şablon kuralları çatışıyorsa kaynak ve bağlayıcı kalite kuralları korunur.
+- Revizyon mevcut görüşü kısaltarak uzun-form kalite kapısını aşamaz. Esas savunma gövdesi en az 2200 kelime, her X savunması en az 700 kelime/dört dolu teknik paragraf, her gerçek Y kombinasyonu en az 900 kelime/dört dolu teknik paragraf kalmalıdır. `customer_defence_points` içindeki use_required=true maddelerin tamamının teknik içeriğini koru ve `customer_point_ids_used` alanını eksiksiz tut.
 
 JSON dışında yazma.
 KULLANICI REVİZYON TALEBİ:
@@ -4707,7 +4756,7 @@ def gorus_examiner_strengthen_prompt(
     return f"""{GORUS_RULES}
 Aşağıdaki görüş bütün normal kalite kapılarını geçmiştir ancak bağımsız uzman-perspektifi değerlendirmesinde ikna olasılığı daha da güçlendirilebilir görünmektedir. AYNI JSON ŞEMASIYLA görüşü yalnız bir kez teknik olarak güçlendir.
 
-Öncelik sırası: (1) istemde gerçekten bulunan ve ÖN ANALİZDE yüksek öncelikli belirlenen teknik katkı, (2) bu katkının kaynakta açık teknik işlev/etkisi, (3) D dokümanlarının somut teknik öğretisinin bu katkıyı neden vermediği, (4) yalnız gerçek Y/kombinasyon itirazı varsa `Considered Together/Birlikte Değerlendirildiğinde` bölümünün kombinasyon analizinin güçlendirilmesi. Yeni teknik özellik, yeni performans sonucu, yeni test sonucu veya dolaylı dayanak ekleme. Onaylı istemleri ve amendment bölümünü değiştirme. Tarifname quote metinlerini değiştirme. `hindsight`, `geriye dönük değerlendirme`, `working backwards`, noktalı virgül ve iç süreç/BBF/müşteri formu ifadeleri kullanma. X/Y ayrımını koru: X bireysel savunulur, Y bireysel bölümde savunulmaz ve Y savunması yalnız gerçek kombinasyon bölümünde kurulur. Yalnız X dokümanları varsa combined_assessment boş kalmalıdır. Gerçek Y/kombinasyon itirazı varsa birleşik bölüm uygun ağırlıkta değil, görüşün ANA buluş basamağı savunması olarak tutulur. Her gerçek kombinasyon ayrı görünür başlığa sahip olmalı ve bireysel Y dokümanı tanıtımlarından daha ayrıntılı şekilde uzmanın kombinasyon mantığını, teknik farkı, NASIL ilişkisini, teknik etkiyi, objektif teknik problemi, motivasyon/yönlendirmeyi ve isteme ulaşmak için yine gereken somut ilave değişiklikleri tartışmalıdır.
+Öncelik sırası: (1) istemde gerçekten bulunan ve ÖN ANALİZDE yüksek öncelikli belirlenen teknik katkı, (2) bu katkının kaynakta açık teknik işlev/etkisi, (3) D dokümanlarının somut teknik öğretisinin bu katkıyı neden vermediği, (4) yalnız gerçek Y/kombinasyon itirazı varsa `Considered Together/Birlikte Değerlendirildiğinde` bölümünün kombinasyon analizinin güçlendirilmesi. Yeni teknik özellik, yeni performans sonucu, yeni test sonucu veya dolaylı dayanak ekleme. Onaylı istemleri ve amendment bölümünü değiştirme. Tarifname quote metinlerini değiştirme. `hindsight`, `geriye dönük değerlendirme`, `working backwards`, noktalı virgül ve iç süreç/BBF/müşteri formu ifadeleri kullanma. Tarifname dayanağını iki cümleye bölme: Türkçe görüşte yalnız `Tarifnamede sayfa X, satır Y-Z’de bu durum şu şekilde belirtilmiştir:` kalıbını kullan. `Tarifnamedeki dayanak şöyledir:` veya kısa `Sayfa X...` kalıbını kullanma. Birebir alıntıyı önceki cümlenin son yükleminden/yarım devamından başlatma; tam cümle veya kaynak madde başlangıcından al. X/Y ayrımını koru: X bireysel savunulur, Y bireysel bölümde savunulmaz ve Y savunması yalnız gerçek kombinasyon bölümünde kurulur. Yalnız X dokümanları varsa combined_assessment boş kalmalıdır. Gerçek Y/kombinasyon itirazı varsa birleşik bölüm uygun ağırlıkta değil, görüşün ANA buluş basamağı savunması olarak tutulur. Her gerçek kombinasyon ayrı görünür başlığa sahip olmalı ve bireysel Y dokümanı tanıtımlarından daha ayrıntılı şekilde uzmanın kombinasyon mantığını, teknik farkı, NASIL ilişkisini, teknik etkiyi, objektif teknik problemi, motivasyon/yönlendirmeyi ve isteme ulaşmak için yine gereken somut ilave değişiklikleri tartışmalıdır. Güçlendirme turu metni kısaltamaz: esas savunma gövdesi en az 2200 kelime, her X savunması en az 700 kelime/dört dolu teknik paragraf, her gerçek Y kombinasyonu en az 900 kelime/dört dolu teknik paragraf kalmalıdır. `customer_defence_points` içindeki use_required=true maddelerin tamamını koru ve `customer_point_ids_used` listesinden zorunlu kimlik silme.
 
 JSON dışında yazma.
 UZMAN-PERSPEKTİFİ BULGUSU:\n{json.dumps(examiner_assessment or {}, ensure_ascii=False, indent=2)}\n
@@ -5435,7 +5484,7 @@ JSON dışında yazma.
  }}],
  "inventive_step_paragraphs":["1. güçlü paragraf","2. güçlü paragraf","3. güçlü paragraf"],
  "conclusion_paragraphs":[""],
- "warnings":["Patent başvurusu yapılmasına karar verildiği taktirde:","kaynağa özgü yazım bilgi/çizim uyarısı veya boş","araştırma güvenilirliği riski varsa uyarı veya boş"],
+ "warnings":["Patent başvurusu yapılmasına karar verildiği taktirde:","buluş türüne göre zorunlu temel uyarı","kaynağa özgü kritik eksik/risk varsa ikinci uyarı veya boş"],
  "attachments":["Benzer Dokümanlar","Ön İnceleme Raporu","Makine Tercümeleri"]
 }}
 ÖZEL:
@@ -5447,7 +5496,7 @@ JSON dışında yazma.
 - `ipc_cpc[].description` yalnız İngilizce resmi sınıflandırma açıklaması olmalı; Türkçe açıklama yazma. Kodların kendisini değiştirme.
 - `scope` alanını tam olarak `Global (İlan edilmiş olan patent başvuruları)` yaz; kesim tarihini bu sabit hücreye ekleme.
 - D1/D2 `abstract` alanını ASLA yeniden yazma, Türkçeye çevirme veya özetleme. NİHAİ SEÇİM içindeki ilgili `abstract_en` değerini doğrudan kullan. `abstract_en` boşsa özgün İngilizce abstract olmadan raporu tamamlanmış gibi gösterme.
-- `warnings` alanında ilk değer tam olarak `Patent başvurusu yapılmasına karar verildiği taktirde:` olmalıdır. Sonrasında yalnız araştırma konusu kaynak metninde tarifname yazımı için gerçekten eksik olan kritik bilgi/çizim varsa tek bir kısa uyarı ve güvenilir araştırma raporu düzenlenmesini engelleyebilecek somut bir risk varsa ikinci kısa uyarı ver. Kaynakta zaten bulunan bilgileri yeniden isteme, standart/genel uyarı üretme ve sırf dört paragrafı doldurmak için içerik uydurma. Word üreticisi kullanılmayan dördüncü şablon paragrafını boş bırakacaktır.
+- `warnings` alanında ilk değer tam olarak `Patent başvurusu yapılmasına karar verildiği taktirde:` olmalıdır. İkinci değer ZORUNLUDUR ve araştırma konusu türüne göre seçilir: yöntem/algoritma için tam olarak `Buluşun yöntem işlem adımlarının ve işlem adımları arasındaki teknik ilişkilerin netleştirilmesini rica ederiz.`; ürün/sistem için tam olarak `Buluş unsurlarının tümünün ve unsurlar arasındaki teknik ilişkilerin netleştirilmesini ve açıklanmasını rica ederiz.`; hem sistem hem yöntem birlikte esas ise tam olarak `Buluş unsurlarının ve yöntem işlem adımlarının, bunlar arasındaki teknik ilişkilerle birlikte netleştirilmesini ve açıklanmasını rica ederiz.` yaz. Üçüncü değer yalnız kaynak metninde gerçekten eksik kritik bilgi/çizim veya araştırma güvenilirliğini etkileyen somut bir risk varsa kısa ve kaynağa özgü yazılır, aksi halde boş bırakılır. Kaynakta zaten bulunan bilgileri üçüncü uyarıda yeniden isteme. Word üreticisi kullanılmayan son şablon paragrafını boş bırakacaktır.
 - Model tarafından yazılan Tip 3 metinlerinde ve karşılaştırma tablosu hücrelerinde noktalı virgül (`;`) kullanma. Somut dayanakları virgül veya nokta ile ayır. Yalnız özgün İngilizce Abstract metni kaynakta bulunduğu haliyle korunur.
 - D1/D2 karşılaştırma tablosu sonrasındaki yenilik değerlendirmesinde tabloyu `İstem 1 şunu...`, `İstem 2 bunu...`, `Şekil ...` biçiminde yeniden anlatma. Kısa ve akıcı değerlendir. Doküman yeniliği tek başına bozmuyorsa değerlendirmeyi `<D1/D2> dokümanında <ayırt edici özellikler> ile ilgili bir emareye rastlanmamıştır. Bu kapsamda araştırma konusu buluşun <D1/D2> dokümanı varlığında yeni olduğu düşünülmektedir.` kalıbıyla bitir.
 - Rapor metninde BBF/buluş bildirim formu ifadesi kullanma; `araştırma konusu` de.
@@ -5554,7 +5603,7 @@ Karşılaştırma hücrelerinde + veya - işaretinin ardından dokümandaki somu
 `keywords` yalnız İngilizce olsun ve en fazla 10 adet ver; `ipc_cpc[].description` yalnız İngilizce resmi sınıflandırma açıklaması olsun.
 `scope` tam olarak `Global (İlan edilmiş olan patent başvuruları)` olarak kalsın.
 D1/D2 `abstract` alanına YENİ ARAŞTIRMA içindeki ilgili dokümanın `abstract_en` değerini doğrudan aktar; Türkçeye çevirme, özetleme veya yeniden yazma. Özgün İngilizce abstract yoksa raporu tamamlanmış gibi üretme.
-`warnings` alanında ilk değer tam olarak `Patent başvurusu yapılmasına karar verildiği taktirde:` olmalıdır. Sonrasında yalnız revize araştırma konusu kaynak metninde tarifname yazımı için gerçekten eksik kritik bilgi/çizim varsa tek kısa uyarı ve güvenilir araştırma raporu düzenlenmesini engelleyen somut risk varsa ikinci kısa uyarı yaz. Kaynakta bulunan bilgiyi yeniden isteme, standart uyarı üretme ve boş şablon paragrafını doldurmak için içerik uydurma.
+`warnings` alanında ilk değer tam olarak `Patent başvurusu yapılmasına karar verildiği taktirde:` olmalıdır. İkinci değer zorunlu temel uyarıdır: revize araştırma konusu yöntem/algoritma ise `Buluşun yöntem işlem adımlarının ve işlem adımları arasındaki teknik ilişkilerin netleştirilmesini rica ederiz.`; ürün/sistem ise `Buluş unsurlarının tümünün ve unsurlar arasındaki teknik ilişkilerin netleştirilmesini ve açıklanmasını rica ederiz.`; hem sistem hem yöntem birlikte esas ise `Buluş unsurlarının ve yöntem işlem adımlarının, bunlar arasındaki teknik ilişkilerle birlikte netleştirilmesini ve açıklanmasını rica ederiz.` yaz. Üçüncü değer yalnız revize kaynakta gerçekten eksik kritik bilgi/çizim veya somut araştırma riski varsa eklenir. Kaynakta bulunan bilgiyi üçüncü uyarıda yeniden isteme.
 Model tarafından yazılan Tip 3 metinlerinde ve karşılaştırma tablosunda noktalı virgül (`;`) kullanma. Özgün İngilizce Abstract metnini değiştirme.
 D1/D2 tablo sonrası yenilik değerlendirmesinde istem/şekil dayanaklarını tekrar tekrar sayma. Doküman yeniliği tek başına bozmuyorsa değerlendirmeyi `<D1/D2> dokümanında <ayırt edici özellikler> ile ilgili bir emareye rastlanmamıştır. Bu kapsamda araştırma konusu buluşun <D1/D2> dokümanı varlığında yeni olduğu düşünülmektedir.` kalıbıyla bitir.
 `→`, `=>`, oklar veya `özellik + özellik` gibi kısa sembolik anlatım kullanma.
@@ -5579,7 +5628,7 @@ JSON dışında yazma.
  }}],
  "inventive_step_paragraphs":["1. güçlü paragraf","2. güçlü paragraf","3. güçlü paragraf"],
  "conclusion_paragraphs":[""],
- "warnings":["Patent başvurusu yapılmasına karar verildiği taktirde:","kaynağa özgü yazım bilgi/çizim uyarısı veya boş","araştırma güvenilirliği riski varsa uyarı veya boş"],
+ "warnings":["Patent başvurusu yapılmasına karar verildiği taktirde:","buluş türüne göre zorunlu temel uyarı","kaynağa özgü kritik eksik/risk varsa ikinci uyarı veya boş"],
  "attachments":["Benzer Dokümanlar","Ön İnceleme Raporu","Makine Tercümeleri"]
 }}
 REVİZE ARAŞTIRMA KONUSU:\n{revised_text}\n
@@ -5654,6 +5703,10 @@ def _validate_research_preliminary_language(report: dict[str, Any]) -> None:
 
 
 RESEARCH_WARNING_INTRO = "Patent başvurusu yapılmasına karar verildiği taktirde:"
+RESEARCH_METHOD_WARNING = "Buluşun yöntem işlem adımlarının ve işlem adımları arasındaki teknik ilişkilerin netleştirilmesini rica ederiz."
+RESEARCH_SYSTEM_WARNING = "Buluş unsurlarının tümünün ve unsurlar arasındaki teknik ilişkilerin netleştirilmesini ve açıklanmasını rica ederiz."
+RESEARCH_MIXED_WARNING = "Buluş unsurlarının ve yöntem işlem adımlarının, bunlar arasındaki teknik ilişkilerle birlikte netleştirilmesini ve açıklanmasını rica ederiz."
+RESEARCH_BASE_WARNINGS = {RESEARCH_METHOD_WARNING, RESEARCH_SYSTEM_WARNING, RESEARCH_MIXED_WARNING}
 
 def _research_sentence_count(text: str) -> int:
     return len([x for x in re.split(r"(?<=[.!?])\s+", str(text or "").strip()) if x.strip()])
@@ -5681,9 +5734,22 @@ def _iter_research_model_authored_text(report: dict[str, Any]):
                 yield f"report.{key}[{i}]", str(value)
 
 def _validate_research_narrative_style(report: dict[str, Any]) -> None:
+    internal_process_patterns = [
+        r"\bdoğrulan(?:an|mış|mıştır|ma|ması|arak)\b",
+        r"\bnihai\s+D1\s*[/\-]?\s*D2\s+seçimi\b",
+        r"\bkaynak\s+doğrulama(?:sı)?\b",
+        r"\bikinci\s+okuma\b",
+        r"\bkalite\s+kapısı\b",
+        r"\bham\s+kaynak\b",
+        r"\bprompt\b",
+        r"\byapay\s+zekâ\b",
+    ]
     for location, text in _iter_research_model_authored_text(report):
         if ";" in text:
             raise ValueError(f"Tip 3 noktalı virgül kapısı: {location} içinde noktalı virgül kullanılamaz.")
+        for pattern in internal_process_patterns:
+            if re.search(pattern, text, flags=re.IGNORECASE):
+                raise ValueError(f"Tip 3 dış-okuyucu dili kapısı: {location} içinde iç çalışma sürecini anlatan ifade kullanılamaz: {pattern}")
 
     for block in report.get("documents") or []:
         label = str(block.get("label") or "D1/D2").strip()
@@ -5728,16 +5794,20 @@ def _validate_research_narrative_style(report: dict[str, Any]) -> None:
     warnings = [str(x).strip() for x in (report.get("warnings") or []) if str(x).strip()]
     if not warnings or warnings[0] != RESEARCH_WARNING_INTRO:
         raise ValueError("Tip 3 Uyarılar kapısı: ilk paragraf bağlayıcı şablondaki sabit giriş olmalıdır.")
+    if len(warnings) < 2:
+        raise ValueError("Tip 3 Uyarılar kapısı: sabit girişten sonra buluş türüne uygun zorunlu temel uyarı bulunmalıdır.")
+    if warnings[1] not in RESEARCH_BASE_WARNINGS:
+        raise ValueError("Tip 3 Uyarılar kapısı: ilk dinamik uyarı yöntem, sistem veya karma buluş türüne ait bağlayıcı temel uyarılardan biri olmalıdır.")
     if len(warnings) > 3:
-        raise ValueError("Tip 3 Uyarılar kapısı: sabit girişten sonra en fazla iki kaynağa özgü dinamik uyarı kullanılabilir.")
+        raise ValueError("Tip 3 Uyarılar kapısı: sabit giriş ve zorunlu temel uyarıdan sonra en fazla bir kaynağa özgü dinamik uyarı kullanılabilir.")
     for warning in warnings[1:]:
         if len(warning) > 700:
-            raise ValueError("Tip 3 Uyarılar kapısı: uyarı paragrafı gereksiz ayrıntılıdır, yalnız kritik eksik bilgi/çizim veya somut araştırma riski istenmelidir.")
+            raise ValueError("Tip 3 Uyarılar kapısı: uyarı paragrafı gereksiz ayrıntılıdır.")
 
 def research_quality_audit_prompt(bbf_text: str, report: dict[str, Any], selection: dict[str, Any], decision_mode: str) -> str:
     return f"""{ARASTIRMA_RULES}
 Aşağıdaki Tip 3 rapor taslağını kaynak araştırma konusu ve nihai D1/D2 seçimine karşı yalnız kalite kapısı olarak denetle. Metni yeniden yazma. En küçük şüphede ilgili kontrolü false yap.
-Özellikle model metninde noktalı virgül olmadığını, D1/D2 tablo sonrası değerlendirmelerin tabloyu istem/şekil bazında tekrar etmeden kısa kaldığını, yeniliği bozmayan D1/D2 değerlendirmelerinin `... ile ilgili bir emareye rastlanmamıştır. Bu kapsamda araştırma konusu buluşun D1/D2 dokümanı varlığında yeni olduğu düşünülmektedir.` kalıbıyla bittiğini, D1 ve D2 mevcutsa buluş basamağı değerlendirmesinin üç ayrı ve teknik bakımdan dolu paragrafta D1 başlangıç noktası, D2 kombinasyon motivasyonu ve kalan özellikler/sinerjik teknik etki yönlerini gerçekten tartıştığını, Uyarılar bölümünün standart değil bu kaynak metindeki gerçek eksiklere özgü ve minimum olduğunu, kaynakta zaten bulunan bilgilerin yeniden talep edilmediğini ve kullanıcı sonuç moduyla SONUÇ/buluş basamağı anlatımının tutarlı olduğunu denetle. Özgün İngilizce Abstract içindeki noktalı virgülleri hata sayma.
+Özellikle model metninde noktalı virgül olmadığını, D1/D2 tablo sonrası değerlendirmelerin tabloyu istem/şekil bazında tekrar etmeden kısa kaldığını, yeniliği bozmayan D1/D2 değerlendirmelerinin `... ile ilgili bir emareye rastlanmamıştır. Bu kapsamda araştırma konusu buluşun D1/D2 dokümanı varlığında yeni olduğu düşünülmektedir.` kalıbıyla bittiğini, D1 ve D2 mevcutsa buluş basamağı değerlendirmesinin üç ayrı ve teknik bakımdan dolu paragrafta D1 başlangıç noktası, D2 kombinasyon motivasyonu ve kalan özellikler/sinerjik teknik etki yönlerini gerçekten tartıştığını, Uyarılar bölümünde buluş türüne uygun zorunlu temel uyarının bulunduğunu, bunun ardından yalnız varsa kaynağa özgü kritik eksik/risk uyarısı kullanıldığını, kaynakta zaten bulunan bilgilerin ikinci uyarıda yeniden talep edilmediğini ve kullanıcı sonuç moduyla SONUÇ/buluş basamağı anlatımının tutarlı olduğunu denetle. Özgün İngilizce Abstract içindeki noktalı virgülleri hata sayma.
 JSON dışında yazma.
 ŞEMA:
 {{
@@ -5745,6 +5815,7 @@ JSON dışında yazma.
  "d1d2_concise_template":{{"pass":true,"note":""}},
  "novelty_tail_template":{{"pass":true,"note":""}},
  "inventive_step_three_substantive_paragraphs":{{"pass":true,"note":""}},
+ "warnings_baseline_present":{{"pass":true,"note":""}},
  "warnings_source_specific_minimal":{{"pass":true,"note":""}},
  "no_redundant_warning_requests":{{"pass":true,"note":""}},
  "result_consistency":{{"pass":true,"note":""}},
@@ -5764,6 +5835,7 @@ def validate_research_quality_audit(audit: dict[str, Any]) -> None:
         "d1d2_concise_template",
         "novelty_tail_template",
         "inventive_step_three_substantive_paragraphs",
+        "warnings_baseline_present",
         "warnings_source_specific_minimal",
         "no_redundant_warning_requests",
         "result_consistency",

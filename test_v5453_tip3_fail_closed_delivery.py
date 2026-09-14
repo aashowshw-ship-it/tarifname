@@ -48,14 +48,14 @@ def _base_report():
         "conclusion_paragraphs": ["Araştırma konusunun yenilik kriterini sağladığı, buluş basamağı kriterini sağlamadığı düşünülmektedir."],
         "warnings": [
             RESEARCH_WARNING_INTRO,
-            "Tarifname yazımı için sistem modülleri arasındaki veri akışının ve çalışma prensibinin netleştirilmesini rica ederiz.",
+            "Buluş unsurlarının tümünün ve unsurlar arasındaki teknik ilişkilerin netleştirilmesini ve açıklanmasını rica ederiz.",
         ],
     }
 
 
 def test_version_and_filename_are_v5453_and_underscore_safe():
-    assert APP_VERSION == "v5.4.59"
-    assert RULESET_VERSION == "2026-09-11.v52"
+    assert APP_VERSION == "v5.4.63"
+    assert RULESET_VERSION == "2026-09-14.v56"
     assert safe_output_name("Ön%20Araştırma%20Raporu_182046_rev.docx", "x.docx") == "Ön_Araştırma_Raporu_182046_rev.docx"
     assert safe_output_name("Ön Araştırma Raporu_182046_rev.docx", "x.docx") == "Ön_Araştırma_Raporu_182046_rev.docx"
 
@@ -90,8 +90,8 @@ def test_post_table_claim_repetition_and_wrong_novelty_tail_are_blocked():
 def test_warnings_are_limited_to_two_dynamic_paragraphs():
     report = _base_report()
     bad = deepcopy(report)
-    bad["warnings"] = [RESEARCH_WARNING_INTRO, "Bir.", "İki.", "Üç."]
-    with pytest.raises(ValueError, match="en fazla iki"):
+    bad["warnings"] = [RESEARCH_WARNING_INTRO, "Buluş unsurlarının tümünün ve unsurlar arasındaki teknik ilişkilerin netleştirilmesini ve açıklanmasını rica ederiz.", "İki.", "Üç."]
+    with pytest.raises(ValueError, match="en fazla bir"):
         validate_research_report_language(bad)
 
 
@@ -112,6 +112,7 @@ def test_second_reader_is_fail_closed():
         "d1d2_concise_template": {"pass": True, "note": ""},
         "novelty_tail_template": {"pass": True, "note": ""},
         "inventive_step_three_substantive_paragraphs": {"pass": True, "note": ""},
+        "warnings_baseline_present": {"pass": True, "note": ""},
         "warnings_source_specific_minimal": {"pass": True, "note": ""},
         "no_redundant_warning_requests": {"pass": True, "note": ""},
         "result_consistency": {"pass": True, "note": ""},

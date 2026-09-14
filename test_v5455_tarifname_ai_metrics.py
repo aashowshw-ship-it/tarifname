@@ -24,9 +24,9 @@ def _fake_response(*, input_tokens=100_000, cached_tokens=20_000, output_tokens=
 
 
 def test_release_version_and_manifest_include_metrics_helper():
-    assert APP_VERSION == "v5.4.59"
-    assert RULESET_VERSION == "2026-09-11.v52"
-    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.59")
+    assert APP_VERSION == "v5.4.63"
+    assert RULESET_VERSION == "2026-09-14.v56"
+    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.63")
     assert "ai_metrics.py" in (ROOT / "REPO_FILE_MANIFEST.txt").read_text(encoding="utf-8").splitlines()
 
 
