@@ -82,6 +82,50 @@ def validate_source_passage_audit(extracted: dict[str, Any], registry: list[dict
         raise ValueError("Teknik içerik işareti taşıdığı halde teknik-dışı sınıflandırılan kaynak pasajları bulundu: " + ", ".join(suspicious_exclusions[:40]))
 
 
+
+_QUOTED_TECHNICAL_PHRASE_RE = re.compile(r'[“"]([^“”"\n]{3,180})[”"]')
+
+def collect_required_exact_technical_phrases(extracted: dict[str, Any], registry: list[dict[str, str]]) -> list[str]:
+    """Preserve distinctive customer-supplied technical names/labels quoted in technical passages.
+
+    This prevents a technically meaningful customer designation such as a named network/system
+    architecture from being silently generalized away while still keeping it out of claims when
+    it is not essential.
+    """
+    audit = {str(x.get("passage_id", "") or "").strip(): x for x in (extracted.get("source_passage_audit") or [])}
+    phrases: list[str] = []
+    seen: set[str] = set()
+    for rec in registry or []:
+        pid = str(rec.get("passage_id", "") or "").strip()
+        row = audit.get(pid) or {}
+        if str(row.get("classification", "") or "").strip().casefold() != "technical":
+            continue
+        text = str(rec.get("text", "") or "")
+        for m in _QUOTED_TECHNICAL_PHRASE_RE.finditer(text):
+            phrase = re.sub(r"\s+", " ", m.group(1)).strip(" .,:;()[]{}")
+            if len(phrase) < 4 or not re.search(r"[A-Za-zÇĞİÖŞÜçğıöşü]", phrase):
+                continue
+            key = phrase.casefold()
+            if key not in seen:
+                seen.add(key); phrases.append(phrase)
+    extracted["source_exact_phrases"] = phrases
+    return phrases
+
+
+def validate_required_exact_technical_phrases(extracted: dict[str, Any], visible_text: str) -> None:
+    """Fail closed when a distinctive customer technical phrase was generalized away entirely."""
+    searchable = re.sub(r"\s+", " ", str(visible_text or "")).casefold()
+    missing: list[str] = []
+    for phrase in extracted.get("source_exact_phrases") or []:
+        normalized = re.sub(r"\s+", " ", str(phrase or "")).strip().casefold()
+        if normalized and normalized not in searchable:
+            missing.append(str(phrase))
+    if missing:
+        raise ValueError(
+            "Müşteri teknik isimlendirme/tamlık kapısı başarısız: kaynakta teknik pasaj içinde açıkça verilen "
+            "ayırt edici ad/ifade tarifnamede en az bir kez korunmalıdır. Eksik: " + "; ".join(missing[:20])
+        )
+
 def resolve_tarifname_claim_mode(extracted: dict[str, Any], requested_mode: str) -> str:
     """Otomatik modda açık sistem unsurları + yöntem adımları varsa model önerisi bunlardan birini düşüremez."""
     if requested_mode != "BBF'ye göre otomatik belirle":

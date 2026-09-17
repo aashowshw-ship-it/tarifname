@@ -81,8 +81,8 @@ def _opinion():
 
 
 def test_version_v546_and_binding_rules_present():
-    assert APP_VERSION == "v5.4.63"
-    assert RULESET_VERSION == "2026-09-14.v56"
+    assert APP_VERSION == "v5.4.70"
+    assert RULESET_VERSION == "2026-09-16.v63"
     low = GORUS_RULES.casefold()
     for phrase in [
         "x kategorisindeki", "y kategorisindeki", "considered together",
@@ -160,11 +160,11 @@ def test_examiner_persuasion_is_not_quality_score_and_is_validated():
 
 def test_app_runs_examiner_simulation_after_word_gates_and_one_strengthening_cycle():
     src = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert "data = build_and_gate_gorus_opinion(opinion, final_spec_name, final_spec_bytes, source_state)" in src
+    assert "ThreadPoolExecutor(max_workers=2" in src
+    assert "build_and_gate_gorus_opinion," in src
     assert "gorus_examiner_persuasion_prompt(" in src
     assert 'int(examiner_assessment.get("persuasion_probability", 0)) < 75' in src
     assert "gorus_examiner_strengthen_prompt(" in src
-    assert "data = build_and_gate_gorus_opinion(opinion, final_spec_name, final_spec_bytes, source_state)" in src
     assert "Mevcut uzman itirazını geri çektirme olasılığı (tahmini)" in src
     assert "genel kalite puanı" in src
 

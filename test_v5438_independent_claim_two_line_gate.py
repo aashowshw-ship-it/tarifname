@@ -7,12 +7,12 @@ from rules import APP_VERSION, RULESET_VERSION, TARIFNAME_RULES
 
 
 def test_versions_and_two_line_rule_are_binding():
-    assert APP_VERSION == "v5.4.63"
-    assert RULESET_VERSION == "2026-09-14.v56"
+    assert APP_VERSION == "v5.4.70"
+    assert RULESET_VERSION == "2026-09-16.v63"
     low = TARIFNAME_RULES.casefold()
     assert "en az iki fiziksel satır" in low
     assert "yalnız buluş adından" in low
-    assert "non-breaking kuyruk kontrolü" in low
+    assert "doğal satır kaydırması" in low
 
 
 def test_render_gate_rejects_one_line_independent_preamble():

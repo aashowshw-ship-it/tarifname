@@ -16,7 +16,7 @@ _GPT56_SOL_LONG_OUTPUT_MULTIPLIER = 1.5
 
 # Approximate TL display only. API billing remains USD internally.
 # Operators can override this without code changes via USD_TRY_RATE.
-_DEFAULT_USD_TRY_RATE = 48.6031  # 2026-09-11 reference rate
+_DEFAULT_USD_TRY_RATE = 48.6227  # 2026-09-14 reference rate
 
 
 @dataclass(frozen=True)

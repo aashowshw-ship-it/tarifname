@@ -15,31 +15,17 @@ NBSP = "\u00A0"
 
 
 def protect_turkish_claim_transition(text: str, *, min_tail_words: int = 5) -> str:
-    """Prevent a short ``olup, özelliği;`` orphan at the end of a claim preamble.
+    """Normalize claim-transition spacing without forcing a multiword NBSP tail.
 
-    Binding only ``sistemi olup, özelliği;`` is not enough: Word can move that
-    three-word tail to a new line.  The final ``min_tail_words`` words *before*
-    ``olup`` are therefore bound with non-breaking spaces as one tail.  If the
-    paragraph wraps, the last line contains a meaningful phrase rather than the
-    short transition alone.
+    Word justification can create visibly excessive inter-word gaps when the final
+    five or more words before ``olup, özelliği;`` are bound together with NBSPs.
+    The transition must therefore wrap naturally.  Orphan/short final lines are
+    handled by the rendered-layout fail-closed gate instead of artificial spacing.
+    ``min_tail_words`` is retained only for backward API compatibility.
     """
-    value = str(text or "")
-    match = re.search(r"\s+olup,\s+özelliği;", value, flags=re.IGNORECASE)
-    if not match:
-        return value
-
-    left = value[: match.start()].rstrip()
-    right = value[match.end() :]
-    word_matches = list(re.finditer(r"\S+", left))
-    if not word_matches:
-        return value
-    take = min(max(1, int(min_tail_words)), len(word_matches))
-    start = word_matches[-take].start()
-    prefix = left[:start]
-    tail = left[start:]
-    tail = re.sub(r"\s+", NBSP, tail)
-    return prefix + tail + NBSP + "olup," + NBSP + "özelliği;" + right
-
+    value = str(text or "").replace(NBSP, " ")
+    value = re.sub(r"[ \t]+", " ", value)
+    return value
 
 def protected_claim_tail_word_count(text: str) -> int:
     """Return the number of NBSP-bound words before ``olup`` in the protected tail."""
@@ -149,3 +135,31 @@ def needs_line_art_normalization(data: bytes, *, ratio_threshold: float = 0.012)
 
 def is_monochrome_enough(data: bytes, *, ratio_threshold: float = 0.012) -> bool:
     return material_color_ratio(data) <= ratio_threshold
+
+
+def material_gray_fill_ratio(data: bytes, *, low: int = 225, high: int = 249) -> float:
+    """Estimate materially visible light-gray decorative fill, excluding pure white and dark line art."""
+    rgb = _sample_rgb(data)
+    total = rgb.width * rgb.height
+    grayish = 0
+    for r, g, b in rgb.getdata():
+        if max(r, g, b) - min(r, g, b) <= 6:
+            v = (r + g + b) // 3
+            if low <= v <= high:
+                grayish += 1
+    return grayish / max(total, 1)
+
+
+def has_material_gray_fill(data: bytes, *, ratio_threshold: float = 0.055) -> bool:
+    """Treat broad grayscale box/background fills as non-patent decorative fill even when chroma is zero."""
+    return material_gray_fill_ratio(data) > ratio_threshold
+
+
+def normalize_grayscale_line_art(data: bytes, *, threshold: int = 200) -> bytes:
+    """Deterministically remove gray fills while preserving dark text/lines on a pure-white background."""
+    with Image.open(io.BytesIO(data)) as im:
+        gray = im.convert("L")
+        bw = gray.point(lambda p: 0 if p < threshold else 255, mode="1").convert("L")
+        out = io.BytesIO()
+        bw.save(out, format="PNG", optimize=True)
+        return out.getvalue()

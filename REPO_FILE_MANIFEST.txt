@@ -22,6 +22,7 @@ render.yaml
 requirements.txt
 rules.py
 secrets.toml.example
+source_cache.py
 source_guards.py
 tarifname_figure_generation.py
 tarifname_figure_update.py
@@ -81,5 +82,11 @@ test_v5460_opinion_quote_format_gate.py
 test_v5461_opinion_long_form_customer_coverage.py
 test_v5462_opinion_basis_phrase_boundary.py
 test_v5463_tip3_external_language_warnings.py
+test_v5464_source_cache_parallel_speed.py
+test_v5465_turkish_source_detail_figure_fill.py
+test_v5466_claim_natural_wrap.py
+test_v5467_reference_dependent_claim_gate.py
+test_v5468_opinion_direct_amendment_basis.py
+test_v5469_opinion_english_response_letter.py
 validators.py
 word_math.py

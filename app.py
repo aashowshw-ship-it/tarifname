@@ -12,6 +12,7 @@ import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
 from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -37,6 +38,7 @@ from PIL import Image
 from auth import authenticate, load_users
 from ai_metrics import metric_from_response
 from ai_cache import workflow_prompt_cache_kwargs
+from source_cache import source_artifact_key, bounded_cache_get, bounded_cache_set, ordered_parallel_results
 
 try:
     import cairosvg  # SVG müşteri şekillerini teknik içerik değiştirmeden PNG önizlemeye/Word yerleşimine dönüştürmek için
@@ -60,6 +62,8 @@ from source_guards import (
     validate_final_raw_source_audit,
     validate_detailed_description_source_transfer,
     validate_detailed_description_fact_coverage,
+    collect_required_exact_technical_phrases,
+    validate_required_exact_technical_phrases,
 )
 from word_math import EQ_MARKER_RE, append_text_with_equations as _append_text_with_equations, add_display_equation
 from tarifname_update import (
@@ -80,6 +84,8 @@ from tarifname_figure_generation import (
     method_step_numbers,
     needs_line_art_normalization,
     is_monochrome_enough,
+    has_material_gray_fill,
+    normalize_grayscale_line_art,
 )
 
 from gorus_audit import (
@@ -134,6 +140,111 @@ class UploadedAsset:
 
 _WORKFLOW_CHECKPOINT_KEY = "_patent_atolyesi_workflow_checkpoints_v1"
 _AI_METRICS_KEY = "_patent_atolyesi_ai_metrics_v1"
+_SOURCE_ARTIFACT_CACHE_KEY = "_patent_atolyesi_source_artifacts_v1"
+_SOURCE_ARTIFACT_CACHE_FALLBACK: dict[str, Any] = {}
+_SOURCE_EXTRACTOR_VERSION = "2026-09-14.v1"
+_SOURCE_CACHE_MAX_ENTRIES = int(os.getenv("SOURCE_CACHE_MAX_ENTRIES", "96"))
+_SOURCE_PREPROCESS_WORKERS = int(os.getenv("SOURCE_PREPROCESS_WORKERS", "4"))
+
+
+def _source_cache_root() -> dict[str, Any]:
+    """Session-scoped exact source cache; falls back to module-local storage in tests."""
+    try:
+        state = getattr(st, "session_state")
+        root = state.setdefault(_SOURCE_ARTIFACT_CACHE_KEY, {})
+        if isinstance(root, dict):
+            return root
+    except Exception:
+        pass
+    return _SOURCE_ARTIFACT_CACHE_FALLBACK
+
+
+def _source_cache_key(asset: UploadedAsset, kind: str) -> str:
+    return source_artifact_key(
+        name=asset.name,
+        data=asset.data,
+        mime=asset.mime,
+        kind=kind,
+        extractor_version=_SOURCE_EXTRACTOR_VERSION,
+        options={"max_text_per_file": MAX_TEXT_PER_FILE},
+    )
+
+
+def _source_cache_get(asset: UploadedAsset, kind: str) -> Any:
+    return bounded_cache_get(_source_cache_root(), _source_cache_key(asset, kind))
+
+
+def _source_cache_set(asset: UploadedAsset, kind: str, value: Any) -> None:
+    bounded_cache_set(
+        _source_cache_root(),
+        _source_cache_key(asset, kind),
+        value,
+        max_entries=_SOURCE_CACHE_MAX_ENTRIES,
+    )
+
+
+def _extract_base_text_local(asset: UploadedAsset) -> tuple[str, int]:
+    """Deterministic local source extraction only; never calls AI or Streamlit state."""
+    suffix = Path(asset.name).suffix.lower()
+    if suffix == ".docx":
+        return docx_text(asset.data), 0
+    if suffix == ".doc":
+        return legacy_doc_text(asset.data, asset.name), 0
+    if suffix == ".pdf":
+        return pdf_text(asset.data), _pdf_page_count(asset.data)
+    if suffix in {".txt", ".md"}:
+        return asset.data.decode("utf-8", errors="replace"), 0
+    if suffix in IMAGE_SUFFIXES:
+        return f"[TEKNİK GÖRSEL DOSYASI: {asset.name}]", 0
+    return "", 0
+
+
+def _finalize_source_text(
+    asset: UploadedAsset,
+    base_text: str,
+    page_count: int,
+    *,
+    metric_context: tuple[str, str] | None = None,
+) -> str:
+    text = base_text
+    if Path(asset.name).suffix.lower() == ".pdf" and _pdf_needs_visual_fallback(text, page_count):
+        text = _visual_pdf_text(asset, metric_context=metric_context)
+    # Quality-neutral cache: exact workflow-visible text only; no summary or passage dropping.
+    text = text.replace("\x00", " ").strip()[:MAX_TEXT_PER_FILE]
+    _source_cache_set(asset, "text", text)
+    return text
+
+
+def extract_asset_texts_parallel(
+    assets: list[UploadedAsset],
+    *,
+    metric_context: tuple[str, str] | None = None,
+) -> list[str]:
+    """Parallelise only independent deterministic parsing and preserve source order."""
+    if not assets:
+        return []
+    results: list[str | None] = [None] * len(assets)
+    pending_indices: list[int] = []
+    pending_assets: list[UploadedAsset] = []
+    for idx, asset in enumerate(assets):
+        cached = _source_cache_get(asset, "text")
+        if isinstance(cached, str):
+            results[idx] = cached
+        else:
+            pending_indices.append(idx)
+            pending_assets.append(asset)
+    if pending_assets:
+        base_results = ordered_parallel_results(
+            pending_assets,
+            _extract_base_text_local,
+            max_workers=_SOURCE_PREPROCESS_WORKERS,
+        )
+        # Image-only PDF AI fallback remains serial; only local deterministic parsing is parallel.
+        for idx, asset, (base_text, page_count) in zip(pending_indices, pending_assets, base_results):
+            results[idx] = _finalize_source_text(
+                asset, base_text, page_count, metric_context=metric_context
+            )
+    return [str(value or "") for value in results]
 
 def _workflow_signature(workflow: str, *, files: Iterable[tuple[str, bytes]] = (), options: dict[str, Any] | None = None) -> str:
     """Same-session cache/checkpoint key. Content hashes prevent name/size collisions and invalidate on rules/model changes."""
@@ -216,6 +327,51 @@ def _show_tarifname_ai_metrics(signature: str) -> None:
             "Web search ve ayrı image-generation araç ücretleri bu tahmine dahil değildir. "
             "Checkpoint'ten geri kullanılan aşamalar yeni API çağrısı oluşturmadığı için yeni satır eklemez."
         )
+
+def _show_gorus_ai_metrics(signature: str) -> None:
+    rows = list(_ai_metrics_bucket("gorus", signature))
+    st.markdown("### Görüş kullanım / ücret özeti")
+    if not rows:
+        st.error("Görüş AI telemetrisi bulunamadı; oran/ücret teslim kapısı nedeniyle Word indirilemez.")
+        st.stop()
+    total_seconds = sum(float(row.get("duration_seconds", 0.0) or 0.0) for row in rows)
+    total_input = sum(int(row.get("input_tokens", 0) or 0) for row in rows)
+    total_cached = sum(int(row.get("cached_input_tokens", 0) or 0) for row in rows)
+    total_cache_write = sum(int(row.get("cache_write_tokens", 0) or 0) for row in rows)
+    total_output = sum(int(row.get("output_tokens", 0) or 0) for row in rows)
+    total_reasoning = sum(int(row.get("reasoning_tokens", 0) or 0) for row in rows)
+    known_costs = [row.get("estimated_token_cost_try") for row in rows if row.get("estimated_token_cost_try") is not None]
+    total_cost = sum(float(value or 0.0) for value in known_costs) if len(known_costs) == len(rows) else None
+    display_rate = next((float(row.get("usd_try_rate") or 0.0) for row in rows if float(row.get("usd_try_rate") or 0.0) > 0), 0.0)
+    cost_text = "hesaplanamadı" if total_cost is None else f"{total_cost:.2f} TL"
+    st.metric("Tahmini AI kullanım maliyeti", cost_text)
+    with st.expander("Görüş AI süre ve token ayrıntıları", expanded=False):
+        display_rows = []
+        for index, row in enumerate(rows, 1):
+            cost = row.get("estimated_token_cost_try")
+            display_rows.append({
+                "#": index,
+                "Aşama": row.get("stage", "AI çağrısı"),
+                "Süre (sn)": round(float(row.get("duration_seconds", 0.0) or 0.0), 2),
+                "Input": int(row.get("input_tokens", 0) or 0),
+                "Cached input": int(row.get("cached_input_tokens", 0) or 0),
+                "Cache write": int(row.get("cache_write_tokens", 0) or 0),
+                "Output": int(row.get("output_tokens", 0) or 0),
+                "Reasoning": int(row.get("reasoning_tokens", 0) or 0),
+                "Tahmini TL": "—" if cost is None else f"{float(cost):.2f} TL",
+            })
+        st.dataframe(display_rows, use_container_width=True, hide_index=True)
+        st.caption(
+            f"Bu görüş işi için bu oturumda biriken {len(rows)} AI çağrısı | "
+            f"AI bekleme süresi: {total_seconds:.2f} sn | input: {total_input:,} | cached: {total_cached:,} | "
+            f"cache write: {total_cache_write:,} | output: {total_output:,} | reasoning: {total_reasoning:,} | "
+            f"tahmini model-token maliyeti: {cost_text}. "
+            + (f"Yaklaşık kur: 1 USD = {display_rate:.4f} TL. " if display_rate else "")
+            + "Reasoning tokenları output toplamının alt kümesidir; ayrıca ücret eklenmez. "
+            "Web search ve ayrı image-generation araç ücretleri bu tahmine dahil değildir. "
+            "Checkpoint'ten geri kullanılan aşamalar yeni API çağrısı oluşturmadığı için yeniden ücret yazmaz."
+        )
+
 
 def _uploaded_file_parts(*groups: Any) -> list[tuple[str, bytes]]:
     parts: list[tuple[str, bytes]] = []
@@ -516,23 +672,11 @@ Sayfa numaralarını bu batch'in gerçek PDF sayfa numaralarıyla yaz.'''
     return combined
 
 def extract_text_from_asset(asset: UploadedAsset, *, metric_context: tuple[str, str] | None = None) -> str:
-    suffix = Path(asset.name).suffix.lower()
-    if suffix == ".docx":
-        text = docx_text(asset.data)
-    elif suffix == ".doc":
-        text = legacy_doc_text(asset.data, asset.name)
-    elif suffix == ".pdf":
-        text = pdf_text(asset.data)
-        page_count = _pdf_page_count(asset.data)
-        if _pdf_needs_visual_fallback(text, page_count):
-            text = _visual_pdf_text(asset, metric_context=metric_context)
-    elif suffix in {".txt", ".md"}:
-        text = asset.data.decode("utf-8", errors="replace")
-    elif suffix in IMAGE_SUFFIXES:
-        text = f"[TEKNİK GÖRSEL DOSYASI: {asset.name}]"
-    else:
-        text = ""
-    return text.replace("\x00", " ").strip()[:MAX_TEXT_PER_FILE]
+    cached = _source_cache_get(asset, "text")
+    if isinstance(cached, str):
+        return cached
+    base_text, page_count = _extract_base_text_local(asset)
+    return _finalize_source_text(asset, base_text, page_count, metric_context=metric_context)
 
 
 def assets_from_uploads(files: Iterable[Any] | None) -> list[UploadedAsset]:
@@ -564,13 +708,16 @@ def combine_asset_text(
     blocks: list[str] = []
     images: list[UploadedAsset] = []
     total = 0
+    text_assets = [asset for asset in assets if Path(asset.name).suffix.lower() not in IMAGE_SUFFIXES]
+    extracted_texts = extract_asset_texts_parallel(text_assets, metric_context=metric_context)
+    text_iter = iter(extracted_texts)
     for asset in assets:
         suffix = Path(asset.name).suffix.lower()
         if suffix in IMAGE_SUFFIXES:
             images.append(_model_ready_image(asset))
             blocks.append(f"\n--- {label}: {asset.name} (teknik görsel ayrıca eklenmiştir; dosya adı ve görsel içeriği kaynak envanterine dahildir) ---\n")
             continue
-        text = extract_text_from_asset(asset, metric_context=metric_context)
+        text = next(text_iter, "")
         if not text:
             continue
         remain = MAX_TOTAL_TEXT - total
@@ -591,7 +738,7 @@ def _valid_figure_image(data: bytes, *, min_width: int = 260, min_height: int = 
         return False
 
 
-def extract_embedded_images(asset: UploadedAsset) -> list[UploadedAsset]:
+def _extract_embedded_images_uncached(asset: UploadedAsset) -> list[UploadedAsset]:
     """DOCX/PDF içindeki büyük görselleri özgün baytlarıyla çıkarır."""
     suffix = Path(asset.name).suffix.lower()
     images: list[UploadedAsset] = []
@@ -658,10 +805,21 @@ def extract_embedded_images(asset: UploadedAsset) -> list[UploadedAsset]:
     return images
 
 
+def extract_embedded_images(asset: UploadedAsset) -> list[UploadedAsset]:
+    """Content-addressed same-session cache for exact extracted figure bytes."""
+    cached = _source_cache_get(asset, "embedded_images")
+    if isinstance(cached, list):
+        return [UploadedAsset(str(n), bytes(d), str(m)) for n, d, m in cached]
+    images = _extract_embedded_images_uncached(asset)
+    serialised = [(img.name, bytes(img.data), img.mime) for img in images]
+    _source_cache_set(asset, "embedded_images", serialised)
+    return [UploadedAsset(str(n), bytes(d), str(m)) for n, d, m in serialised]
+
+
 def _append_word_field(paragraph, field_name: str, cached_text: str = "1") -> None:
     """Geçerli Word fldSimple alanı ekler; alan doğrudan paragraf altında, biçimli sonuç run'ı içerir."""
     fld = OxmlElement("w:fldSimple")
-    fld.set(qn("w:instr"), field_name)
+    fld.set(qn("w:instr"), field_name + " \\* MERGEFORMAT")
     fld.set(qn("w:dirty"), "true")
     r = OxmlElement("w:r")
     rpr = OxmlElement("w:rPr")
@@ -1010,8 +1168,23 @@ def _normalize_source_figure_line_art(
 ) -> tuple[UploadedAsset, dict[str, Any] | None]:
     """Convert materially colored source art to black/white line art without changing technical geometry."""
     source = _model_ready_image(asset)
-    if not needs_line_art_normalization(source.data):
+    has_color = needs_line_art_normalization(source.data)
+    has_gray_fill = has_material_gray_fill(source.data)
+    if not has_color and not has_gray_fill:
         return asset, None
+    if has_gray_fill and not has_color:
+        normalized = normalize_grayscale_line_art(source.data)
+        converted = UploadedAsset(f"{Path(asset.name).stem}_beyaz_zemin.png", normalized, "image/png")
+        return converted, {
+            "geometry_preserved": True,
+            "references_preserved": True,
+            "no_unexpected_change": True,
+            "black_white_line_art": True,
+            "white_hollow_fill": True,
+            "readable": True,
+            "confidence": 1.0,
+            "notes": "Deterministik gri dolgu temizliği; geometri değiştirilmedi.",
+        }
 
     client = get_client()
     prompt = f"""Bu görsel bir patent başvurusu için teknik kaynak şekildir. YALNIZ görsel stilini patent çizimine dönüştür.
@@ -1261,7 +1434,7 @@ def validate_figures_docx_structure(data: bytes, draft: dict[str, Any] | None = 
                 for key, value in node.attrib.items():
                     if str(key).endswith("}instr") or str(key).endswith("instr"):
                         instr.append(str(value or "").strip().upper())
-        if "PAGE" not in instr or "NUMPAGES" not in instr:
+        if not any(x.startswith("PAGE") for x in instr) or not any(x.startswith("NUMPAGES") for x in instr):
             raise ValueError(f"ŞEKİLLER kalite kapısı: {sec_idx}. section üst bilgisinde PAGE / NUMPAGES alanları yok.")
         if not header.paragraphs or header.paragraphs[0].alignment != WD_ALIGN_PARAGRAPH.CENTER:
             raise ValueError("ŞEKİLLER kalite kapısı: sayfa sayacı sayfanın üstünde ortalı olmalıdır.")
@@ -1307,6 +1480,8 @@ def validate_figures_docx_structure(data: bytes, draft: dict[str, Any] | None = 
             image_data = zf.read(name)
             if not is_monochrome_enough(image_data):
                 raise ValueError(f"ŞEKİLLER kalite kapısı: {Path(name).name} siyah-beyaz patent çizimi değil; renk/dolgu normalizasyonu gereklidir.")
+            if has_material_gray_fill(image_data):
+                raise ValueError(f"ŞEKİLLER kalite kapısı: {Path(name).name} içinde maddi açık-gri/gölgeli dolgu bulundu; patent kutu/alan dolguları saf beyaz olmalıdır.")
 
     if draft is not None and (draft.get("method_steps") or []):
         expected = set(method_step_numbers(draft.get("method_steps") or []))
@@ -1330,6 +1505,19 @@ def build_figures_docx(images: list[UploadedAsset], language: str = "Türkçe") 
         raise ValueError("Şekiller Word dosyası için BBF içinde veya ayrıca yüklenen dosyalarda kullanılabilir görsel bulunamadı.")
 
     doc = Document()
+    try:
+        header_style = doc.styles["Header"]
+        header_style.font.name = "Arial"
+        header_style.font.size = Pt(11)
+        header_style.font.bold = True
+        hrpr = header_style.element.get_or_add_rPr()
+        hfonts = hrpr.find(qn("w:rFonts"))
+        if hfonts is None:
+            hfonts = OxmlElement("w:rFonts"); hrpr.insert(0, hfonts)
+        for attr in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+            hfonts.set(qn(attr), "Arial")
+    except Exception:
+        pass
     for section in doc.sections:
         section.top_margin = Cm(1.5)
         section.bottom_margin = Cm(1.5)
@@ -1368,9 +1556,7 @@ def build_figures_docx(images: list[UploadedAsset], language: str = "Türkçe") 
         p_cap.paragraph_format.space_before = Pt(0)
         p_cap.paragraph_format.space_after = Pt(10)
         r = p_cap.add_run(f"{'FIGURE' if _english_spec(language) else 'ŞEKİL'} {index}")
-        r.bold = True
-        r.font.name = "Arial"
-        r.font.size = Pt(11)
+        _force_arial_11_bold_run(r)
 
         used_height_cm += block_height
 
@@ -1640,6 +1826,7 @@ kısaltma nedeniyle önemli bilgi kaybettirme ve örnek tarifnamelerin teknik i�
 EN ÜST TAMLIK KAPISI:
 - BBF ve ek teknik kaynaklardaki HER teknik bilgiyi atomik `technical_facts` maddelerine ayır. Bir cümlede iki ayrı teknik bilgi varsa iki ayrı madde yap.
 - Teknik avantajları ve ayırt edici yönleri de ayrı maddeler yap; örneğin fiyat-performans dengesi, gecikme, pil ömrü, cihaz/işletim sistemi/operatör bağımsızlığı gibi kaynakta açık sonuçları atlama.
+- Teknik pasajlarda müşterinin tırnak içinde verdiği ağ/sistem/yapılanma adı veya ayırt edici teknik ifadeyi `source_exact_phrases` içinde aynen koru; daha genel bir cümleyle değiştirip bu ifadeyi tamamen kaybetme.
 - İdari/form alanlarını `excluded_nontechnical_items` altında ayır; kişi/sicil/ödül/imza, boş idari alanlar ve yalnız araştırma anahtar kelimeleri tarifname technical_facts listesine girmez.
 - `coverage_checklist` genel başlık listesi değil, technical_facts maddelerinin tarifnamede korunacağı içerik gruplarını özetleyen yardımcı listedir.
 
@@ -1658,6 +1845,7 @@ JSON dışında hiçbir şey yazma.
  "technical_solution":[""],
  "technical_effects":[""],
  "technical_facts":[{{"id":"T001","category":"alan/problem/çözüm/unsur/işlev/akış/avantaj/alternatif/kullanım/ayırt_edici_yön/görsel","statement":"Kaynakta açıkça verilen tek bir atomik teknik bilgi","mandatory":true}}],
+ "source_exact_phrases":["Teknik pasaj içinde tırnakla verilmiş ayırt edici müşteri teknik adı/ifadesi"],
  "excluded_nontechnical_items":["Form talimatı, kişi/sicil/ödül bilgisi, boş idari alan veya yalnız araştırma anahtar kelimesi gibi tarifnameye taşınmaması gereken içerik"],
  "elements":[{{"number":"<müşteri referansı; yoksa 1>","name":"","function":"","source":"BBF/ek teknik belge"}}],
  "method_steps":[{{"number":"<müşteri referansı; yoksa 1001>","text":"","stage":"","essential":true}}],
@@ -1707,7 +1895,7 @@ Bu aşamada TARİFNAME YAZMA. Ham BBF ve ek teknik belgeleri SIFIRDAN yeniden ok
 
 EN ÜST KURAL: BBF ve ek teknik kaynaklardaki her teknik bilgi atomik `technical_facts` listesinde bulunmalıdır. Mevcut envantere güvenme; kaynakta olup listede olmayan teknik alan, problem, çözüm, unsur, işlev, işlem akışı, avantaj, teknik etki, kullanım, alternatif, ayırt edici yön veya görsel/şema bilgisi varsa EKLE. Özellikle kaynakta açıkça geçen performans/enerji/gecikme/fiyat-performans sonuçları ile cihaz, işletim sistemi veya operatör altyapısı bağımsızlığı gibi ifadeleri atlama.
 Kişi/sicil/ödül/imza, form talimatları, boş idari alanlar ve yalnız araştırma anahtar kelimeleri `excluded_nontechnical_items` içinde kalmalıdır; bunları technical_facts yapma.
-Her technical fact tek bir atomik teknik anlam taşısın, `id` alanları T001, T002... biçiminde benzersiz ve sıralı olsun. Teknik olarak sınıflandırılan HER fact tarifnameye aktarılması zorunlu olduğundan `mandatory=true` olmalıdır; teknik bir fact için `mandatory=false` kullanma.
+Her technical fact tek bir atomik teknik anlam taşısın, `id` alanları T001, T002... biçiminde benzersiz ve sıralı olsun. Teknik olarak sınıflandırılan HER fact tarifnameye aktarılması zorunlu olduğundan `mandatory=true` olmalıdır; teknik bir fact için `mandatory=false` kullanma. Teknik pasaj içinde tırnakla verilmiş müşteri teknik ad/ifadelerini `source_exact_phrases` listesine aynen al; örneğin belirli bir yönetim/telekomünikasyon ağına verilmiş müşteri adı sırf genel ifade daha şık diye atılamaz.
 Mevcut elements/method_steps/formulas/tables/alternatives/use_cases/figure audit alanlarını kaynakla karşılaştır ve eksik teknik içerik varsa tamamla; kaynakta olmayan bilgi ekleme.
 
 HAM KAYNAK PASAJ KAPISI: Aşağıdaki SOURCE_PASSAGE_REGISTRY yerel kod tarafından ham dosyalardan deterministik çıkarılmıştır. HER passage_id `source_passage_audit` içinde TAM BİR KEZ yer almalıdır. Teknik pasaj classification=`technical` olmalı ve en az bir geçerli technical_facts id'sine bağlanmalıdır. Gerçekten idari/form niteliğindeki pasaj classification=`nontechnical` olabilir ancak reason boş bırakılamaz. Teknik içerikli pasajı nontechnical işaretleyerek atlamak yasaktır.
@@ -1788,14 +1976,14 @@ Aşağıdaki kaynaklara dayanarak seçilen dilde patent tarifnamesinin TAM metni
 İstem yapısı: {claim_mode}
 
 KRİTİK TALİMATLAR:
-- BBF'nin bütün teknik bilgilerini kullan. Uzun önceki teknik, formüller, tablolar, deneysel sonuçlar, alternatifler ve referans tablosu atlanamaz.
+- BBF'nin bütün teknik bilgilerini kullan. Uzun önceki teknik, formüller, tablolar, deneysel sonuçlar, alternatifler ve referans tablosu atlanamaz. `source_exact_phrases` içindeki müşteri teknik ad/ifadelerini en az bir kez uygun yerde, tercihen BULUŞUN DETAYLI AÇIKLAMASI içinde aynen koru; bunların ana isteme girmesi zorunlu değildir.
 - Yapılandırılmış envanter yalnızca yardımcıdır. Çelişki halinde ham BBF ve açık teknik müşteri belgeleri esas alınır.
 - Örnek tarifnamelerden yalnızca kurguyu öğren; teknik bilgi aktarma.
 - technical_field iki paragraf olmalıdır ve paragraflar \n\n ile ayrılmalıdır. Türkçe çıktıda ilk paragraf yalnız “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile; İngilizce çıktıda ilk paragraf yalnız “The invention relates to ... .”, ikinci paragraf “In particular, the invention relates to ... .” ile başlamalıdır. Seçilen istem modu “Sistem ve yöntem” ise Türkçe ilk paragrafın sonu özellikle “... sistemi ve yöntemi ile ilgilidir.” olmalıdır; yalnız sistemde “... sistemi ile ilgilidir.”, yalnız yöntemde “... yöntemi ile ilgilidir.” yapısı kullanılmalıdır.
 - ÖNCEKİ TEKNİK'teki aynı anlatımın devamı olan “Özellikle...”, “Bununla birlikte...”, “Bu nedenle...” gibi cümleleri ayrı paragraf yapma. Patent literatürü dokümanları ise ayrı ayrı paragraf olsun.
 - Türkçe tarifnamede her patent literatürü paragrafında doğrulanmış İngilizce başlık ile Türkçe başlık karşılığı birlikte yazılsın. Türkçe literatür paragrafı bağlayıcı taslak dilini izlesin: “Literatürde yapılan araştırmalar sonucu ... numaralı, İngilizce başlığı ‘...’ ve Türkçe karşılığı ‘...’ olan patent dokümanına rastlanmıştır. Söz konusu başvuru/doküman ... ile ilgilidir. Ancak bahsedilen başvuruda/dokümanda ... ile ilgili bir emareye rastlanmamıştır.” “Buluşta ise ...” biçiminde karşılaştırmalı görüş/savunma dili kullanılmasın. İngilizce tarifnamede özgün İngilizce patent başlığı kullanılsın; Türkçe başlık karşılığı nihai İngilizce metne eklenmesin.
 - BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı sistem/cihaz unsurlarını tek tek ayrı paragraf yapma; bütün unsur açıklamalarını teknik akış içinde tek sürekli paragrafta topla. Sistem unsuru-yöntem adımı ilişkisini açıklamak için “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü tablo oluşturma. Bu ilişkiyi modül (1), sonraki modül (2) ve ilgili yöntem adımı (1001, 1002...) arasındaki veri/işlev bağlantısını gösteren doğal teknik paragraf olarak yaz. Yalnız ham kaynakta gerçekten sayısal/deneysel veri tablosu olan tabloları tables alanında koru. Gerçekten ayrı bir yapılanma/alternatif/yöntem/çalışma prensibi ayrıca paragraf olabilir.
-- Ana istemde zorunlu teknik çekirdeği kapsayıcı biçimde ver. Aynı işlemin birinci/ikinci/k'ıncı tekrarlarını ana istemde gereksiz yere ayrı satırlara bölme. Bu ayrıntıları, aynı alt akışa aitse tek bağımlı istemde topla.
+- Ana istemde zorunlu teknik çekirdeği kapsayıcı biçimde ver. Kaynak bir özel standart/girişim/arayüz adını daha genel işlevsel teknik sınıfla birlikte veriyorsa bağımsız istemde kaynak destekli genel sınıfı tercih et; özel adı detaylı açıklamada ve gerekiyorsa bağımlı istemde koru. Örneğin `Open Gateway / API Sunucusu` kaynağında zorunlu işlev API sunucusu/arayüzü ile karşılanabiliyorsa ana istemi sırf `Open Gateway` adıyla daraltma. Aynı işlemin birinci/ikinci/k'ıncı tekrarlarını ana istemde gereksiz yere ayrı satırlara bölme. Bu ayrıntıları, aynı alt akışa aitse tek bağımlı istemde topla.
 - Türkçe BAĞIMSIZ sistem/cihaz/ürün/yöntem isteminin `preamble` alanını yalnız buluş adı kadar kısa yazma. Preamble kaynakta açıkça desteklenen teknik kullanım bağlamını ve/veya temel işlevsel ilişkiyi içermeli ve bağlayıcı Word şablonunda `olup, özelliği;` öncesinde en az İKİ FİZİKSEL SATIR oluşturacak kadar anlamlı teknik içerik taşımalıdır. Bu koşulu manuel satır sonu, tekrar veya dolgu ifadeyle sağlama. Örneğin yalnız `Hücrelerin haftalık davranışına göre anormal durum tespit sistemi` gibi kısa adlandırma yerine kaynak destekliyorsa hangi şebeke/veri üzerinde hangi karşılaştırmaya dayalı tespiti yaptığı preamble içinde kurulmalıdır.
 - Buluş ağırlıklı olarak yazılım/algoritma/modül/birimlerden oluşuyorsa bağımsız istemleri soyut yazılım olarak bırakma. Kaynakta özel donanım zorunlu değilse geniş bir donanımsal taşıyıcı kullan. Türkçede “bir elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla ...”, İngilizcede “software executed on an electronic device ...” veya eşdeğer teknik taşıyıcı dili kullanılabilir. Gereksiz sunucu, cep telefonu/phone veya kişisel bilgisayar daraltması yapma; özel donanım uydurma.
 - AYNI referanssız elektronik işlem birimi/cihaz taşıyıcısı üzerinde AYNI çalışma ilişkisine sahip birden fazla ARDIŞIK yürütülebilir yazılım/modül/kontrolör/arayüz/yığın varsa taşıyıcı ifadesini her birinde tekrar etmek zorunda değilsin. Türkçe sistem isteminde `elements` listesine bir grup nesnesi koyabilirsin: `{{"lead":"bir elektronik işlem birimi üzerinde koşturulan yazılım vasıtasıyla çalışan ve;","subelements":["... modülü (2),","... kontrolörü (3),"]}}`. Lead referans taşımaz; her subelement ayrı bir yeni referanslı unsuru ilk-tanım sırasıyla tanımlar. VERİTABANI, bellek, veri deposu, profil tablosu veya salt veri yapısı kaynak açıkça yürütülebilir yazılım/modül olduğunu söylemiyorsa bu ortak grubun altına ALINMAZ; ayrı unsur yazılır. Bu grup yalnız aynı taşıyıcı gerçekten bütün alt unsurlar için ortaksa kullanılır ve Word'de gerçek iç içe bullet olarak yazılır.
@@ -1803,7 +1991,7 @@ KRİTİK TALİMATLAR:
 - Kaynakta açık matematiksel bağıntı/formül varsa `formulas[].expression` alanında formül metnini koru. Aynı bağıntının bağımlı istemde açıkça yazılması gerekiyorsa düz `x = ...` metni kullanma; bağıntıyı `[[EQ: x = ...]]` işaretleyicisi içinde yaz. Word üreticisi bunu gerçek OMML denklem nesnesine dönüştürecektir. Formül zorunlu teknik çekirdek değilse ana istemi gereksiz daraltma; bağımlı istem/detaylı açıklamada tut.
 - Bağımlı istemleri kaynakta geçen her ayrıntı için çoğaltma. Yalnız ana isteme gerçek teknik daraltma/geri çekilme konumu sağlayan seçilmiş özellikleri kullan; istem bağımlılığı ana donanımsal taşıyıcıyı zaten taşıyorsa alt istemde elektronik cihaz/yazılım ifadesini gereksiz yere tekrar etme.
 - Eğitim/genel aşama ile test aşamasındaki paralel akışları aynı mantıkla fakat ayrı teknik aşamalar olarak kur.
-- REFERANS NUMARALARI bölümünde müşteri tarafından sistem/cihaz unsurları veya yöntem işlem adımları için verilmiş açık referansları AYNEN koru; 10, 20..., S101..., M1... veya başka bir referans ailesini sırf standartlaştırmak için değiştirme. Sistem/cihaz modüllerinde hiç referans yoksa kaynak sırasıyla 1, 2, 3... ver. Yöntem işlem adımlarında hiç referans yoksa varsayılan 1001, 1002, 1003... ailesini kullan. Kısmen numaralandırılmış kaynakta mevcut müşteri işaretlerini koru, yalnız boş kalanlara çakışmayacak varsayılan referans ata. Word'deki yöntem referans satırı `1001. ...` biçiminde başlar; bu satırın içinde sistem/cihaz unsur işaretleri `(1)`, `(2)` vb. yazılmaz. Parantezli unsur referansları BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren başlar.
+- REFERANS NUMARALARI bölümünde müşteri tarafından sistem/cihaz unsurları veya yöntem işlem adımları için verilmiş açık referansları AYNEN koru; 10, 20..., S101..., M1... veya başka bir referans ailesini sırf standartlaştırmak için değiştirme. Sistem/cihaz modüllerinde hiç referans yoksa kaynak sırasıyla 1, 2, 3... ver. Yöntem işlem adımlarında hiç referans yoksa varsayılan 1001, 1002, 1003... ailesini kullan. Kısmen numaralandırılmış kaynakta mevcut müşteri işaretlerini koru, yalnız boş kalanlara çakışmayacak varsayılan referans ata. Word'deki yöntem referans satırı `1001. ...` biçiminde başlar; bu satırın içinde sistem/cihaz unsur işaretleri `(1)`, `(2)` vb. yazılmaz. Parantezli unsur referansları BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren başlar. TEKNİK ALAN, ÖNCEKİ TEKNİK, patent literatürü, BULUŞUN KISA AÇIKLAMASI/amaçlar ve ŞEKİLLERİN KISA AÇIKLAMASI içinde `(1)`, `(90)`, `(1001)` gibi bilinen referans işaretleri kullanma.
 - “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” bölümü için method_steps tam ve tutarlı olsun. Kaynaktaki yöntem referansları varsa aynen korunsun; yalnız kaynakta hiç yöntem referansı yoksa 1001’den başlayan varsayılan sıra oluşturulsun. REFERANS NUMARALARI, detaylı açıklamadaki yöntem listesi ve bağımsız yöntem isteminde aynı referanslı adımın teknik metni birebir aynı olsun. Detaylı açıklamadaki ara maddeler virgülle, son madde noktayla bitsin. Bağımsız yöntem istemindeki ara adımlar virgülle bitsin, son adım noktalamasız bitsin.
 - Yalnızca yöntem modunda system_claim null olmalıdır. Yalnızca sistem modunda method_claim null olmalıdır.
 - Her bağımlı istem ana isteme göre gerçek bir daraltma sağlamalıdır.
@@ -1825,7 +2013,7 @@ KRİTİK TALİMATLAR:
 - Müşteri şekillerini teknik kaynak olarak aynen esas al. Görseldeki gerçek referans işaretlerini sayısal unsur, yöntem adımı, sembolik referans ve geçici şekil numarası olarak ayır. Gömülü grafik/ısı haritası/diyagram üzerindeki teknik sonuçları tamlık kontrolünde dikkate al. Geçici şekil numarasını yeni unsur referansı yapma. Şekildeki mevcut ok/numarayı otomatik olarak doğru kabul etme; nihai şekil aşamasında referans → unsur adı → detaylı açıklamadaki teknik tanım → fiziksel karşılık eşleştirmesi yapılacaktır. Belirli alt parçaya ait referansı tüm tertibat olarak yorumlama ve her görünür parçayı zorla numaralandırma.
 - REFERANS NUMARALARI bölümünde ayrı numaraya sahip iki unsur müşteri/BBF şekli üzerinde `2-3` gibi tek ve ayırt edilemeyen bir kutu/hedefte gösterilmişse bunu nihai şekle aynen taşıma. Müşteri şeklinin ortak taşıyıcısını ve teknik ilişkilerini koruyarak ayrı kutucuk/çağrı/oklarla her referansı ayrı göster. Şekiller Word isteniyorsa nihai `elements` referanslarının tamamı şekil SETİNDE en az bir kez görünmelidir; sistem+yöntem şekilleri hazırlanıyorsa yöntem referansları da akış şekillerinde tam kapsanmalıdır.
 - BBF referans/BOM tablosunu kaynak envanteri olarak çıkar; fakat “Diğer parçalar/Diğer elemanlar” gibi belirsiz üst başlıkları nihai patent unsuru yapma. Altında açıkça tanımlanan gerçek parçaları teknik adlarıyla kullan.
-- Sistem şeması yalnız “sistem” sözcüğüne özgü değildir; cihaz, ürün, tertibat, düzenek ve yapılanma istemleri de aynı ürün istem dil kurallarına tabidir. Yöntem dışındaki bağımlı istemler “olmasıdır.” veya “içermesidir.” ile bitmelidir.
+- Sistem şeması yalnız “sistem” sözcüğüne özgü değildir; cihaz, ürün, tertibat, düzenek ve yapılanma istemleri de aynı ürün istem dil kurallarına tabidir. Yöntem dışındaki bağımlı istemler “olmasıdır.” veya “içermesidir.” ile bitmelidir. Ancak kapanışın doğru olması tek başına yeterli değildir: alt istem gövdesindeki işlev `sağlaması/çalıştırmaması/saklaması/bağlaması` gibi eylem isimleştirmesiyle değil, `sağlayan/çalıştırmayan/saklayan/bağlayan` gibi sıfat-fiille somut teknik unsura bağlanmalıdır; salt `... uygun olmasıdır` kullanılmaz.
 - Ana istemde bir referanslı unsuru ilk kez tanımlarken henüz tanımlanmamış sonraki referanslı unsurları kullanma. İlk/ana taşıyıcı unsuru kendi yapısı ve işleviyle tanımla; sonra diğer unsurları sırayla daha önce tanımlanmış unsurlara bağla. Kural olarak her claim bullet yalnız bir yeni referanslı unsur tanımlasın.
 - Ürün/yapılanma isteminde “somun flanşının gövdeye bağlanması”, “parçanın oluşturulması” gibi işlem isimleştirmesi kullanma; “gövdeye bağlanan somun flanşı”, “... yapısına sahip parça” gibi unsur merkezli dil kullan.
 - Bir unsur yalnız nerede bulunduğuyla bırakılmasın; kaynak destekliyorsa teknik işlevi de yazılsın. Örneğin sızdırmazlık elemanının bağlantı bölgesinde akışkan sızdırmazlığını sağladığı belirtilsin.
@@ -1931,7 +2119,7 @@ ZORUNLU KONTROL LİSTESİ:
 33. BBF/BOM tablosunda “Diğer parçalar/Diğer elemanlar” gibi belirsiz satır nihai referans unsuru yapılmış mı? Yapılmışsa gerçek teknik parçalara ayır veya kaynakta açık karşılığı yoksa referans listesinden çıkar; teknik bilgiyi kaybetme.
 34. Ana istemde bir referanslı unsur ilk kez tanımlanırken henüz tanımlanmamış daha sonraki referanslı unsur kullanılmış mı? Kural olarak her bullet tek yeni referanslı unsur tanımlıyor mu ve tanım sırası ana taşıyıcıdan bağlı unsurlara doğru mu?
 35. Ürün/sistem/cihaz/tertibat/yapılanma istemlerinde “... bağlanması”, “... oluşturulması”, “... yapılması”, “... sağlanması” gibi yöntem/işlem isimleştirmesi var mı? Varsa unsur merkezli “... bağlanan ...”, “... yapısına sahip ...”, “... sağlayan ...” diline dönüştür.
-36. Yöntem dışındaki tüm bağımlı istemler “olmasıdır.” veya “içermesidir.” mantığıyla mı bitiyor?
+36. Yöntem dışındaki tüm bağımlı istemler “olmasıdır.” veya “içermesidir.” mantığıyla mı bitiyor? Kapanış doğru olsa bile gövdede `sağlaması`, `çalıştırmaması`, `saklaması`, `bağlaması`, `üretilmesi` vb. yöntem isimleştirmesi var mı? Varsa `sağlayan`, `çalıştırmayan`, `saklayan`, `bağlayan`, `üreten` gibi unsur-merkezli sıfat-fiil diline çevir; salt `... uygun olmasıdır` istemini reddet.
 37. Aynı olmayan iki fiziksel unsur “ve/veya” ile tek unsur gibi bulanıklaştırılmış mı? Varsa teknik kimliklerini ve alternatif işlevlerini ayrı açık unsurlar olarak yaz.
 38. Her zorunlu unsur yalnız konumla mı tanımlanmış, yoksa kaynak desteklediği ölçüde teknik işlevi de açıklanmış mı? Özellikle sızdırmazlık, kilitleme, ölçme, işleme gibi işlevsel unsurlarda “ne yapıyor?” cevabı görünür mü?
 39. Ana istem buluşun mevcut tekniğe göre zorunlu/farklılaştırıcı çekirdeğini taşıyor mu? Genişletme uğruna esas teknik fark kaybolmuş mu?
@@ -2431,9 +2619,9 @@ def _capitalize_turkish_prose_sentence_starts(text: str) -> str:
     def repl(m: re.Match[str]) -> str:
         prefix, word = m.group(1) or "", m.group(2)
         if _is_technical_acronym_token(word):
-            return prefix + word
+            return prefix + _canonical_technical_token(word)
         low = _tr_lower(word)
-        return prefix + low[:1].upper() + low[1:]
+        return prefix + _tr_capitalize_first(low)
     return pat.sub(repl, out)
 
 
@@ -2481,11 +2669,15 @@ def _normalize_turkish_element_case_in_draft(draft: dict[str, Any]) -> dict[str,
         text = str(step.get("text", "") or "").strip()
         if text:
             first = re.search(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", text)
-            if first and not _is_technical_acronym_token(first.group(0)):
+            if first:
                 word = first.group(0)
-                low = _tr_lower(word)
-                cap = low[:1].upper() + low[1:]
-                step["text"] = text[:first.start()] + cap + text[first.end():]
+                if _is_technical_acronym_token(word):
+                    canon = _canonical_technical_token(word)
+                    step["text"] = text[:first.start()] + canon + text[first.end():]
+                else:
+                    low = _tr_lower(word)
+                    cap = _tr_capitalize_first(low)
+                    step["text"] = text[:first.start()] + cap + text[first.end():]
     _normalize_prose_sentence_initials(draft, mappings)
     return draft
 
@@ -2499,6 +2691,9 @@ def apply_tarifname_house_style(
     """Kullanıcının sabit terminoloji, paragraf ve başlık tercihlerini çıktıdan önce uygula."""
     draft = deepcopy(draft)
     if not _english_spec(language):
+        # Sık görülen ASCII/Türkçe-I bozulmasını daha sonraki unsur normalizasyonundan önce düzelt.
+        draft = _replace_in_nested(draft, "Insansız", "İnsansız")
+        draft = _replace_in_nested(draft, "ınsansız", "insansız")
         for old, new in [
             ("Buluşun bir gerçekleştirilmesinde", "Buluşun bir yapılanmasında"),
             ("buluşun bir gerçekleştirilmesinde", "buluşun bir yapılanmasında"),
@@ -3010,9 +3205,9 @@ def _title_case_reference_variant(name: str) -> str:
     def repl(match: re.Match[str]) -> str:
         word = match.group(0)
         if len(word) > 1 and word.isupper():
-            return word
+            return _canonical_technical_token(word)
         low = _tr_lower(word)
-        return low[:1].upper() + low[1:]
+        return _tr_capitalize_first(low)
     return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", repl, str(name or "").strip())
 
 
@@ -3078,15 +3273,15 @@ def _normalize_turkish_invention_title(title: str) -> str:
     def repl(match: re.Match[str]) -> str:
         nonlocal first_seen
         word = match.group(0)
-        is_acronym = len(word) > 1 and word.isupper()
+        is_acronym = _is_technical_acronym_token(word)
         low = _tr_lower(word)
         if is_acronym:
             first_seen = True
-            return word
+            return _canonical_technical_token(word)
         if first_seen and low in stop:
             return low
         first_seen = True
-        return low[:1].upper() + low[1:]
+        return _tr_capitalize_first(low)
 
     return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşüÂâÎîÛû]+", repl, text)
 
@@ -3336,6 +3531,49 @@ def _validate_prior_art_source_placement(draft: dict[str, Any], extracted: dict[
         raise ValueError("Kaynakta dört veya daha fazla önceki-teknik/problem fact'i bulunduğu için ÖNCEKİ TEKNİK en az üç gelişmiş paragraf olmalıdır; patent literatürü bu sayıya dahil değildir.")
 
 
+
+def _validate_turkish_terminology(draft: dict[str, Any], language: str = "Türkçe") -> None:
+    """Fail closed on Turkish casing/first-use terminology errors that previously escaped AI QA."""
+    if _english_spec(language):
+        return
+    parts: list[str] = []
+    parts.append(str(draft.get("technical_field", "") or ""))
+    parts.extend(map(str, draft.get("prior_art_general_paragraphs") or []))
+    parts.append(str(draft.get("short_description_intro", "") or ""))
+    parts.extend(map(str, draft.get("objectives") or []))
+    parts.append(str(draft.get("unumbered_invention_definition", "") or ""))
+    parts.extend(map(str, draft.get("unumbered_invention_features") or []))
+    parts.extend(map(str, draft.get("detailed_paragraphs") or []))
+    parts.append(str(draft.get("working_principle", "") or ""))
+    parts.extend(_system_claim_all_texts(draft.get("system_claim") or {}))
+    parts.extend(map(str, draft.get("dependent_system_claims") or []))
+    parts.extend(map(str, (draft.get("method_claim") or {}).get("steps") or []))
+    parts.extend(map(str, draft.get("dependent_method_claims") or []))
+    parts.append(str(draft.get("abstract", "") or ""))
+    visible = "\n".join(x for x in parts if x)
+
+    if re.search(r"\b(?:Insansız|ınsansız)\b", visible):
+        raise ValueError("Türkçe yazım kapısı: `Insansız/ınsansız` kullanılamaz; doğru biçim cümle konumuna göre `İnsansız/insansız` olmalıdır.")
+
+    expected_tokens = ["UTM", "CAMARA", "BGP", "VRF", "MEC", "UPF", "SMF", "BVLOS", "API", "GPS", "QoD", "QoS", "6G"]
+    wrong: list[str] = []
+    for expected in expected_tokens:
+        pattern = re.compile(r"(?<![A-Za-z0-9])" + re.escape(expected) + r"(?![A-Za-z0-9])", re.IGNORECASE)
+        for match in pattern.finditer(visible):
+            if match.group(0) != expected:
+                wrong.append(match.group(0) + "→" + expected)
+    if wrong:
+        raise ValueError("Türkçe teknik kısaltma/büyük-küçük harf kapısı başarısız: " + "; ".join(sorted(set(wrong))))
+
+    if re.search(r"(?<![A-Za-z0-9])UTM(?![A-Za-z0-9])", visible):
+        if not re.search(r"insansız\s+hava\s+aracı\s+trafik\s+yönetimi\s*\(\s*UTM\s*\)", visible, flags=re.IGNORECASE):
+            raise ValueError("UTM ilk kullanım kapısı: Türkçe tarifnamede en az bir kez `insansız hava aracı trafik yönetimi (UTM)` açılımı verilmelidir; sonraki kullanımlarda `UTM sunucusu` kullanılabilir.")
+
+    if re.search(r"\bOpen\s+Gateway\b", visible, flags=re.IGNORECASE):
+        if not re.search(r"açık\s+ağ\s+geçidi\s*\(\s*Open\s+Gateway\s*\)", visible, flags=re.IGNORECASE):
+            raise ValueError("Yabancı teknik terim kapısı: `Open Gateway` Türkçe metinde ilk uygun kullanımda `açık ağ geçidi (Open Gateway)` olarak verilmelidir.")
+
+
 def validate_tarifname_draft(
     draft: dict[str, Any],
     claim_mode: str,
@@ -3346,6 +3584,9 @@ def validate_tarifname_draft(
     warnings: list[str] = []
     _validate_turkish_title_style(draft, language)
     _validate_turkish_reference_sentence_case(draft, language)
+    _validate_turkish_terminology(draft, language)
+    if extracted is not None:
+        validate_required_exact_technical_phrases(extracted, _visible_draft_text_for_audit(draft))
     _validate_related_alternative_paragraphs(draft, language)
     _validate_prior_art_source_placement(draft, extracted, language)
     _validate_prior_art_bridge_and_depth(draft, extracted, language)
@@ -3658,12 +3899,40 @@ def _tr_lower(text: str) -> str:
     return str(text or "").translate(str.maketrans({"I": "ı", "İ": "i"})).lower()
 
 
+def _tr_upper(text: str) -> str:
+    """Türkçe i/ı harflerini doğru I/İ eşlemesiyle büyük harfe çevir."""
+    return str(text or "").translate(str.maketrans({"i": "İ", "ı": "I"})).upper()
+
+
+def _tr_capitalize_first(text: str) -> str:
+    value = _tr_lower(str(text or ""))
+    return (_tr_upper(value[:1]) + value[1:]) if value else value
+
+
 _TECHNICAL_ACRONYM_ALLOWLIST = {
     "LED", "UV", "IR", "NIR", "PWM", "API", "NFC", "SIM", "IMEI", "IMSI", "RFID", "BLE",
     "GPS", "GNSS", "CAN", "LIN", "ECU", "CPU", "GPU", "AI", "ML", "RF", "THZ", "SNR", "MFC",
     "PLR", "PPV", "SVV", "FWA", "CPE", "QR", "SDK", "AID", "FAST", "MPIS", "POS", "WHO", "VCL", "VSL", "MSC",
-    "RRC", "QOS", "LTE", "NR", "WIFI", "USB", "TCP", "IP", "HTTP", "HTTPS", "AM", "PV"
+    "RRC", "QOS", "QOD", "LTE", "NR", "WIFI", "USB", "TCP", "IP", "HTTP", "HTTPS", "AM", "PV",
+    "UTM", "CAMARA", "BGP", "VRF", "MEC", "UPF", "SMF", "BVLOS", "UAV", "UAS", "UE"
 }
+
+
+_TECHNICAL_TOKEN_CANONICAL = {
+    "QOS": "QoS", "QOD": "QoD", "THZ": "THz",
+    "UTM": "UTM", "CAMARA": "CAMARA", "BGP": "BGP", "VRF": "VRF", "MEC": "MEC",
+    "UPF": "UPF", "SMF": "SMF", "BVLOS": "BVLOS", "UAV": "UAV", "UAS": "UAS", "UE": "UE",
+    "API": "API", "GPS": "GPS", "6G": "6G",
+}
+
+def _canonical_technical_token(token: str) -> str:
+    raw = str(token or "")
+    upper = raw.upper()
+    if upper in _TECHNICAL_TOKEN_CANONICAL:
+        return _TECHNICAL_TOKEN_CANONICAL[upper]
+    if upper in _TECHNICAL_ACRONYM_ALLOWLIST:
+        return upper
+    return raw
 
 
 def _is_technical_acronym_token(token: str) -> bool:
@@ -3682,7 +3951,7 @@ def _inline_invention_title(title: str) -> str:
     text = str(title or "").strip()
     def repl(match: re.Match[str]) -> str:
         token = match.group(0)
-        return token if _is_technical_acronym_token(token) else _tr_lower(token)
+        return _canonical_technical_token(token) if _is_technical_acronym_token(token) else _tr_lower(token)
     return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşüÂâÎîÛû0-9]+", repl, text)
 
 
@@ -3695,11 +3964,11 @@ def _reference_sentence_case(name: str) -> str:
         word = match.group(0)
         if _is_technical_acronym_token(word):
             first_seen = True
-            return word
+            return _canonical_technical_token(word)
         low = _tr_lower(word)
         if not first_seen:
             first_seen = True
-            return low[:1].upper() + low[1:]
+            return _tr_capitalize_first(low)
         return low
     return re.sub(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9]+", repl, text)
 
@@ -3832,9 +4101,10 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
             numbered_claim_texts.append(p.text)
     _validate_dependent_claim_short_starts_texts(numbered_claim_texts, draft, language)
 
-    # Türkçe claim transition kısa-son-satır kapısı. Yalnız `sistemi olup, özelliği;`
-    # bağlamak yeterli değildir; Word bunu kısa bir ikinci satıra taşıyabilir. Bu nedenle
-    # `olup` öncesindeki son beş kelime de aynı NBSP kuyruğuna bağlanmış olmalıdır.
+    # Türkçe istem girişleri doğal Word satır kaydırmasıyla akmalıdır. Önceki
+    # çok-kelimeli NBSP kuyruğu iki yana yaslı satırlarda aşırı kelime aralığı
+    # oluşturabildiği için artık yasaktır. Kısa/orphan son satır riski Word→PDF
+    # render kapısında fiziksel satır üzerinden fail-closed denetlenir.
     if not en:
         for p in paras[ci + 1:ai]:
             ppr = p._p.pPr
@@ -3843,19 +4113,16 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
             numpr = ppr.find(qn("w:numPr"))
             if numpr is None or "özelliği;" not in p.text:
                 continue
-            if " olup, özelliği;" not in p.text:
-                raise ValueError("Word istem kalite kapısı: `olup, özelliği;` geçişi satır sonunda parçalanabilir; non-breaking boşluklarla birlikte tutulmalıdır.")
-            prefix = p.text.split(" olup, özelliği;", 1)[0]
-            total_prefix_words = len(re.findall(r"\S+", prefix.replace(" ", " ")))
-            required_tail = min(5, total_prefix_words)
-            protected_tail = protected_claim_tail_word_count(p.text)
-            if protected_tail < required_tail:
+            if "\u00a0" in p.text:
                 raise ValueError(
-                    "Word istem kalite kapısı: `olup, özelliği;` öncesinde kısa/orphan son satır riski var; "
-                    f"son {required_tail} kelime non-breaking kuyruk olarak korunmalıdır."
+                    "Word istem kalite kapısı: istem girişinde non-breaking boşluk kullanılamaz; "
+                    "iki yana yaslı metinde aşırı kelime aralığı oluşturabilir. Doğal satır kaydırması kullanılmalıdır."
                 )
-            # Claim preamble fontu şablondan kalıtılsa bile Word istemleri farklı platformda
-            # yeniden akıtırken satır kırılmasını değiştirmesin diye Arial 11 açık run biçimi ister.
+            if p._p.xpath(".//w:br"):
+                raise ValueError(
+                    "Word istem kalite kapısı: istem girişine manuel satır sonu eklenemez; "
+                    "satır kırılması Word tarafından doğal olarak yapılmalıdır."
+                )
             visible_runs = [r for r in p.runs if (r.text or "").strip()]
             if not visible_runs or any(r.font.name not in {None, "Arial"} for r in visible_runs):
                 raise ValueError("Word istem kalite kapısı: istem girişinde Arial dışı run fontu bulundu.")
@@ -3961,6 +4228,7 @@ def validate_tarifname_post_generation_quality(
     """Word üretildikten sonra ham-kaynak zincirini ve 6 zorunlu kalite kapısını nihai çıktı üzerinde yeniden çalıştırır."""
     doc = Document(io.BytesIO(data))
     final_text = "\n".join(p.text for p in doc.paragraphs)
+    validate_required_exact_technical_phrases(extracted, final_text)
 
     if not source_passage_registry:
         raise ValueError("ÇIKTI SONRASI KAPI 1/6 — ham kaynak pasaj envanteri olmadan tarifname indirilemez.")
@@ -4566,7 +4834,7 @@ Ayrıca tarifname ve istemleri ayrı bir TEKNİK KATKI taramasından geçir. İs
 Müşteri bilgisi boş değilse MÜŞTERİ SAVUNMA ENVANTERİ çıkar. Müşteri kaynağının tamamını ikinci kez tara. Her teknik savunma maddesini `customer_defence_points` içinde ayrı kimlikle sınıflandır. `source_quote` müşteri kaynağında birebir bulunmalı. `basis_quote` istem/tarifnamede birebir bulunmalı. Mevcut itiraza cevap veren ve kaynakla destekli madde `use_required=true` olmalıdır. Yalnız dayanak yokluğu, itirazla ilgisizlik veya gerçek tekrar halinde `use_required=false` yap ve `omission_reason` yaz. Kullanılabilir güçlü müşteri maddesini sessizce atlama.
 Revizyon gerekiyorsa EN AZ DEĞİŞİKLİK ilkesini uygula. Her old_text, TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olsun; tüm istemi old_text olarak verme. Değişmeyen kelimeyi old_text/new_text içine alma: artikel değişiyorsa yalnız artikel, unsur adı değişiyorsa yalnız değişen unsur adı, eksik harf varsa yalnız gerekli karakter farkı öner.
 EP raporunda Rule 42(1)(b) gereği önceki teknik dokümanlarının tarifnameye eklenmesi isteniyorsa description_prior_art_updates üret. Bu alanda D1/D2 etiketi kullanma. Mevcut `As a result of the research on the subject...` formatını izle. objective_summary yalnız ilgili X/Y kaynağın gerçek içeriği olsun. however_difference yalnız as-filed tarifnamede/istemlerde açıkça bulunan teknik farkı kullansın, yeni özellik veya yeni teknik etki eklemesin.
-Her basis_quote tarifnamede birebir bulunan dayanak pasajı olsun. Kapsam aşımı/yeni konu yaratma.
+Her basis_quote tarifnamede birebir bulunan dayanak pasajı olsun. İstem revizyonunda DOLAYLI/ÇIKARIMSAL dayanak kullanma. Yeni eklenen HER teknik özellik için `direct_support` içinde ayrı bir kayıt üret; `added_feature` önerilen new_text içinde açıkça yer alsın ve `basis_quote` TARİFNAME içinde birebir bulunsun ve o teknik özelliği doğrudan söylesin. Aynı paragrafta bulunma zorunluluğu yoktur; farklı doğrudan pasajlar ayrı support kayıtlarıyla kullanılabilir. Yalnız amaç/sonuç/avantajdan çıkarılan veya farklı pasajların yorumla birleştirilmesiyle elde edilen özellik doğrudan dayanak değildir ve isteme eklenemez. Sadece article/dilbilgisi düzeltmesi teknik kapsam eklemiyorsa `change_type="language"` kullan. Kapsam aşımı/yeni konu yaratma.
 
 JSON dışında yazma.
 ŞEMA:
@@ -4604,6 +4872,8 @@ JSON dışında yazma.
       "claim_number":"1",
       "reason":"",
       "basis_quote":"",
+      "change_type":"technical|language",
+      "direct_support":[{"added_feature":"","basis_quote":""}],
       "old_text":"",
       "new_text":""
     }}
@@ -4639,7 +4909,7 @@ def gorus_revision_refine_prompt(
 ) -> str:
     return f"""{GORUS_RULES}
 Aşağıdaki mevcut istem-revizyon analizini kullanıcının talimatına göre yeniden değerlendir.
-Yalnızca gerçekten zorunlu değişiklikleri bırak. En az değişiklik, açık tarifname dayanağı ve kapsam aşımı yapmama kuralları bağlayıcıdır.
+Yalnızca gerçekten zorunlu değişiklikleri bırak. En az değişiklik, DOĞRUDAN tarifname dayanağı ve kapsam aşımı yapmama kuralları bağlayıcıdır. Teknik bir özellik yalnızca tarifnamede doğrudan ve açık biçimde bulunuyorsa eklenebilir; dolaylı/çıkarımsal destek yasaktır. Aynı paragraf zorunlu değildir; her ek teknik özellik ayrı `direct_support` kaydıyla kendi birebir dayanak pasajına bağlanmalıdır.
 old_text, kaynak TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olmalıdır. Değişmeyen ön/son kelimeleri old_text/new_text içine alma. Artikel değişimini yalnız artikel, unsur adı değişimini yalnız değişen unsur adı, eksik harf düzeltmesini yalnız karakter bazında öner.
 Tüm istemi silip yeniden yazma. Kullanıcının talimatı teknik kaynaklarla çelişiyorsa uydurma yapma; güvenli olan minimum revizyonu seç.
 
@@ -4674,6 +4944,21 @@ def validate_gorus_analysis(analysis: dict[str, Any], spec_text: str, customer_t
             raise ValueError(f"Revize edilecek eski ifade tarifnamede birebir doğrulanamadı: {old_text[:120]}...")
         if basis and basis not in normalized_spec:
             raise ValueError(f"Revizyon dayanağı tarifnamede birebir doğrulanamadı: {basis[:120]}...")
+        change_type = str(item.get("change_type", "technical") or "technical").strip().lower()
+        if change_type not in {"technical", "language"}:
+            raise ValueError("Revizyon change_type alanı technical veya language olmalıdır.")
+        support_rows = item.get("direct_support") or []
+        if change_type == "technical" and not support_rows:
+            raise ValueError("Teknik istem revizyonunda her ek özellik için doğrudan tarifname dayanağı (direct_support) zorunludur.")
+        for row in support_rows:
+            added_feature = re.sub(r"\s+", " ", str(row.get("added_feature", ""))).strip()
+            direct_basis = re.sub(r"\s+", " ", str(row.get("basis_quote", ""))).strip()
+            if not added_feature or not direct_basis:
+                raise ValueError("direct_support kaydında added_feature ve basis_quote boş bırakılamaz.")
+            if added_feature.casefold() not in re.sub(r"\s+", " ", new_text).casefold():
+                raise ValueError("direct_support içindeki added_feature önerilen new_text içinde açıkça yer almalıdır.")
+            if direct_basis not in normalized_spec:
+                raise ValueError(f"Doğrudan revizyon dayanağı tarifnamede birebir doğrulanamadı: {direct_basis[:120]}...")
 
     for contribution in analysis.get("technical_contributions") or []:
         feature = re.sub(r"\s+", " ", str(contribution.get("feature", ""))).strip()
@@ -4746,10 +5031,11 @@ def gorus_prompt(
     required_documents: list[dict[str, Any]] | None = None,
 ) -> str:
     language_instruction = (
-        "Nihai görüşün tamamını İngilizce yaz; ancak bağlayıcı Word şablonunun kurum/metadata yerleşimini koru."
+        "Nihai görüşün tamamını İngilizce yaz. Belge başlığı RESPONSE LETTER olmalı; kurum adı ofis aksiyonunun gerçek patent ofisi olmalı; metadata etiketleri, hitap ve kapanış dahil bütün sabit metin İngilizce olmalı. Türkçe şablon sabitlerini taşıma."
         if _english_spec(output_language)
         else "Nihai görüşün tamamını Türkçe yaz."
     )
+    signoff_example = "Respectfully submitted,\nDESTEK PATENT A.Ş." if _english_spec(output_language) else "Saygılarımızla,\nDESTEK PATENT A.Ş."
     return f"""{GORUS_RULES}
 Aşağıdaki dosyalara dayanarak seçilen görüş türüne uygun ilgili patent ofisine sunulacak ayrıntılı görüş metni hazırla.
 Görüş türü: {report_type}
@@ -4788,12 +5074,13 @@ JSON dışında yazma.
  ],
  "combined_assessment":{{"heading":"","paragraphs":[],"groups":[{{"group":"Y1","labels":["D1","D2"],"heading":"D1 ve D2 Dokümanları Birlikte Değerlendirildiğinde","paragraphs":["",""]}}]}},
  "customer_point_ids_used":["C1"],
- "conclusion":[""], "signoff":"Saygılarımızla,\nDESTEK PATENT A.Ş."
+ "conclusion":[""], "signoff":"{signoff_example}"
 }}
 
 ÖZEL:
 - Şablon girişine uy: intro kısa olsun ve yalnız rapor tarihi/türü + istem/kriter sonucunu söylesin. Girişte D1/D2/D3 seçimini, `en yakın doküman` bilgisini veya hangi dokümana karşı savunma yapıldığını anlatma.
 - `applicant_override` boş değilse JSON `applicant` alanını aynen bu değer yap, değiştirme veya kısaltma. Boşsa yalnız rapor/tarifnameden güvenilir biçimde çıkar. Resmi raporda birden fazla başvuru sahibi ayrı satırlarda bulunuyorsa varsayılan olarak yalnız İLK başvuru sahibini `applicant` alanına yaz, diğerlerini otomatik birleştirme.
+- İngilizce görüşte signoff tam olarak `Respectfully submitted,\nDESTEK PATENT A.Ş.` olsun. Türkçe sabit şablon ifadeleri üretme. Hedef patent ofisi Word üretiminde resmi rapordan deterministik çıkarılacaktır.
 - İnceleme raporunda X/Y etiketi yoksa category alanını boş bırak; uydurma kategori yazma.
 - Türkiye/EP araştırma raporunda `category` alanına yalnız normalize temel kategori `X` veya `Y` yaz. Raporda `Y1`, `Y2`, `Y1,Y2`, `X1` gibi işaret varsa `category_marker` alanında bu işareti koru ve numaralı Y gruplarını `combination_groups` listesine yaz. Örneğin D1=Y1,Y2, D2=Y1, D3=Y2 ise D1 ile D2 (Y1) ve D1 ile D3 (Y2) ayrı ayrı değerlendirilir; üçünü tek bir kombinasyon gibi ele alma. Numarasız Y işaretinde aynı istem/istem grubu için en az iki Y dokümanı ve başka alt grup yoksa yalnız Y dokümanlarını tek kombinasyon grubu yap. Örneğin D1=X, D2=Y, D3=Y, D4=Y ise kombinasyon D2, D3 ve D4'tür; D1 otomatik olarak bu gruba girmez. Gerçek kombinasyon varsa `combined_assessment.groups` kullan. Her grup için `group`, gerçek `labels`, yalnız o etiketleri içeren ayrı `heading` ve en az iki kapsamlı `paragraphs` döndür. `combined_assessment.heading` ve `combined_assessment.paragraphs` yeni üretimde boş kalsın.
 - `cited_documents.title` analiz amacıyla tutulabilir, ancak nihai Word girişindeki bibliyografik satırlarda doküman başlığı kullanılmayacaktır. Bu satırlar yalnız `D1: <yayın numarası>`, `D2: <yayın numarası>`, `D3: <yayın numarası>` biçiminde ve tamamen kalın oluşturulur.
@@ -5121,6 +5408,28 @@ def _add_original_figure_table(doc: Document, template: Document, caption: str, 
     return table
 
 
+def infer_gorus_target_office(report_text: str, report_type: str) -> str:
+    """Infer the actual target patent office from the official report. Never default a foreign OA to TÜRKPATENT."""
+    text = str(report_text or "")
+    upper = text.upper()
+    patterns = [
+        (("UNITED STATES PATENT AND TRADEMARK OFFICE", "USPTO", "35 U.S.C."), "UNITED STATES PATENT AND TRADEMARK OFFICE"),
+        (("EUROPEAN PATENT OFFICE", "EPO"), "EUROPEAN PATENT OFFICE"),
+        (("JAPAN PATENT OFFICE", "JPO"), "JAPAN PATENT OFFICE"),
+        (("KOREAN INTELLECTUAL PROPERTY OFFICE", "KIPO"), "KOREAN INTELLECTUAL PROPERTY OFFICE"),
+        (("CHINA NATIONAL INTELLECTUAL PROPERTY ADMINISTRATION", "CNIPA"), "CHINA NATIONAL INTELLECTUAL PROPERTY ADMINISTRATION"),
+        (("UNITED ARAB EMIRATES", "UAE MINISTRY OF ECONOMY"), "UNITED ARAB EMIRATES MINISTRY OF ECONOMY"),
+        (("TÜRK PATENT VE MARKA KURUMU", "TÜRKPATENT", "TURKISH PATENT AND TRADEMARK OFFICE"), "TURKISH PATENT AND TRADEMARK OFFICE"),
+    ]
+    for needles, office in patterns:
+        if any(n in upper for n in needles):
+            return office
+    rt = str(report_type or "").casefold()
+    if "yurtdışı" in rt or "ofis aksiyon" in rt or "office action" in rt:
+        raise ValueError("Görüş hedef-ofis kapısı: yurtdışı ofis aksiyonunun ait olduğu patent ofisi resmi rapordan güvenilir biçimde belirlenemedi; TÜRKPATENT varsayımı yapılamaz.")
+    return "TURKISH PATENT AND TRADEMARK OFFICE"
+
+
 def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | None = None) -> bytes:
     """Build opinion by cloning binding 696809 paragraph/table archetypes.
 
@@ -5129,18 +5438,25 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
     """
     template = Document(str(GORUS_TEMPLATE))
     doc = Document(str(GORUS_TEMPLATE))
-    title_1 = deepcopy(template.paragraphs[0]._p)
-    title_2 = deepcopy(template.paragraphs[1]._p)
+    english_output = _english_spec(opinion.get("_output_language") or "Türkçe")
+    recipient_office = str(opinion.get("_recipient_office") or "").strip()
+    if english_output and not recipient_office:
+        raise ValueError("Görüş hedef-ofis kapısı: İngilizce görüşte hedef patent ofisi boş bırakılamaz.")
     metadata_table = deepcopy(template.tables[0]._tbl)
-    blank_meta = deepcopy(template.paragraphs[2]._p)
-    salutation = deepcopy(template.paragraphs[3]._p)
     clear_body(doc)
-    body = doc._element.body
-    body.insert(-1, title_1); body.insert(-1, title_2); body.insert(-1, metadata_table); body.insert(-1, blank_meta); body.insert(-1, salutation)
+    # Preserve the binding template archetypes while localizing visible shell text.
+    _clone_paragraph_with_text(doc, template.paragraphs[0], recipient_office if english_output else template.paragraphs[0].text, bold=True)
+    _clone_paragraph_with_text(doc, template.paragraphs[1], "RESPONSE LETTER" if english_output else template.paragraphs[1].text, bold=True)
+    doc._element.body.insert(-1, metadata_table)
+    _clone_blank(doc, template.paragraphs[2])
+    _clone_paragraph_with_text(doc, template.paragraphs[3], "Dear Examiner," if english_output else "Sayın Uzman,", bold=False)
 
     table = doc.tables[0]
+    labels = ["Application No.", "Applicant", "Reference"] if english_output else ["Başvuru No", "Başvuru Sahibi", "Referans"]
     values = [opinion.get("application_no", ""), opinion.get("applicant", ""), opinion.get("reference", "")]
-    for row, value in zip(table.rows, values):
+    for row, label, value in zip(table.rows, labels, values):
+        set_cell_text(row.cells[0], label, bold=True, size=11)
+        row.cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
         set_cell_text(row.cells[2], str(value), bold=False, size=11)
         row.cells[2].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
         for run in row.cells[0].paragraphs[0].runs:
@@ -5203,7 +5519,7 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
                     if bool(section.get("use_figure", False)) and label in figure_images:
                         _clone_blank(doc, template.paragraphs[11])
                         _clone_blank(doc, template.paragraphs[12])
-                        caption = str(section.get("figure_caption", "")).strip() or f"{label} dokümanı - Şekil"
+                        caption = str(section.get("figure_caption", "")).strip() or (f"{label} document - Figure" if english_output else f"{label} dokümanı - Şekil")
                         _add_original_figure_table(doc, template, caption, figure_images[label])
                         _clone_blank(doc, template.paragraphs[20])
                         figure_inserted = True
@@ -5211,7 +5527,7 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
             label = str(section.get("label", "")).upper()
             if bool(section.get("use_figure", False)) and label in figure_images:
                 _clone_blank(doc, template.paragraphs[11]); _clone_blank(doc, template.paragraphs[12])
-                caption = str(section.get("figure_caption", "")).strip() or f"{label} dokümanı - Şekil"
+                caption = str(section.get("figure_caption", "")).strip() or (f"{label} document - Figure" if english_output else f"{label} dokümanı - Şekil")
                 _add_original_figure_table(doc, template, caption, figure_images[label])
                 _clone_blank(doc, template.paragraphs[20])
         novelty_paras = list(section.get("novelty_paragraphs") or [])
@@ -5226,13 +5542,13 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
     combination_groups = [g for g in (combined.get("groups") or []) if isinstance(g, dict) and (str(g.get("heading", "")).strip() or (g.get("paragraphs") or []))]
     if combination_groups:
         for group in combination_groups:
-            _clone_paragraph_with_text(doc, template.paragraphs[33], group.get("heading", "Dokümanlar Birlikte Değerlendirildiğinde"), bold=True)
+            _clone_paragraph_with_text(doc, template.paragraphs[33], group.get("heading", "Documents Considered Together" if english_output else "Dokümanlar Birlikte Değerlendirildiğinde"), bold=True)
             for par in group.get("paragraphs") or []:
                 _clone_paragraph_with_text(doc, template.paragraphs[34], par, bold=False)
             _clone_blank(doc, template.paragraphs[35])
     elif str(combined.get("heading", "")).strip() or (combined.get("paragraphs") or []):
         # Backward-compatible rendering for old checkpoints only. New generation uses `groups`.
-        _clone_paragraph_with_text(doc, template.paragraphs[33], combined.get("heading", "Dokümanların birlikte değerlendirilmesi"), bold=True)
+        _clone_paragraph_with_text(doc, template.paragraphs[33], combined.get("heading", "Documents Considered Together" if english_output else "Dokümanların birlikte değerlendirilmesi"), bold=True)
         for par in combined.get("paragraphs") or []:
             _clone_paragraph_with_text(doc, template.paragraphs[34], par, bold=False)
         _clone_blank(doc, template.paragraphs[35])
@@ -5241,8 +5557,12 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
         _clone_paragraph_with_text(doc, template.paragraphs[36], par, bold=False)
     _clone_blank(doc, template.paragraphs[37])
     # Exact signoff archetypes from template.
-    lines = str(opinion.get("signoff", "Saygılarımızla,\nDESTEK PATENT A.Ş.")).splitlines()
-    _clone_paragraph_with_text(doc, template.paragraphs[38], lines[0] if lines else "Saygılarımızla,", bold=True)
+    default_signoff = "Respectfully submitted,\nDESTEK PATENT A.Ş." if english_output else "Saygılarımızla,\nDESTEK PATENT A.Ş."
+    lines = str(opinion.get("signoff", default_signoff)).splitlines()
+    expected_first = "Respectfully submitted," if english_output else "Saygılarımızla,"
+    if not lines or lines[0].strip() != expected_first:
+        lines = [expected_first, "DESTEK PATENT A.Ş."]
+    _clone_paragraph_with_text(doc, template.paragraphs[38], lines[0], bold=True)
     _clone_paragraph_with_text(doc, template.paragraphs[39], lines[1] if len(lines) > 1 else "DESTEK PATENT A.Ş.", bold=True)
 
     out = io.BytesIO(); doc.save(out)
@@ -6790,6 +7110,8 @@ def build_and_gate_gorus_opinion(
         requested_figure_docs,
         sim_assets,
     )
+    current_opinion["_output_language"] = source_state.get("language") or "Türkçe"
+    current_opinion["_recipient_office"] = infer_gorus_target_office(source_state.get("report_text") or "", source_state.get("report_type") or "")
     current_required_labels = [str(doc_item.get("label", "")) for doc_item in requested_figure_docs]
     missing = [label for label in current_required_labels if str(label).upper() not in current_figures]
     if missing:
@@ -7183,14 +7505,25 @@ if work_type == "Tarifname oluşturma":
                     model_images = source_package["model_images"]
                 else:
                     bbf_asset = UploadedAsset(bbf.name, bbf.getvalue(), bbf.type)
-                    source = extract_text_from_asset(bbf_asset)
                     technical_assets = assets_from_uploads(extra_technical_files)
-                    technical_text, technical_images = combine_asset_text("EK TEKNİK BELGE", technical_assets)
+                    example_assets = assets_from_uploads(example_files)
+                    # v5.4.64: byte-identical source files are parsed once. Independent local
+                    # PDF/DOCX parsing is overlapped, then every downstream stage reuses the
+                    # exact cached text. Image-only PDF AI fallback remains serial/fail-closed.
+                    extract_asset_texts_parallel(
+                        [bbf_asset, *technical_assets, *example_assets],
+                        metric_context=tariff_metric_context,
+                    )
+                    source = extract_text_from_asset(bbf_asset, metric_context=tariff_metric_context)
+                    technical_text, technical_images = combine_asset_text(
+                        "EK TEKNİK BELGE", technical_assets, metric_context=tariff_metric_context
+                    )
                     technical_figure_assets: list[UploadedAsset] = []
                     for asset in technical_assets:
                         technical_figure_assets.extend(extract_embedded_images(asset))
-                    example_assets = assets_from_uploads(example_files)
-                    example_text, _ = combine_asset_text("ÖRNEK TARİFNAME - YALNIZCA KURGU", example_assets)
+                    example_text, _ = combine_asset_text(
+                        "ÖRNEK TARİFNAME - YALNIZCA KURGU", example_assets, metric_context=tariff_metric_context
+                    )
                     embedded_images = extract_embedded_images(bbf_asset)
                     provided_figure_assets: list[UploadedAsset] = []
                     if separate_figures:
@@ -7227,10 +7560,12 @@ if work_type == "Tarifname oluşturma":
                     )
                     _validate_technical_fact_inventory(extracted)
                     validate_source_passage_audit(extracted, source_passage_registry)
+                    collect_required_exact_technical_phrases(extracted, source_passage_registry)
                     _workflow_checkpoint_set("tarifname_create", tariff_signature, "extracted", extracted)
                 else:
                     _validate_technical_fact_inventory(extracted)
                     validate_source_passage_audit(extracted, source_passage_registry)
+                    collect_required_exact_technical_phrases(extracted, source_passage_registry)
 
                 progress.progress(28, text="İstem yapısı belirleniyor...")
                 mode = resolve_tarifname_claim_mode(extracted, claim_choice)
@@ -7594,6 +7929,9 @@ elif work_type == "Tarifname düzenleme":
                 spec_text = docx_text(baseline_spec_bytes)
 
                 customer_assets = assets_from_uploads(update_customer_files)
+                support_assets = assets_from_uploads(update_support_files)
+                # v5.4.64: independent deterministic source reads are prewarmed together.
+                extract_asset_texts_parallel([*customer_assets, *support_assets])
                 customer_text, customer_images = combine_asset_text("MÜŞTERİ REVİZYON / SORU", customer_assets)
                 if review_context.strip():
                     customer_text += "\n--- AYNI WORD İÇİNDEKİ MÜŞTERİ YORUM / TRACK CHANGES ---\n" + review_context + "\n"
@@ -7603,7 +7941,6 @@ elif work_type == "Tarifname düzenleme":
                     )
                     st.stop()
 
-                support_assets = assets_from_uploads(update_support_files)
                 support_text, support_images = combine_asset_text("EK TEKNİK / ŞEKİL", support_assets)
 
                 # Tarifname düzenleme şekil revizyonunda mümkünse tek bir özgün şekiller Word dosyasının
@@ -7831,7 +8168,8 @@ elif work_type == "Görüş hazırlama":
     spec_file = st.file_uploader("Tarifname", type=["pdf", "docx", "doc", "txt"], key="gor_spec")
     reference = st.text_input("Ana dosya referansı nedir?", value="")
     applicant_override = st.text_input("Başvuru sahibi (raporda yoksa girin)", value="", key="gor_applicant")
-    output_name = st.text_input("Çıktı dosyasının adı", value="Görüş Metni_XXXXXX.docx")
+    default_opinion_output_name = "Response Letter_XXXXXX.docx" if _english_spec(opinion_language) else "Görüş Metni_XXXXXX.docx"
+    output_name = st.text_input("Çıktı dosyasının adı", value=default_opinion_output_name)
 
     for key, default in {
         "gorus_required_docs": None,
@@ -7947,21 +8285,17 @@ elif work_type == "Görüş hazırlama":
                 st.session_state.gorus_source = source_state_cached
             else:
                 metric_context = ("gorus", str(analysis_upload_signature))
-                report_text = extract_text_from_asset(
-                    UploadedAsset(report_file.name, report_file.getvalue(), report_file.type),
-                    metric_context=metric_context,
-                )
                 spec_bytes = spec_file.getvalue()
-                spec_text = extract_text_from_asset(
+                core_assets = [
+                    UploadedAsset(report_file.name, report_file.getvalue(), report_file.type),
                     UploadedAsset(spec_file.name, spec_bytes, spec_file.type),
-                    metric_context=metric_context,
-                )
-                prior_text = ""
+                ]
                 if prior_file:
-                    prior_text = extract_text_from_asset(
-                        UploadedAsset(prior_file.name, prior_file.getvalue(), prior_file.type),
-                        metric_context=metric_context,
-                    )
+                    core_assets.append(UploadedAsset(prior_file.name, prior_file.getvalue(), prior_file.type))
+                core_texts = extract_asset_texts_parallel(core_assets, metric_context=metric_context)
+                report_text = core_texts[0]
+                spec_text = core_texts[1]
+                prior_text = core_texts[2] if len(core_texts) > 2 else ""
                 sim_assets = assets_from_uploads(similar_files)
                 sim_text, sim_images = combine_asset_text(
                     "BENZER DOKÜMAN", sim_assets, metric_context=metric_context
@@ -7984,6 +8318,8 @@ elif work_type == "Görüş hazırlama":
                         cust_text,
                     ),
                     images=model_images,
+                    metric_stage="Görüş teknik analiz",
+                    metric_context=metric_context,
                 )
                 validate_gorus_analysis(analysis, spec_text, customer_text)
                 source_state_cached = {
@@ -8027,6 +8363,7 @@ elif work_type == "Görüş hazırlama":
 
     analysis = st.session_state.gorus_analysis
     source_state = st.session_state.gorus_source
+    gorus_metric_context = ("gorus", str((source_state or {}).get("workflow_signature") or analysis_upload_signature or "gorus"))
 
     ready_to_generate = False
     final_spec_text = None
@@ -8092,6 +8429,8 @@ elif work_type == "Görüş hazırlama":
                                 refine_instruction,
                             ),
                             images=source_state.get("model_images") or [],
+                            metric_stage="Görüş revizyon önerisi yeniden analiz",
+                            metric_context=gorus_metric_context,
                         )
                         validate_gorus_analysis(revised_analysis, source_state["spec_text"], source_state.get("cust_text", ""))
                         st.session_state.gorus_analysis = revised_analysis
@@ -8236,6 +8575,8 @@ elif work_type == "Görüş hazırlama":
                                 required_documents=source_state.get("required_docs") or [],
                             ),
                             images=source_state.get("model_images") or [],
+                            metric_stage="Görüş taslağı",
+                            metric_context=gorus_metric_context,
                         )
                         if source_state.get("applicant_override"):
                             opinion["applicant"] = source_state["applicant_override"]
@@ -8256,6 +8597,8 @@ elif work_type == "Görüş hazırlama":
                                 source_state["sim_text"], source_state["cust_text"], analysis, opinion,
                             ),
                             images=source_state.get("model_images") or [],
+                            metric_stage="Görüş ikinci okuma kalite denetimi",
+                            metric_context=gorus_metric_context,
                         )
                         try:
                             validate_ai_quality_audit(quality_audit)
@@ -8267,6 +8610,8 @@ elif work_type == "Görüş hazırlama":
                                     source_state["sim_text"], source_state["cust_text"], analysis, opinion, quality_audit,
                                 ),
                                 images=source_state.get("model_images") or [],
+                                metric_stage="Görüş kalite düzeltme turu",
+                                metric_context=gorus_metric_context,
                             )
                             if source_state.get("applicant_override"):
                                 opinion["applicant"] = source_state["applicant_override"]
@@ -8286,24 +8631,38 @@ elif work_type == "Görüş hazırlama":
                                     source_state["sim_text"], source_state["cust_text"], analysis, opinion,
                                 ),
                                 images=source_state.get("model_images") or [],
+                                metric_stage="Görüş ikinci okuma tekrar denetimi",
+                                metric_context=gorus_metric_context,
                             )
                             validate_ai_quality_audit(quality_audit)
                         _workflow_checkpoint_set("gorus_opinion", opinion_signature, "audited_opinion", {"opinion": deepcopy(opinion)})
                     # Sayfa/satır numaraları modelden alınmaz. Markup üretildiyse TEK otorite kullanıcıya
                     # verilecek son Markup Word dosyasının fiziksel render'ıdır; clean/orijinal sürüm kullanılmaz.
-                    progress.progress(86, text="Word ve tüm deterministik kalite kapıları doğrulanıyor...")
-                    data = build_and_gate_gorus_opinion(opinion, final_spec_name, final_spec_bytes, source_state)
-
-                    # Quality gates have passed. Now simulate the likely examiner reaction. This is NOT a
-                    # formatting/quality score, but a reasoned estimate of whether the current objection
-                    # would be withdrawn after reading this response.
-                    progress.progress(91, text="Bağımsız uzman perspektifiyle ikna olasılığı değerlendiriliyor...")
-                    examiner_assessment = ask_json(
-                        gorus_examiner_persuasion_prompt(
-                            source_state["report_text"], final_spec_text, source_state["sim_text"], opinion
-                        ),
-                        images=source_state.get("model_images") or [],
-                    )
+                    progress.progress(86, text="Word kalite kapıları ve bağımsız uzman perspektifi paralel çalıştırılıyor...")
+                    # v5.4.64: these two final operations depend on the same already-audited opinion but
+                    # not on each other. Run them concurrently without changing prompts or gates.
+                    gated_opinion = deepcopy(opinion)
+                    examiner_opinion = deepcopy(opinion)
+                    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pa-gorus-final") as pool:
+                        word_future = pool.submit(
+                            build_and_gate_gorus_opinion,
+                            gated_opinion,
+                            final_spec_name,
+                            final_spec_bytes,
+                            source_state,
+                        )
+                        examiner_future = pool.submit(
+                            ask_json,
+                            gorus_examiner_persuasion_prompt(
+                                source_state["report_text"], final_spec_text, source_state["sim_text"], examiner_opinion
+                            ),
+                            images=source_state.get("model_images") or [],
+                            metric_stage="Görüş bağımsız uzman ikna değerlendirmesi",
+                            metric_context=gorus_metric_context,
+                        )
+                        data = word_future.result()
+                        examiner_assessment = examiner_future.result()
+                    opinion = gated_opinion
                     validate_examiner_persuasion_assessment(examiner_assessment)
 
                     # If the examiner simulation remains weak/medium and sources permit, make one bounded
@@ -8320,6 +8679,8 @@ elif work_type == "Görüş hazırlama":
                                 examiner_assessment,
                             ),
                             images=source_state.get("model_images") or [],
+                            metric_stage="Görüş teknik güçlendirme turu",
+                            metric_context=gorus_metric_context,
                         )
                         if source_state.get("applicant_override"):
                             opinion["applicant"] = source_state["applicant_override"]
@@ -8339,16 +8700,33 @@ elif work_type == "Görüş hazırlama":
                                 source_state["sim_text"], source_state["cust_text"], analysis, opinion,
                             ),
                             images=source_state.get("model_images") or [],
+                            metric_stage="Görüş güçlendirme kalite denetimi",
+                            metric_context=gorus_metric_context,
                         )
                         validate_ai_quality_audit(strengthened_audit)
-                        data = build_and_gate_gorus_opinion(opinion, final_spec_name, final_spec_bytes, source_state)
-                        progress.progress(98, text="Güçlendirilmiş görüş için nihai uzman perspektifi hesaplanıyor...")
-                        examiner_assessment = ask_json(
-                            gorus_examiner_persuasion_prompt(
-                                source_state["report_text"], final_spec_text, source_state["sim_text"], opinion
-                            ),
-                            images=source_state.get("model_images") or [],
-                        )
+                        progress.progress(98, text="Güçlendirilmiş görüşün Word kapıları ve nihai uzman perspektifi paralel çalıştırılıyor...")
+                        gated_opinion = deepcopy(opinion)
+                        examiner_opinion = deepcopy(opinion)
+                        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pa-gorus-strengthened") as pool:
+                            word_future = pool.submit(
+                                build_and_gate_gorus_opinion,
+                                gated_opinion,
+                                final_spec_name,
+                                final_spec_bytes,
+                                source_state,
+                            )
+                            examiner_future = pool.submit(
+                                ask_json,
+                                gorus_examiner_persuasion_prompt(
+                                    source_state["report_text"], final_spec_text, source_state["sim_text"], examiner_opinion
+                                ),
+                                images=source_state.get("model_images") or [],
+                            metric_stage="Görüş bağımsız uzman ikna değerlendirmesi",
+                            metric_context=gorus_metric_context,
+                            )
+                            data = word_future.result()
+                            examiner_assessment = examiner_future.result()
+                        opinion = gated_opinion
                         validate_examiner_persuasion_assessment(examiner_assessment)
 
                     st.session_state.gorus_opinion_data = data
@@ -8374,6 +8752,9 @@ elif work_type == "Görüş hazırlama":
                     for check in qr.get("checks") or []:
                         st.write(f"✅ {check.get('name','')}")
             ea = st.session_state.get("gorus_examiner_assessment") or {}
+            if not ea:
+                st.error("Bağımsız uzman ikna oranı bulunamadı; görüş teslim kapısı nedeniyle Word indirilemez.")
+                st.stop()
             if ea:
                 score = int(ea.get("persuasion_probability", 0))
                 st.markdown("### Bağımsız uzman perspektifi")
@@ -8393,6 +8774,8 @@ elif work_type == "Görüş hazırlama":
                     st.write("**Teknik farkta daha da güçlendirilebilecek noktalar:**")
                     for item in ea.get("technical_difference_focus") or []:
                         st.write(f"• {item}")
+
+            _show_gorus_ai_metrics(str(source_state.get("workflow_signature") or analysis_upload_signature or "gorus"))
 
             current_opinion = st.session_state.get("gorus_opinion_json") or {}
             if current_opinion:
@@ -8426,6 +8809,8 @@ elif work_type == "Görüş hazırlama":
                                     deepcopy(current_opinion), revision_request.strip(),
                                 ),
                                 images=source_state.get("model_images") or [],
+                                metric_stage="Görüş kullanıcı revizyonu",
+                                metric_context=gorus_metric_context,
                             )
                             if source_state.get("applicant_override"):
                                 revised_opinion["applicant"] = source_state["applicant_override"]
@@ -8446,6 +8831,8 @@ elif work_type == "Görüş hazırlama":
                                     source_state["sim_text"], source_state["cust_text"], analysis, revised_opinion,
                                 ),
                                 images=source_state.get("model_images") or [],
+                                metric_stage="Görüş kullanıcı revizyonu kalite denetimi",
+                                metric_context=gorus_metric_context,
                             )
                             validate_ai_quality_audit(revision_audit)
                             if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
@@ -8454,17 +8841,29 @@ elif work_type == "Görüş hazırlama":
                             else:
                                 revision_spec_bytes = source_state["spec_bytes"]
                                 revision_spec_name = source_state["spec_name"]
-                            revision_progress.progress(78, text="Word ve deterministik kalite kapıları yeniden çalıştırılıyor...")
-                            revised_data = build_and_gate_gorus_opinion(
-                                revised_opinion, revision_spec_name, revision_spec_bytes, source_state
-                            )
-                            revision_progress.progress(91, text="Revize görüş için uzman-perspektifi yeniden hesaplanıyor...")
-                            revised_examiner = ask_json(
-                                gorus_examiner_persuasion_prompt(
-                                    source_state["report_text"], final_spec_text, source_state["sim_text"], revised_opinion
-                                ),
-                                images=source_state.get("model_images") or [],
-                            )
+                            revision_progress.progress(78, text="Revize Word kapıları ve uzman-perspektifi paralel çalıştırılıyor...")
+                            gated_revised_opinion = deepcopy(revised_opinion)
+                            examiner_revised_opinion = deepcopy(revised_opinion)
+                            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pa-gorus-user-rev") as pool:
+                                word_future = pool.submit(
+                                    build_and_gate_gorus_opinion,
+                                    gated_revised_opinion,
+                                    revision_spec_name,
+                                    revision_spec_bytes,
+                                    source_state,
+                                )
+                                examiner_future = pool.submit(
+                                    ask_json,
+                                    gorus_examiner_persuasion_prompt(
+                                        source_state["report_text"], final_spec_text, source_state["sim_text"], examiner_revised_opinion
+                                    ),
+                                    images=source_state.get("model_images") or [],
+                            metric_stage="Görüş bağımsız uzman ikna değerlendirmesi",
+                            metric_context=gorus_metric_context,
+                                )
+                                revised_data = word_future.result()
+                                revised_examiner = examiner_future.result()
+                            revised_opinion = gated_revised_opinion
                             validate_examiner_persuasion_assessment(revised_examiner)
                             st.session_state.gorus_opinion_json = deepcopy(revised_opinion)
                             st.session_state.gorus_opinion_data = revised_data
@@ -8568,6 +8967,8 @@ elif work_type == "Görüş hazırlama":
                                     source_state["sim_text"], source_state["cust_text"], analysis, edited_opinion,
                                 ),
                                 images=source_state.get("model_images") or [],
+                                metric_stage="Görüş manuel düzenleme kalite denetimi",
+                                metric_context=gorus_metric_context,
                             )
                             validate_ai_quality_audit(manual_audit)
                             if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
@@ -8576,15 +8977,28 @@ elif work_type == "Görüş hazırlama":
                             else:
                                 manual_spec_bytes = source_state["spec_bytes"]
                                 manual_spec_name = source_state["spec_name"]
-                            edited_data = build_and_gate_gorus_opinion(
-                                edited_opinion, manual_spec_name, manual_spec_bytes, source_state
-                            )
-                            edited_examiner = ask_json(
-                                gorus_examiner_persuasion_prompt(
-                                    source_state["report_text"], final_spec_text, source_state["sim_text"], edited_opinion
-                                ),
-                                images=source_state.get("model_images") or [],
-                            )
+                            gated_edited_opinion = deepcopy(edited_opinion)
+                            examiner_edited_opinion = deepcopy(edited_opinion)
+                            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pa-gorus-manual-rev") as pool:
+                                word_future = pool.submit(
+                                    build_and_gate_gorus_opinion,
+                                    gated_edited_opinion,
+                                    manual_spec_name,
+                                    manual_spec_bytes,
+                                    source_state,
+                                )
+                                examiner_future = pool.submit(
+                                    ask_json,
+                                    gorus_examiner_persuasion_prompt(
+                                        source_state["report_text"], final_spec_text, source_state["sim_text"], examiner_edited_opinion
+                                    ),
+                                    images=source_state.get("model_images") or [],
+                            metric_stage="Görüş bağımsız uzman ikna değerlendirmesi",
+                            metric_context=gorus_metric_context,
+                                )
+                                edited_data = word_future.result()
+                                edited_examiner = examiner_future.result()
+                            edited_opinion = gated_edited_opinion
                             validate_examiner_persuasion_assessment(edited_examiner)
                             st.session_state.gorus_opinion_json = deepcopy(edited_opinion)
                             st.session_state.gorus_opinion_data = edited_data
@@ -8602,7 +9016,7 @@ elif work_type == "Görüş hazırlama":
             st.download_button(
                 "Word görüş metnini indir",
                 data=st.session_state.gorus_opinion_data,
-                file_name=safe_output_name(source_state.get("output_name") or output_name, "Görüş Metni.docx"),
+                file_name=safe_output_name(source_state.get("output_name") or output_name, "Response Letter.docx" if _english_spec(source_state.get("language") or opinion_language) else "Görüş Metni.docx"),
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 type="primary",
                 use_container_width=True,
@@ -8828,11 +9242,10 @@ else:
                 first_asset = UploadedAsset(first_bbf.name, first_bbf.getvalue(), first_bbf.type)
                 revised_asset = UploadedAsset(revised_bbf.name, revised_bbf.getvalue(), revised_bbf.type)
                 report_asset = UploadedAsset(prior_report.name, prior_report.getvalue(), prior_report.type)
-                first_text = extract_text_from_asset(first_asset)
-                progress.progress(25, text="Revize araştırma konusu okunuyor...")
-                revised_text = extract_text_from_asset(revised_asset)
-                progress.progress(45, text="İlk ön araştırma raporu ve D1/D2 gerekçeleri okunuyor...")
-                report_text = extract_text_from_asset(report_asset)
+                progress.progress(25, text="İlk BBF, revize BBF ve önceki rapor paralel olarak okunuyor...")
+                first_text, revised_text, report_text = extract_asset_texts_parallel(
+                    [first_asset, revised_asset, report_asset]
+                )
                 progress.progress(65, text="Teknik farklar ve katkılar karşılaştırılıyor...")
                 analysis = ask_json(research_update_analysis_prompt(first_text, revised_text, report_text))
                 st.session_state.update_analysis = analysis

@@ -6,24 +6,25 @@ from docx.oxml.ns import qn
 
 from rules import APP_VERSION, RULESET_VERSION, TARIFNAME_RULES
 import app_core
-from tarifname_figure_generation import protect_turkish_claim_transition, protected_claim_tail_word_count
+from tarifname_figure_generation import protect_turkish_claim_transition
 
 
 def test_versions_and_v5437_rules():
-    assert APP_VERSION == "v5.4.63"
-    assert RULESET_VERSION == "2026-09-14.v56"
+    assert APP_VERSION == "v5.4.70"
+    assert RULESET_VERSION == "2026-09-16.v63"
     low = TARIFNAME_RULES.casefold()
     assert "ascii" in low and "hansi" in low and "eastasia" in low and "cs" in low
     assert "kısa/orphan" in low
-    assert "son en az 5 kelime" in low
+    assert "doğal satır kaydırması" in low
+    assert "non-breaking" in low and "yasak" in low
 
 
-def test_claim_transition_protects_five_words_before_transition():
+def test_claim_transition_preserves_natural_word_spacing():
     text = protect_turkish_claim_transition(
         "Hücrelerin haftalık davranışına göre anormal durum tespit sistemi olup, özelliği;"
     )
-    assert protected_claim_tail_word_count(text) == 5
-    assert "göre\u00a0anormal\u00a0durum\u00a0tespit\u00a0sistemi\u00a0olup,\u00a0özelliği;" in text
+    assert "\u00a0" not in text
+    assert text.endswith("tespit sistemi olup, özelliği;")
 
 
 def test_figure_page_counter_fields_have_literal_arial_all_scripts():

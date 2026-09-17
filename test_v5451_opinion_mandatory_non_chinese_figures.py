@@ -18,8 +18,8 @@ def _pdf_with_text(lines, fontname="helv"):
 
 
 def test_v551_versions_and_mandatory_figure_rule():
-    assert APP_VERSION == "v5.4.63"
-    assert RULESET_VERSION == "2026-09-14.v56"
+    assert APP_VERSION == "v5.4.70"
+    assert RULESET_VERSION == "2026-09-16.v63"
     low = GORUS_RULES.casefold()
     assert "kullanılabilir teknik şekil mevcutsa şekil kullanımı zorunludur" in low
     assert "çince/han" in low

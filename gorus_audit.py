@@ -1770,23 +1770,37 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
     if not doc.sections or _geom(doc.sections[0]) != _geom(tpl.sections[0]):
         raise ValueError("Görüş şablon kapısı: sayfa geometrisi/marj/header-footer mesafeleri 696809 şablonuyla aynı değil.")
     seq = _body_sequence(doc)
-    # Binding opening archetype: two institutional titles -> metadata table -> physical blank -> salutation -> intro -> physical blank.
+    # Binding opening archetype: two title paragraphs -> metadata table -> physical blank -> salutation -> intro -> physical blank.
     if len(seq) < 7 or [x[0] for x in seq[:7]] != ["p", "p", "t", "p", "p", "p", "p"]:
         raise ValueError("Görüş şablon kapısı: giriş öğelerinin paragraf/tablo sırası 696809 taslağıyla aynı değil.")
-    if seq[0][1] != tpl.paragraphs[0].text.strip() or seq[1][1] != tpl.paragraphs[1].text.strip():
-        raise ValueError("Görüş şablon kapısı: kurum başlıkları bağlayıcı taslakla aynı değil.")
-    if seq[3][1] != "" or seq[4][1] != "Sayın Uzman," or seq[6][1] != "":
-        raise ValueError("Görüş şablon kapısı: girişteki fiziksel boş paragraf / `Sayın Uzman,` düzeni taslağa uymuyor.")
+    english_output = str(opinion.get("_output_language") or "Türkçe").strip().casefold().replace("\u0307", "") in {"ingilizce", "english", "en"}
+    expected_office = str(opinion.get("_recipient_office") or "").strip()
+    expected_title_1 = expected_office if english_output else tpl.paragraphs[0].text.strip()
+    expected_title_2 = "RESPONSE LETTER" if english_output else tpl.paragraphs[1].text.strip()
+    expected_salutation = "Dear Examiner," if english_output else "Sayın Uzman,"
+    if english_output and (not expected_office or "TÜRK PATENT" in expected_office.upper() and "TURKISH PATENT" not in expected_office.upper()):
+        raise ValueError("Görüş hedef-ofis kapısı: İngilizce görüşte gerçek hedef patent ofisi belirlenmelidir.")
+    if seq[0][1] != expected_title_1 or seq[1][1] != expected_title_2:
+        raise ValueError("Görüş şablon kapısı: kurum/belge başlığı seçilen dil ve hedef ofisle eşleşmiyor.")
+    if seq[3][1] != "" or seq[4][1] != expected_salutation or seq[6][1] != "":
+        raise ValueError("Görüş şablon kapısı: girişteki fiziksel boş paragraf / hitap düzeni seçilen dile uymuyor.")
     texts = [p.text.strip() for p in doc.paragraphs]
-    if len(texts) < 6 or texts[0] != tpl.paragraphs[0].text.strip() or texts[1] != tpl.paragraphs[1].text.strip():
-        raise ValueError("Görüş şablon kapısı: kurum başlıkları bağlayıcı şablonla aynı değil.")
-    if "Sayın Uzman," not in texts:
-        raise ValueError("Görüş şablon kapısı: `Sayın Uzman,` girişi eksik.")
+    if len(texts) < 6 or texts[0] != expected_title_1 or texts[1] != expected_title_2:
+        raise ValueError("Görüş şablon kapısı: kurum/belge başlığı seçilen dil ve hedef ofisle eşleşmiyor.")
+    if expected_salutation not in texts:
+        raise ValueError("Görüş şablon kapısı: seçilen dile uygun hitap eksik.")
     if not doc.tables or len(doc.tables[0].rows) != 3 or len(doc.tables[0].columns) != 3:
         raise ValueError("Görüş şablon kapısı: metadata tablosu 3x3 değil.")
     labels = [doc.tables[0].rows[i].cells[0].text.strip() for i in range(3)]
-    if labels != ["Başvuru No", "Başvuru Sahibi", "Referans"]:
-        raise ValueError("Görüş şablon kapısı: metadata etiketleri bozulmuş.")
+    expected_labels = ["Application No.", "Applicant", "Reference"] if english_output else ["Başvuru No", "Başvuru Sahibi", "Referans"]
+    if labels != expected_labels:
+        raise ValueError("Görüş şablon kapısı: metadata etiketleri seçilen dile uymuyor.")
+    if english_output:
+        forbidden_fixed = {"TÜRK PATENT VE MARKA KURUMU", "Patent Dairesi Başkanlığına", "Başvuru No", "Başvuru Sahibi", "Referans", "Sayın Uzman,", "Saygılarımızla,"}
+        visible_fixed = set(texts) | set(labels)
+        leaked = sorted(forbidden_fixed & visible_fixed)
+        if leaked:
+            raise ValueError("Görüş İngilizce çıktı kapısı: Türkçe şablon sabiti kaldı: " + ", ".join(leaked))
     # Cited-document bibliography rows are binding: only D-label + publication number, fully bold, no title suffix.
     for d in opinion.get("cited_documents") or []:
         label = str(d.get("label", "")).strip()
@@ -1834,8 +1848,9 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
             if ("birlikte" in txt.casefold() or "considered together" in txt.casefold()) and all(re.search(rf"\b{re.escape(lab)}\b", txt, flags=re.I) for lab in union_labels):
                 if txt not in expected_group_headings:
                     raise ValueError("Görüş kombinasyon Word kapısı: ayrı Y grupları tek toplu kombinasyon başlığında birleştirilmiş.")
-    # Signoff is bindingly bold on both lines.
-    for signoff_text in ("Saygılarımızla,", "DESTEK PATENT A.Ş."):
+    # Signoff is bindingly bold on both lines and localized.
+    signoff_first = "Respectfully submitted," if english_output else "Saygılarımızla,"
+    for signoff_text in (signoff_first, "DESTEK PATENT A.Ş."):
         matching = [p for p in doc.paragraphs if p.text.strip() == signoff_text]
         if not matching:
             raise ValueError(f"Görüş kapanış kapısı: `{signoff_text}` satırı eksik.")
@@ -1843,11 +1858,11 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
         if not runs or not all(bool(r.bold) for r in runs):
             raise ValueError(f"Görüş kapanış kapısı: `{signoff_text}` satırı kalın değil.")
     # Body paragraphs must remain Arial 11 and 1.5-spaced; first two institutional headings are exempt.
-    sal_idx = texts.index("Sayın Uzman,")
+    sal_idx = texts.index(expected_salutation)
     for p in doc.paragraphs[sal_idx:]:
         if not p.text.strip():
             continue
-        if p.text.strip() in {"Saygılarımızla,", "DESTEK PATENT A.Ş."}:
+        if p.text.strip() in {signoff_first, "DESTEK PATENT A.Ş."}:
             continue
         spacing = p.paragraph_format.line_spacing
         if spacing is not None and abs(float(spacing) - 1.5) > 0.01:

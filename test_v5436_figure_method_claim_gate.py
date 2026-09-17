@@ -25,8 +25,8 @@ def _bw_source_png() -> bytes:
 
 
 def test_versions_and_new_figure_rules():
-    assert APP_VERSION == "v5.4.63"
-    assert RULESET_VERSION == "2026-09-14.v56"
+    assert APP_VERSION == "v5.4.70"
+    assert RULESET_VERSION == "2026-09-16.v63"
     assert "sistem şekline" in TARIFNAME_RULES.casefold()
     assert "ayrı yöntem/akış" in TARIFNAME_RULES.casefold()
     assert "arial 11" in TARIFNAME_RULES.casefold() and "kalın" in TARIFNAME_RULES.casefold()
@@ -57,7 +57,7 @@ def test_method_gate_rejects_figures_docx_without_separate_method_figure():
         app_core.validate_figures_docx_structure(data, {"method_steps": [{"number":"1001","text":"x"}]})
 
 
-def test_claim_transition_uses_non_breaking_spaces():
+def test_claim_transition_uses_natural_spaces():
     text = protect_turkish_claim_transition("Anormal durum tespit sistemi olup, özelliği;")
-    assert "sistemi\u00a0olup,\u00a0özelliği;" in text
-    assert "sistemi olup, özelliği;" not in text
+    assert "\u00a0" not in text
+    assert text == "Anormal durum tespit sistemi olup, özelliği;"

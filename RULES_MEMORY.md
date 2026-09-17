@@ -1,6 +1,18 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
-Kural sürümü: **2026-09-14.v56**
+## v5.4.70 / 2026-09-16.v63 — Görüş teslim özeti: ikna oranı + AI kullanım maliyeti
+
+- Görüş tamamlandığında bağımsız uzman-perspektifi ikna olasılığı `%0-100` olarak kullanıcıya zorunlu gösterilir; gizlenirse teslim tamamlanmış sayılmaz.
+- Görüş akışındaki gerçek AI çağrıları için token/süre telemetrisi tutulur ve yaklaşık model-token maliyeti TL olarak kullanıcıya zorunlu gösterilir; fiyat bilinmiyorsa `hesaplanamadı` yazılır, tutar uydurulmaz.
+- Oran ve maliyet kullanıcıya teslim özetinde gösterilir; resmi Response Letter/Görüş Metni Word belgesinin içine yazılmaz.
+
+## v5.4.70 / 2026-09-16.v63 - English Response Letter shell and target-office fail-closed gate
+- İngilizce görüşte belge türü `RESPONSE LETTER`; hedef kurum resmi OA'dan belirlenir. Yurtdışı OA'da TÜRKPATENT varsayımı yasaktır.
+- İngilizce metadata zorunlu olarak `Application No.` / `Applicant` / `Reference`, hitap `Dear Examiner,`, kapanış `Respectfully submitted,` olur.
+- İngilizce çıktı Word kapısı Türkçe şablon kalıntılarını deterministik olarak reddeder.
+- İngilizce görüş varsayılan dosya adı `Response Letter_XXXXXX.docx` olur.
+
+Kural sürümü: **2026-09-16.v63**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -470,7 +482,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 
 - Ayrı Şekiller Word sayacında Arial 11 kalın doğrulaması field dışındaki `/` run'ına bakılarak geçilemez. PAGE ve NUMPAGES alan sonuç run'larının `ascii/hAnsi/eastAsia/cs` fontlarının tamamı açıkça `Arial`, normal ve complex-script puntoları 11, bold/boldCs değerleri açıkça aktif olmalıdır. Header paragrafı varsayılan run özellikleri de aynı biçime sabitlenir.
 - Şekiller kalite kapısı yapısal OOXML denetimiyle bitmez; Şekiller DOCX ayrıca PDF'e render edilir ve her fiziksel sayfadaki `mevcut sayfa / toplam sayfa` göstergesinin üstte, 11 punto ve kalın görünmesi zorunludur.
-- İstem girişinde yalnız `sistemi olup, özelliği;` grubunun non-breaking yapılması yeterli değildir. `olup, özelliği;` öncesindeki son en az beş kelime aynı non-breaking kuyrukta tutulur.
+- İstem girişinde çok-kelimeli non-breaking boşluk kuyruğu kullanılmaz. `olup, özelliği;` çevresindeki satır akışı Word tarafından doğal yapılır; kısa/orphan son satır render kapısında fiziksel satır üzerinden denetlenir.
 - Tarifname render kapısı İSTEMLER bölümündeki fiziksel satırları inceler; `olup, özelliği;` ile biten dört veya daha az kelimelik kısa son satır/orphan varsa çıktı kullanıcıya açılmaz.
 
 
@@ -731,3 +743,44 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - `annotate_quote_locations` ve `validate_quote_locations_against_spec` ayrı kalite işlemleri olarak korunur; ikisi de aynı final fiziksel indeksten bağımsız biçimde beklenen konumu hesaplar ve kayıtlı değerleri fail-closed doğrular.
 - Kaynak içeriği değişirse hash değişir ve yeni PDF/render/index zorunludur. Eski indeks farklı içerikte kullanılamaz.
 - Bu revizyon hiçbir görüş/tarifname kalite kuralını, AI auditini, şablon kapısını veya teslim kapısını kaldırmaz; yalnız tekrarlanan LibreOffice dönüşümlerini ortadan kaldırır.
+
+
+## v5.4.64 / 2026-09-14.v57 — Kayıpsız kaynak cache ve güvenli paralelleştirme
+
+- Kaynak cache yalnız byte-identical dosyanın daha önce üretilmiş aynı kaynak metni/görsel baytlarını yeniden kullanır. Kaynağı özetlemez, seçmez, sınıflandırmaz veya eksiltmez. İçerik hash'i değiştiğinde cache geçersizdir.
+- Bağımsız yerel kaynak çıkarımları paralel çalıştırılabilir, ancak sonuçlar yükleme sırasına göre yeniden birleştirilir. Görsel PDF fallback'i ve AI tabanlı kaynak okuma paralel kaynak ön işleme kapsamına alınmaz.
+- Ham kaynak ikinci okuma, müşteri kapsama, istem/dayanak, new-matter, X/Y, Tip 3 kaynak, Word şablon ve render kapıları aynen korunur. Cache/checkpoint PASS olmayan sonucu kalite kapısı yerine kullanamaz.
+- Görüşte son Word kalite kapıları ile uzman-perspektifi değerlendirmesi audit sonrası paralel çalışabilir. Teslim için Word kolu da uzman-perspektifi kolu da tamamlanmış olmalıdır.
+
+
+## v5.4.66 / 2026-09-15.v59 — Türkçe terminoloji, müşteri teknik ayrıntı kaybı ve şekil beyaz dolgu kapıları
+
+- Türkçe büyük/küçük harf normalizasyonu artık Türkçe `i/İ` dönüşümünü deterministik yapar; `İnsansız/insansız` ifadesinin `Insansız/ınsansız` biçimine bozulması engellenir. UTM, CAMARA, BGP, VRF, MEC, UPF, SMF, BVLOS, API, GPS, QoD, QoS ve 6G gibi teknik kısaltmalar kanonik yazımla korunur.
+- UTM kullanılan Türkçe tarifnamede en az bir kez `insansız hava aracı trafik yönetimi (UTM)` açılımı zorunludur; sonraki kullanımlarda `UTM sunucusu` kullanılabilir. `Open Gateway` kullanılıyorsa ilk uygun kullanım `açık ağ geçidi (Open Gateway)` biçiminde olmalıdır.
+- Kaynakta teknik pasaj içinde tırnakla verilmiş müşteri teknik ad/ifadeleri (`source_exact_phrases`) deterministik olarak envantere alınır ve tarifnamede en az bir kez korunmadan çıktı PASS olamaz. Bu bilgiler ana istem için zorunlu değilse detaylı açıklamada tutulur; sırf daha genel/şık metin elde etmek amacıyla silinemez.
+- Kaynak özel standart/girişim adını daha genel işlevsel teknik sınıfla birlikte veriyorsa bağımsız istem gereksiz daraltılmaz. Örneğin `Open Gateway / API Sunucusu` kaynağında işlevsel üst kavram destekleniyorsa ana istemde `API sunucusu/arayüzü` kullanılabilir; özel ad detaylı açıklamada korunur.
+- Siyah-beyaz olsa bile geniş gri/gölgeli kutu dolgusu patent şekli için boş dolgu sayılmaz. Maddi açık-gri dolgu deterministik tespit edilir ve koyu çizgi/yazılar korunarak saf beyaz zemine dönüştürülür; final Şekiller kapısı gri dolgu kalan görseli reddeder.
+- Şekiller sayfa sayacı `PAGE / NUMPAGES` alanları, ayırıcı ve Header stili Arial 11 kalın olarak sabitlenir; alan yenilemesinde biçimi korumak için `MERGEFORMAT` kullanılır. `ŞEKİL N` başlıkları da tüm Word font scriptlerinde açık Arial 11 kalın yazılır.
+
+
+## v5.4.66 / 2026-09-15.v59 — İstemlerde doğal satır kaydırması
+
+- İki yana yaslı istem girişinde çok-kelimeli NBSP/non-breaking kuyruk kullanımı yasaktır; bu yapı satırdaki normal kelime aralıklarını aşırı büyütebildiği için kaldırılmıştır.
+- İstem girişine manuel satır sonu eklenemez. Word doğal satır kaydırması kullanılmalıdır.
+- `olup, özelliği;` kısa/orphan son satıra düşerse yapısal NBSP ile zorlamak yerine mevcut Word→PDF render kalite kapısı çıktıyı fail-closed reddeder ve kaynak destekli preamble düzeltmesi gerekir.
+
+
+
+## v5.4.70 / 2026-09-16.v63 — Görüş istem revizyonunda doğrudan dayanak kapısı
+
+- Görüş çalışmasında isteme eklenecek her teknik özellik için **doğrudan ve açık tarifname dayanağı** zorunludur; dolaylı veya çıkarımsal dayanak kabul edilmez.
+- Aynı paragrafta bulunma zorunluluğu yoktur. Bir revizyon birden fazla teknik özellik içeriyorsa her özellik ayrı `direct_support` kaydında `added_feature` ve tarifnamede birebir bulunan `basis_quote` ile eşleştirilir.
+- Yalnız amaç, avantaj, teknik sonuç veya başka bir unsurdan yorum yoluyla çıkarılan özellik doğrudan dayanak sayılmaz. Doğrudan dayanak bulunmayan özellik isteme eklenmez.
+- Teknik revizyonda `direct_support` boş bırakılamaz; her dayanak tarifnamede birebir doğrulanır ve `added_feature` önerilen `new_text` içinde açıkça bulunur. Kapılardan biri başarısızsa Markup, temiz istem ve görüş çıktısı üretilmez.
+- Yalnız article/dilbilgisi düzeltmesi teknik kapsam eklemiyorsa `change_type=language` olarak ayrılır.
+
+## v5.4.67 / 2026-09-15.v60 — Ön-detay referans yasağı + bağımlı sistem istem unsur dili
+
+- Daha önce yazılı kural olarak mevcut olan “REFERANS NUMARALARI bölümünden önce parantezli unsur/yöntem referansı kullanılmaz” şartı artık yalnız referans listesinin içini değil, TEKNİK ALAN’dan REFERANS NUMARALARI başlığına kadar bütün kullanıcı-görünür gövdeyi deterministik tarar. Amaç/kısa açıklamada `(90)`, `(91)` vb. kalırsa Word teslim edilmez.
+- Bağımlı sistem isteminde `olmasıdır/içermesidir` kapanışı tek başına PASS sağlamaz. Gövde `sağlaması`, `çalıştırmaması`, `saklaması`, `bağlaması`, `üretilmesi` vb. yöntem isimleştirmesi içeremez; `sağlayan`, `çalıştırmayan`, `saklayan`, `bağlayan`, `üreten` gibi unsur-merkezli sıfat-fiil dili zorunludur. `... uygun olmasıdır` şeklindeki salt uygunluk istemi yasaktır.
+- Kontroller taslak + nihai DOCX olmak üzere iki ayrı fail-closed noktada çalışır.
