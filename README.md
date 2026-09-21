@@ -1,4 +1,20 @@
-# Patent Atölyesi v5.4.70
+# Patent Atölyesi v5.4.71
+
+## v5.4.71 — Görüş final-kapı ve otomatik akış sertleştirmesi (18.09.2026)
+
+- Görüşün ilk iki kurum/belge başlığı artık şablondaki merkez hizasını dinamik içerikte de korur; Word teslim kapısı hizayı deterministik olarak tekrar doğrular.
+- `NASIL`, `uzman-NASIL`, `kalite kapısı`, `ikinci okuma`, `ham kaynaklara karşı` gibi iç QA/çalışma etiketlerinin nihai görüş metnine sızması hem JSON hem Word aşamasında fail-closed reddedilir. Normal cümle içindeki küçük harfli `nasıl` kullanımı yasak değildir.
+- Gerekli kaynaklar hazır olduğunda görüş mevcut istemlerle otomatik üretilir. Analizde istem revizyonu önerisi bulunması normal görüş akışını durdurmaz. İstem revizyonu yalnız kullanıcının ayrıca açık talebiyle yürütülür. Word üretiminden sonraki ilk revizyon etkileşimi `Görüşü revize et` alanıdır.
+- Promptlarda kullanıcıya sızabilecek `NASIL ilişkisi` iç etiketi doğal patent diliyle `teknik işlevsel ilişkinin nasıl kurulduğu` biçimine çevrildi.
+
+
+
+### v5.4.71+ / 2026-09-21 — Tarifname istem/dil/şekil kalite sıkılaştırması
+- Cümle içi teknik terimlerde sentence-case kontrolü taslak ve nihai Word boyunca deterministik çalışır; `Derin Paket İnceleme`, `Katman 7`, `Control Plane`, `Taşıyıcı Sınıfı` gibi bağlama göre gereksiz büyük harfli kullanımlar reddedilir.
+- `app.py` ve `app_core.py` tarifname kalite bayrakları eşitlenmiştir; `method_how_steps_passed` ve `sentence_case_clean` iki akışta da zorunludur.
+- Bağımlı sistem istemlerinde referanslı unsur virgülden önceyse Türkçe tamlayan/iyelik uyumu zorunludur: `motoru (20), ... sahip olmasıdır.` reddedilir, `motorunun (20), ... sahip olmasıdır.` kabul edilir.
+- İstem otomatik numaralandırmasında tab/hanging-indent geometrisi ve render devam-satırı hizası kontrol edilir.
+- Metin-ağırlıklı ve `1/2/A1/B2...` gibi referans dışı numaralandırmalar içeren kaynak şekiller, ayrı teknik şekil değeri taşımıyorsa nihai Şekiller dosyasından dışlanır; görseldeki benzersiz teknik bilgi tarifnameye aktarılmadan görsel sessizce atılamaz.
 
 ## v5.4.70 — Görüş teslim özeti: ikna oranı + AI kullanım maliyeti (16.09.2026)
 
@@ -6,13 +22,13 @@
 - Görüş akışındaki gerçek AI çağrıları için token/süre telemetrisi tutulur ve yaklaşık model-token maliyeti TL olarak kullanıcıya zorunlu gösterilir; fiyat bilinmiyorsa `hesaplanamadı` yazılır, tutar uydurulmaz.
 - Oran ve maliyet kullanıcıya teslim özetinde gösterilir; resmi Response Letter/Görüş Metni Word belgesinin içine yazılmaz.
 
-## v5.4.70 / 2026-09-16.v63 - English Response Letter shell and target-office fail-closed gate
+## v5.4.69 / 2026-09-16.v62 - English Response Letter shell and target-office fail-closed gate
 - İngilizce görüşte belge türü `RESPONSE LETTER`; hedef kurum resmi OA'dan belirlenir. Yurtdışı OA'da TÜRKPATENT varsayımı yasaktır.
 - İngilizce metadata zorunlu olarak `Application No.` / `Applicant` / `Reference`, hitap `Dear Examiner,`, kapanış `Respectfully submitted,` olur.
 - İngilizce çıktı Word kapısı Türkçe şablon kalıntılarını deterministik olarak reddeder.
 - İngilizce görüş varsayılan dosya adı `Response Letter_XXXXXX.docx` olur.
 
-## v5.4.70 — Görüş istem revizyonunda doğrudan dayanak kapısı (16.09.2026)
+## v5.4.68 — Görüş istem revizyonunda doğrudan dayanak kapısı (16.09.2026)
 
 Görüş revizyonlarında isteme eklenecek her teknik özellik artık ayrı `direct_support` kaydıyla as-filed tarifnamedeki birebir ve doğrudan pasajına bağlanır. Dolaylı/çıkarımsal dayanak fail-closed kabul edilir. Aynı paragraf zorunlu değildir; birden fazla doğrudan pasaj kullanılabilir. Article/dilbilgisi düzeltmeleri `change_type=language` olarak ayrılır.
 
@@ -745,3 +761,13 @@ Bu sürüm Türkçe `i/İ` normalizasyon hatasını giderir, UTM/teknik kısaltm
 - REFERANS NUMARALARI bölümünden önceki bütün kullanıcı-görünür tarifname gövdesi artık bilinen unsur/yöntem referanslarına karşı deterministik taranır. TEKNİK ALAN, ÖNCEKİ TEKNİK, literatür, BULUŞUN KISA AÇIKLAMASI/amaçlar ve ŞEKİLLERİN KISA AÇIKLAMASI içinde `(1)`, `(91)`, `(1001)` gibi referanslar bulunursa taslak ve nihai Word kapıları FAIL verir; parantezli referanslar yalnız BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren başlar.
 - Bağımlı sistem istemlerinde son kapanışın yalnız `olmasıdır/içermesidir` olması artık tek başına yeterli değildir. Teknik gövdedeki `sağlaması`, `çalıştırmaması`, `saklaması`, `bağlaması`, `üretilmesi` vb. eylem isimleştirmeleri reddedilir; işlev `sağlayan`, `çalıştırmayan`, `saklayan`, `bağlayan`, `üreten` gibi sıfat-fiille somut teknik unsura bağlanmalıdır. Salt `... uygun olmasıdır` istemi de reddedilir.
 - Her iki kontrol hem taslak kalite turunda hem nihai DOCX çıktı kapısında tekrar çalışır; model/audit PASS beyanı bu kontrolleri bypass edemez.
+
+## v5.4.71 — İşe özel Ek Talimat alanı
+
+- Tarifname oluşturma, Görüş hazırlama ve Tip 3 Ön Araştırma Raporu arayüzlerinde `Ek Talimat (varsa)` alanı bulunur.
+- Alan isteğe bağlıdır ve en fazla 500 karakter kabul eder. Talimat yalnız o çalışmaya özeldir; başka dosya/iş akışına kalıcı tercih olarak taşınmaz.
+- Ek talimat ilgili üretim/analiz promptlarına ikincil bağlam olarak eklenir ve workflow imzasına dahil edilir; böylece farklı talimat eski checkpoint/cache sonucunu yeniden kullanmaz.
+- Ek talimat repo kurallarını, kaynak hiyerarşisini, bağlayıcı şablonu, ham kaynak kontrollerini veya fail-closed kalite kapılarını geçersiz kılamaz. Çelişki halinde repo kuralı uygulanır.
+- Ek talimat kaynakta bulunmayan teknik bilgi, yeni özellik veya sonuç uydurmak için kullanılamaz.
+- Tarifname BBF analizi ayrıca buluş alanını otomatik olarak `Elektrik-Elektronik / Yazılım`, `Kimya / Biyoloji` veya `Mekanik` sınıflarından birine atar ve arayüzde bilgi olarak gösterir.
+

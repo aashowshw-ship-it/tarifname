@@ -14,6 +14,7 @@ from lxml import etree
 
 import fitz
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
 
@@ -1318,6 +1319,11 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
             raise ValueError(f"Görüş iç-kaynak kapısı: müşteri/BBF iç süreç ifadesi nihai görüşe taşınamaz ({kind}).")
         if any(x in low_text for x in forbidden_opinion_diction):
             raise ValueError(f"Görüş dil kapısı: devralma/mimari gibi yasak veya soyut model dili kullanılamaz ({kind}).")
+        if re.search(r"\bNASIL\b", text):
+            raise ValueError(f"Görüş iç-süreç etiketi kapısı: `NASIL/uzman-NASIL` gibi iç QA etiketi nihai görüş anlatımına taşınamaz ({kind}).")
+        internal_process_phrases = ["kalite kapısı", "ikinci okuma", "ham kaynaklara karşı"]
+        if any(x in low_text for x in internal_process_phrases):
+            raise ValueError(f"Görüş iç-süreç etiketi kapısı: iç çalışma/QA ifadesi nihai görüş anlatımına taşınamaz ({kind}).")
 
     # Research-report X/Y structure: X is defended individually; Y is only introduced individually.
     # The substantive inventive-step response to Y belongs in the actual combined-assessment group.
@@ -1787,8 +1793,17 @@ def validate_gorus_template_fidelity(docx_data: bytes, template_path: str | Path
     texts = [p.text.strip() for p in doc.paragraphs]
     if len(texts) < 6 or texts[0] != expected_title_1 or texts[1] != expected_title_2:
         raise ValueError("Görüş şablon kapısı: kurum/belge başlığı seçilen dil ve hedef ofisle eşleşmiyor.")
+    if doc.paragraphs[0].alignment != WD_ALIGN_PARAGRAPH.CENTER or doc.paragraphs[1].alignment != WD_ALIGN_PARAGRAPH.CENTER:
+        raise ValueError("Görüş kurum başlığı hizalama kapısı: ilk iki kurum/belge başlığı paragrafı şablondaki gibi ortalı olmalıdır.")
     if expected_salutation not in texts:
         raise ValueError("Görüş şablon kapısı: seçilen dile uygun hitap eksik.")
+    visible_body = "\n".join(texts)
+    if re.search(r"\bNASIL\b", visible_body):
+        raise ValueError("Görüş iç-süreç etiketi Word kapısı: `NASIL/uzman-NASIL` kullanıcıya görünen nihai Word metninde bulunamaz.")
+    body_low = visible_body.casefold()
+    for phrase in ("kalite kapısı", "ikinci okuma", "ham kaynaklara karşı"):
+        if phrase in body_low:
+            raise ValueError(f"Görüş iç-süreç etiketi Word kapısı: `{phrase}` kullanıcıya görünen nihai Word metninde bulunamaz.")
     if not doc.tables or len(doc.tables[0].rows) != 3 or len(doc.tables[0].columns) != 3:
         raise ValueError("Görüş şablon kapısı: metadata tablosu 3x3 değil.")
     labels = [doc.tables[0].rows[i].cells[0].text.strip() for i in range(3)]

@@ -1,18 +1,26 @@
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
+## v5.4.71 / 2026-09-18.v64 — Görüş final-kapı ve otomatik akış sertleştirmesi
+
+- Kurum/belge başlığının ilk iki paragrafı şablondaki gibi ortalı olmak zorundadır; dinamik metin üretimi hizayı değiştiremez.
+- İç QA etiketleri (`NASIL`, `uzman-NASIL`, `kalite kapısı`, `ikinci okuma`, `ham kaynaklara karşı`) kullanıcı-görünür görüşe taşınamaz. JSON + final Word iki ayrı deterministik kapıdan geçer.
+- Gerekli kaynaklar hazır olduğunda mevcut istemlerle görüş otomatik üretilir; istem revizyonu analizi akışı durdurmaz. İstem revizyonu yalnız açık kullanıcı talebiyle ayrı alt akışta uygulanır.
+- Nihai Word üretiminden sonra kullanıcıya ilk revizyon etkileşimi görüş metni revizyonudur.
+
+
 ## v5.4.70 / 2026-09-16.v63 — Görüş teslim özeti: ikna oranı + AI kullanım maliyeti
 
 - Görüş tamamlandığında bağımsız uzman-perspektifi ikna olasılığı `%0-100` olarak kullanıcıya zorunlu gösterilir; gizlenirse teslim tamamlanmış sayılmaz.
 - Görüş akışındaki gerçek AI çağrıları için token/süre telemetrisi tutulur ve yaklaşık model-token maliyeti TL olarak kullanıcıya zorunlu gösterilir; fiyat bilinmiyorsa `hesaplanamadı` yazılır, tutar uydurulmaz.
 - Oran ve maliyet kullanıcıya teslim özetinde gösterilir; resmi Response Letter/Görüş Metni Word belgesinin içine yazılmaz.
 
-## v5.4.70 / 2026-09-16.v63 - English Response Letter shell and target-office fail-closed gate
+## v5.4.69 / 2026-09-16.v62 - English Response Letter shell and target-office fail-closed gate
 - İngilizce görüşte belge türü `RESPONSE LETTER`; hedef kurum resmi OA'dan belirlenir. Yurtdışı OA'da TÜRKPATENT varsayımı yasaktır.
 - İngilizce metadata zorunlu olarak `Application No.` / `Applicant` / `Reference`, hitap `Dear Examiner,`, kapanış `Respectfully submitted,` olur.
 - İngilizce çıktı Word kapısı Türkçe şablon kalıntılarını deterministik olarak reddeder.
 - İngilizce görüş varsayılan dosya adı `Response Letter_XXXXXX.docx` olur.
 
-Kural sürümü: **2026-09-16.v63**
+Kural sürümü: **2026-09-18.v64**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -171,6 +179,11 @@ Başvuru bilgi alanlarında **Başvuru No**, **Başvuru Sahibi** ve **Referans**
 - `Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:` sonrasında ara maddeler virgülle, son madde noktayla biter; maddeler noktalamasız bırakılmaz.
 - Şekillerin kısa açıklamasında gerekli değilse yöntem adımı numara aralığı tekrarlanmaz; kısa ve işlevsel açıklama kullanılır.
 - `Tarifname_181176_template.docx` font ve başlık kadar **boş paragraflar, 1,5 satır aralığı, otomatik istem numaralandırması, gerçek Word madde işaretleri, istemler arası boşluklar ve sayfa geçişleri** bakımından da bağlayıcıdır.
+
+- **Cümle-içi sentence-case kapısı genişletildi:** yalnız unsur adları değil, `katman 7`, `control plane`, `data plane`, `layer 3`, `derin paket inceleme`, `taşıyıcı sınıfı ...` gibi özel ad/kısaltma olmayan teknik terimler de cümle ortasında normal küçük harfle yazılır. Bu kontrol taslak + istemler + nihai Word üzerinde deterministik çalışır; modelin `sentence_case_clean=true` beyanı tek başına yeterli değildir.
+- **İstem numarası hizası bağlayıcıdır:** Word otomatik numaralandırmasında numara sonrası ilk satır metni ve devam satırları aynı metin başlangıcına hizalanır. Numbering seviyesi `tab` son eki kullanır; tab durağı devam satırı `left` girintisiyle aynı olmalıdır. `space` son eki ile oluşan ilk-satır kayması kalite kapısında reddedilir.
+- **Bağımlı istem tamlayan/iyelik kapısı:** referanslı unsur virgülden önce kullanılıp bağımlı sistem istemi `... olmasıdır.` / `... içermesidir.` ile kapanıyorsa unsur adı genitif hâlinde kurulmalıdır. `motoru (20), ... sahip olmasıdır.` reddedilir; `motorunun (20), ... sahip olmasıdır.` kabul edilir. Bu kontrol taslak ve nihai Word istem metninde deterministik çalışır.
+- **Metin-ağırlıklı şekil dışlama kuralı:** Kaynak şekil çok yazılıysa ve `1/2/3`, `A1/B2` gibi REFERANS NUMARALARI ile ilgisiz işaretler patent referansı gibi algılanabilecekse, ayrıca buluşu açıklamak için gerekli ayrı bir şekil değeri taşımıyorsa nihai Şekiller dosyasına alınmaz. Ancak görseldeki benzersiz teknik bilgi önce technical_fact olarak tarifnameye aktarılır ve aktarım kanıtlanır. Her kaynak görsel envanterde `included` veya gerekçeli `excluded_text_heavy_nonreference_numbering` olarak izlenir; sessizce atlanamaz.
 
 ## 12. Görüş akışı – analiz, revizyon mutabakatı ve Markup
 
@@ -771,7 +784,7 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 
 
 
-## v5.4.70 / 2026-09-16.v63 — Görüş istem revizyonunda doğrudan dayanak kapısı
+## v5.4.71 / 2026-09-18.v64 — Görüş istem revizyonunda doğrudan dayanak kapısı
 
 - Görüş çalışmasında isteme eklenecek her teknik özellik için **doğrudan ve açık tarifname dayanağı** zorunludur; dolaylı veya çıkarımsal dayanak kabul edilmez.
 - Aynı paragrafta bulunma zorunluluğu yoktur. Bir revizyon birden fazla teknik özellik içeriyorsa her özellik ayrı `direct_support` kaydında `added_feature` ve tarifnamede birebir bulunan `basis_quote` ile eşleştirilir.
@@ -784,3 +797,18 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Daha önce yazılı kural olarak mevcut olan “REFERANS NUMARALARI bölümünden önce parantezli unsur/yöntem referansı kullanılmaz” şartı artık yalnız referans listesinin içini değil, TEKNİK ALAN’dan REFERANS NUMARALARI başlığına kadar bütün kullanıcı-görünür gövdeyi deterministik tarar. Amaç/kısa açıklamada `(90)`, `(91)` vb. kalırsa Word teslim edilmez.
 - Bağımlı sistem isteminde `olmasıdır/içermesidir` kapanışı tek başına PASS sağlamaz. Gövde `sağlaması`, `çalıştırmaması`, `saklaması`, `bağlaması`, `üretilmesi` vb. yöntem isimleştirmesi içeremez; `sağlayan`, `çalıştırmayan`, `saklayan`, `bağlayan`, `üreten` gibi unsur-merkezli sıfat-fiil dili zorunludur. `... uygun olmasıdır` şeklindeki salt uygunluk istemi yasaktır.
 - Kontroller taslak + nihai DOCX olmak üzere iki ayrı fail-closed noktada çalışır.
+
+## v5.4.71+ kalite sıkılaştırmaları (2026-09-21)
+- Türkçe tarifname ve istemlerin kullanıcıya görünen bütün metninde cümle içi genel teknik terimler başlık biçiminde büyük harfle başlatılamaz. `derin paket inceleme`, `taşıyıcı sınıfı`, `katman`, `control plane/kontrol düzlemi`, `data plane/veri düzlemi` gibi terimler cümle ortasında küçük harfle yazılır; gerçek kısaltmalar ve özel adlar korunur. Bu kural yalnız REFERANS NUMARALARI unsur adlarına değil tüm tarifname ve istem setine deterministik olarak uygulanır.
+- İstemlerde otomatik numara sonrası ilk metin başlangıcı ile devam satırları aynı X ekseninde olmalıdır. Numaralandırma tanımına ek olarak istem paragrafında açık `left + hanging + num-tab` geometrisi bulunmalı ve render kalite kapısı bu hizayı doğrulamalıdır.
+- Kaynak şekil esas olarak metin/karar kutularından oluşuyor ve REFERANS NUMARALARI ile ilgisiz `1/2/3`, `A1/B2` vb. numara-adım işaretlerini yoğun biçimde taşıyorsa, şekil zorunlu bir teknik geometri/bağlantı ilişkisini bağımsız açıklamadığı sürece nihai ŞEKİLLER dosyasına alınmaz. Dışlamadan önce şekle özgü teknik bilgi tarifname gövdesine eksiksiz aktarılır. Yöntem akışı gerekiyorsa kaynak numaralar korunmak yerine gerçek 1001+ yöntem adımı referanslarıyla sade ayrı yöntem şekli oluşturulur.
+
+## v5.4.71 — İşe özel Ek Talimat alanı
+
+- Tarifname oluşturma, Görüş hazırlama ve Tip 3 Ön Araştırma Raporu arayüzlerinde `Ek Talimat (varsa)` alanı bulunur.
+- Alan isteğe bağlıdır ve en fazla 500 karakter kabul eder. Talimat yalnız o çalışmaya özeldir; başka dosya/iş akışına kalıcı tercih olarak taşınmaz.
+- Ek talimat ilgili üretim/analiz promptlarına ikincil bağlam olarak eklenir ve workflow imzasına dahil edilir; böylece farklı talimat eski checkpoint/cache sonucunu yeniden kullanmaz.
+- Ek talimat repo kurallarını, kaynak hiyerarşisini, bağlayıcı şablonu, ham kaynak kontrollerini veya fail-closed kalite kapılarını geçersiz kılamaz. Çelişki halinde repo kuralı uygulanır.
+- Ek talimat kaynakta bulunmayan teknik bilgi, yeni özellik veya sonuç uydurmak için kullanılamaz.
+- Tarifname BBF analizi ayrıca buluş alanını otomatik olarak `Elektrik-Elektronik / Yazılım`, `Kimya / Biyoloji` veya `Mekanik` sınıflarından birine atar ve arayüzde bilgi olarak gösterir.
+

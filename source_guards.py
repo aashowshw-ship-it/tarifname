@@ -14,6 +14,34 @@ ADMIN_PASSAGE_HINT_RE = re.compile(
 )
 
 
+INVENTION_DOMAINS = (
+    "Elektrik-Elektronik / Yazılım",
+    "Kimya / Biyoloji",
+    "Mekanik",
+)
+
+
+def validate_invention_domain(extracted: dict[str, Any]) -> str:
+    """BBF analizindeki zorunlu üçlü buluş alanını kanonik biçimde doğrular."""
+    raw = re.sub(r"\s+", " ", str(extracted.get("invention_domain", "") or "")).strip()
+    aliases = {
+        "elektrik-elektronik / yazılım": "Elektrik-Elektronik / Yazılım",
+        "elektrik-elektronik/yazılım": "Elektrik-Elektronik / Yazılım",
+        "elektrik elektronik / yazılım": "Elektrik-Elektronik / Yazılım",
+        "kimya / biyoloji": "Kimya / Biyoloji",
+        "kimya/biyoloji": "Kimya / Biyoloji",
+        "mekanik": "Mekanik",
+    }
+    canonical = aliases.get(raw.casefold())
+    if canonical not in INVENTION_DOMAINS:
+        raise ValueError(
+            "Buluş alanı BBF analizinden güvenilir biçimde belirlenemedi. "
+            "Beklenen alanlardan biri: Elektrik-Elektronik / Yazılım, Kimya / Biyoloji veya Mekanik."
+        )
+    extracted["invention_domain"] = canonical
+    return canonical
+
+
 def build_source_passage_registry(source_text: str, technical_supplement_text: str) -> list[dict[str, str]]:
     """Ham kaynaklardan deterministik pasaj kimliği üretir; fact envanterinin kendi eksikliğini gizlemesini engeller."""
     registry: list[dict[str, str]] = []

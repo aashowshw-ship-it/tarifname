@@ -88,5 +88,10 @@ test_v5466_claim_natural_wrap.py
 test_v5467_reference_dependent_claim_gate.py
 test_v5468_opinion_direct_amendment_basis.py
 test_v5469_opinion_english_response_letter.py
+test_v5470_opinion_delivery_ratio_cost.py
+test_v5471_opinion_final_gate_flow.py
+test_v5471b_tarifname_domain_ui.py
+test_v5472_sentence_claim_figure_hardening.py
+test_v5473_extra_instruction_ui.py
 validators.py
 word_math.py
