@@ -1,4 +1,13 @@
-# Patent Atölyesi v5.4.72
+# Patent Atölyesi v5.4.73
+
+## v5.4.73 / 2026-09-21 — EPO/PCT istem açıklık ve müşteri-sorusu comment kapısı
+
+- Her tarifname, genel teknik-terim kontrolünden ayrı bir **EPO/PCT istem açıklık ve belirlilik turundan** geçer. Her bağımsız ve bağımlı istem teknikte uzman kişi açısından tek tek incelenir.
+- Tanımsız değişken/sembol, öncülü olmayan `aynı/söz konusu/bu`, tanımsız eşik/ölçek/güven/ölçüt, objektif sınırı olmayan göreli ifade, belirsiz teknik özne/nesne ve örtülü başka-isteme gönderme özellikle taranır.
+- Sorun BBF/ek teknik kaynakta doğrudan bulunan bilgiyle giderilebiliyorsa istem yalnız **minimum kaynak-destekli değişiklikle** düzeltilir. Kaynakta bulunmayan formül, katsayı, eşik veya teknik ilişki uydurulmaz.
+- Kaynak açıklık sorununu çözmüyorsa tarifname teslimi durdurulmaz. Bunun yerine müşteriye yöneltilecek somut soru, belirsizliğin bulunduğu **ilgili istem ifadesinin üzerinde Word comment** olarak yer alır. Genel not paragrafı veya tarifname gövdesi içine soru eklenmez.
+- Bu commentlerin görünür yazarı zorunlu olarak **Destek Patent** (`w:author=Destek Patent`, initials `DP`) olur. Her çözülemeyen açıklık sorunu ya kaynakla çözülmeli ya da bu comment sorusuna dönüşmelidir.
+- Nihai Word kalite kapısı `claim_clarity=true` doğrulamasını, comment metnini ve yorum yazarını tekrar denetler.
 
 ## v5.4.72 / 2026-09-21 — Referans, istem ve kaynak-şekil sadakati sertleştirmesi
 

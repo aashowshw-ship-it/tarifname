@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.72"
-RULESET_VERSION = "2026-09-18.v64"
+APP_VERSION = "v5.4.73"
+RULESET_VERSION = "2026-09-21.v65"
 
 EXTRA_CONTROLS_NOTICE = "EKSTRA KONTROLLER YAPILDI"
 EXTRA_CONTROL_GATE_KEYS = (
@@ -16,6 +16,7 @@ EXTRA_CONTROL_GATE_KEYS = (
     "element_step_language",
     "formula_format",
     "how_test",
+    "claim_clarity",
 )
 
 def tarifname_extra_controls_completed(
@@ -224,6 +225,7 @@ F. SON KALİTE KONTROLÜ
 65AI. İnsan rolü, kişi veya son kullanıcı (`operatör`, `kullanıcı`, `arayan`, `hasta`, `müşteri temsilcisi` vb.) bağımsız teknik istem unsuru olarak tanımlanamaz ve sırf kaynak şekil/ref tablosunda harfli işaret taşıdığı için isteme alınamaz. İnsan rolü şekil/detaylı açıklamada bağlam olarak kalabilir. Buna karşılık `operatör terminali`, `kullanıcı cihazı`, `arayüz`, `ekipman` gibi gerçek teknik nesneler bu yasaktan etkilenmez.
 65AJ. Türkçe bağımlı sistem istemi `olmasıdır.` ile kapanıyorsa kapanış, daraltılan unsurun teknik türüyle uyumlu olmalıdır: `... modülünün ... bir modül olmasıdır.`, `... biriminin ... bir birim olmasıdır.`, `... elemanının ... bir eleman olmasıdır.` gibi. `... bir yapıda olmasıdır.` gibi unsur türünü belirsizleştiren genel kapanış yasaktır. Alt istem `içermesidir.` ile kuruluyorsa eklenen teknik alt-unsur/özellik açıkça belirtilmelidir.
 65AK. Teknik terim açıklık kapısı zorunludur. İlgili alandaki uzman için standart ve tek anlamlı terim gereksiz yere ders kitabı gibi açıklanmaz; ancak çevrilmiş/özel kullanımlı, bağlama göre birden fazla anlam taşıyabilen veya istem kapsamını belirsiz bırakabilecek terim ilk uygun kullanımda teknik olarak tanımlanır. Örneğin `logaritmik nicemleme`, `zaman kapılama`, `gömü`, `kalibre edilmemiş skor` gibi terimler kaynak bağlamında neyi ifade ettikleri anlaşılmıyorsa detaylı açıklamada işlev/mekanizma ile açıklanır. Nihai kalite turunda `technical_term_clarity_passed=true` olmadan çıktı üretilemez.
+65AO. EPO/PCT istem açıklık ve belirlilik turu, normal teknik-terim kontrolünden ayrı ve zorunlu bir incelemedir. Her bağımsız ve bağımlı istem teknikte uzman kişi açısından tek tek okunur; tanımsız değişken/sembol, öncülü olmayan `aynı/söz konusu/bu` kullanımı, tanımsız eşik/ölçek/güven/ölçüt, objektif sınırı olmayan göreli ifade, belirsiz teknik özne/nesne, örtülü başka-isteme gönderme ve koruma sınırını belirsiz bırakan işlevsel/sonuçsal ifade ayrıca değerlendirilir. Kaynakta doğrudan açıklık giderici dayanak varsa istem minimum değişiklikle düzeltilir. Kaynakta dayanak YOKSA yeni teknik bilgi uydurulmaz ve tarifname üretimi durdurulmaz; ilgili istemdeki belirsiz ifade üzerinde müşteriye somut soru Word comment olarak eklenir. Comment genel not paragrafı olarak gövdeye yazılamaz, belirsizliğin bulunduğu ifadeye bağlanır ve görünür `w:author` değeri zorunlu olarak `Destek Patent`, initials `DP` olur. Her kaynakta çözülemeyen sorun ya bu comment sorusuna dönüşmeli ya da kalite kapısı FAIL olmalıdır; `claim_clarity` son kapısı PASS olmadan teslim açılamaz.
 65AL. Kaynakta birbirinden teknik olarak bağımsız birden fazla yöntem akışı bulunabilir. Birincil yöntem `method_claim` alanında tutulur; bunun gerçekten alt/tercihli bir uygulaması olan eğitim, ön işleme veya benzeri akış uygun dayanak varsa `dependent_method_claims` altında bağımlılaştırılabilir. Birincil yöntemin bütün şartlarına bağlanması korumayı gereksiz daraltacak bağımsız bir yöntem (örneğin ayrı kayıt-zamansal lokalizasyon akışı) `additional_method_claims` içinde ayrı bağımsız istem olarak modellenir. Ayrı bağımsız istem sayısı kaynak teknik bağımsızlığa göre belirlenir; sırf farklı 1000-serisi adım numarası var diye otomatik yeni bağımsız istem açılmaz.
 65AM. Müşteri kaynak şeklinin yazı temizliği/referans düzenlemesinde yeniden çizim son çaredir. Basit temizleme yapılabiliyorsa özgün raster/vektör şekil esas alınır; kutu, ok, ok ucu, yarım ok, kesikli/solid çizgi, bağlantı, dal ve göreli konumlar değiştirilmez. Referanslı kutuda unsur adı + referans birlikte bulunuyorsa ve yazısız şekil isteniyorsa yalnız unsur adı silinir, gerçek referans aynı kutuda ortalanır. Numara taşımayan açıklama/karar yazıları kullanıcı talebi yoksa korunabilir. Düzenleme sonrası kaynakla piksel/görsel karşılaştırması yapılarak yanlış silinen çizgi/ok/kutu kenarı varsa fail-closed uygulanır.
 65AN. `Ek Talimat (varsa)` şekil üretimini etkiliyorsa talimat yalnız tarifname metni promptlarına değil, kaynak şekil audit, şekil düzenleme ve ikinci görsel doğrulama çağrılarına da aynen aktarılır. Şekil çağrısının ek talimattan habersiz çalışması kalite kapısı ihlalidir.

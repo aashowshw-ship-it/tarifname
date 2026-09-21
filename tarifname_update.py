@@ -514,6 +514,71 @@ def _add_comment(doc: Document, anchor_para: Paragraph, text: str) -> None:
     doc.add_comment(runs=[runs[0]], text=text, author="Destek Patent", initials="DP")
 
 
+def add_word_comment_at_phrase(
+    doc: Document,
+    anchor_text: str,
+    text: str,
+    *,
+    author: str = "Destek Patent",
+    initials: str = "DP",
+) -> None:
+    """Anchor a Word comment to the exact unclear phrase in a unique paragraph.
+
+    Initial specification generation uses this for unresolved EPO/PCT clarity questions.
+    The question therefore appears beside the relevant wording instead of as a body note.
+    """
+    anchor = str(anchor_text or "").strip()
+    comment_text = str(text or "").strip()
+    if not anchor or not comment_text:
+        raise ValueError("Açıklık yorumu için anchor_text ve soru metni zorunludur.")
+    if not hasattr(doc, "add_comment"):
+        raise ValueError("Kurulu python-docx sürümü Word comment API'sini desteklemiyor.")
+
+    matches: list[Paragraph] = []
+    for para in iter_document_paragraphs(doc):
+        if anchor in (para.text or ""):
+            matches.append(para)
+    if len(matches) != 1:
+        raise ValueError(
+            "Açıklık sorusu Word comment anchor'ı benzersiz bulunamadı: " + anchor[:120]
+        )
+    para = matches[0]
+    full = para.text or ""
+    start = full.find(anchor)
+    if start < 0:
+        raise ValueError("Açıklık sorusu anchor ifadesi paragrafta bulunamadı.")
+    end = start + len(anchor)
+
+    # Generated claim paragraphs are plain text runs. Rebuild only this paragraph's
+    # text runs so the exact unclear phrase becomes a dedicated comment anchor, while
+    # preserving paragraph numbering/indent geometry and the first run's character style.
+    source_runs = [r for r in para.runs if r.text is not None]
+    base_rpr = None
+    if source_runs:
+        rpr = source_runs[0]._r.find(qn("w:rPr"))
+        base_rpr = deepcopy(rpr) if rpr is not None else None
+    for run in list(para.runs):
+        para._p.remove(run._r)
+
+    def _add_styled_run(value: str):
+        if not value:
+            return None
+        run = para.add_run(value)
+        if base_rpr is not None:
+            existing = run._r.find(qn("w:rPr"))
+            if existing is not None:
+                run._r.remove(existing)
+            run._r.insert(0, deepcopy(base_rpr))
+        return run
+
+    _add_styled_run(full[:start])
+    anchor_run = _add_styled_run(full[start:end])
+    _add_styled_run(full[end:])
+    if anchor_run is None:
+        raise ValueError("Açıklık sorusu için yorum anchor run'ı oluşturulamadı.")
+    doc.add_comment(runs=[anchor_run], text=comment_text, author=author, initials=initials)
+
+
 def build_updated_spec_docx(source_docx: bytes, plan: dict[str, Any], *, track_changes: bool, add_comments: bool = False) -> bytes:
     doc = Document(io.BytesIO(source_docx))
     if track_changes:

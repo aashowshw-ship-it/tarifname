@@ -1,3 +1,10 @@
+## v5.4.73 / 2026-09-21.v65 — EPO/PCT istem açıklık turu + ilgili yerde Destek Patent comment
+
+- Her tarifname normal teknik-terim kontrolünden ayrı bir EPO/PCT istem açıklık ve belirlilik turundan geçer; bütün bağımsız ve bağımlı istemler tek tek incelenir.
+- Kaynakta doğrudan açıklık giderici dayanak varsa yalnız minimum ve kaynak-destekli istem düzeltmesi yapılır. Kaynakta çözüm yoksa teknik ayrıntı uydurulmaz ve tarifname teslimi durdurulmaz.
+- Kaynakla çözülemeyen her husus, belirsizliğin bulunduğu ilgili istem ifadesine bağlı Word comment olarak müşteriye sorulur; genel not paragrafı veya tarifname gövdesine soru eklenmez.
+- Commentlerin görünür yazarı zorunlu olarak `Destek Patent`, initials `DP` olur. Her çözülemeyen sorun ya kaynakla çözülmüş olmalı ya da gerçek Word comment sorusuna dönüşmelidir.
+- Nihai Word kapısında `claim_clarity=true`, comment metni ve comment yazarı tekrar doğrulanır.
 
 ## v5.4.72 / 2026-09-21 — Referans, istem ve kaynak-şekil sadakati sertleştirmesi
 
@@ -30,7 +37,7 @@
 - İngilizce çıktı Word kapısı Türkçe şablon kalıntılarını deterministik olarak reddeder.
 - İngilizce görüş varsayılan dosya adı `Response Letter_XXXXXX.docx` olur.
 
-Kural sürümü: **2026-09-18.v64**
+Kural sürümü: **2026-09-21.v65**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -807,6 +814,16 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Daha önce yazılı kural olarak mevcut olan “REFERANS NUMARALARI bölümünden önce parantezli unsur/yöntem referansı kullanılmaz” şartı artık yalnız referans listesinin içini değil, TEKNİK ALAN’dan REFERANS NUMARALARI başlığına kadar bütün kullanıcı-görünür gövdeyi deterministik tarar. Amaç/kısa açıklamada `(90)`, `(91)` vb. kalırsa Word teslim edilmez.
 - Bağımlı sistem isteminde `olmasıdır/içermesidir` kapanışı tek başına PASS sağlamaz. Gövde `sağlaması`, `çalıştırmaması`, `saklaması`, `bağlaması`, `üretilmesi` vb. yöntem isimleştirmesi içeremez; `sağlayan`, `çalıştırmayan`, `saklayan`, `bağlayan`, `üreten` gibi unsur-merkezli sıfat-fiil dili zorunludur. `... uygun olmasıdır` şeklindeki salt uygunluk istemi yasaktır.
 - Kontroller taslak + nihai DOCX olmak üzere iki ayrı fail-closed noktada çalışır.
+
+
+## v5.4.73 / 2026-09-21.v65 — EPO/PCT istem açıklık turu + ilgili yerde Destek Patent comment
+
+- Tarifname oluşturma akışında genel teknik terim açıklığından ayrı zorunlu `EPO/PCT İSTEM AÇIKLIK VE BELİRLİLİK` turu çalışır; bütün bağımsız/bağımlı istemler tek tek incelenir.
+- Kaynakta doğrudan çözüm varsa yalnız kaynak-destekli minimum istem düzeltmesi yapılır. Kaynakta çözüm yoksa teknik ayrıntı uydurulmaz ve tarifname üretimi bloke edilmez.
+- Çözülemeyen her husus `clarity_questions` kaydına dönüştürülür ve Word'de **belirsizliğin bulunduğu birebir istem ifadesine bağlı comment** olarak yazılır; gövdeye soru paragrafı eklenmez.
+- Word comment görünür yazarı her durumda `Destek Patent`, initials `DP`'dir. `Patent Atölyesi` yorum yazarı olarak kullanıcıya görünmez.
+- `claim_clarity_review` bütün gerçek istem numaralarını teslim sırasıyla tam bir kez içermeli; her sorun `clear`, `resolved_from_source` veya `customer_question` statülerinden biriyle sonuçlanmalıdır. `customer_question` statüsü karşılığında gerçek Word comment bulunmuyorsa teslim kapısı FAIL olur.
+- Nihai kalite setine `claim_clarity` kapısı eklenmiştir.
 
 ## v5.4.72 kalite sıkılaştırmaları (2026-09-21)
 - Türkçe tarifname ve istemlerin kullanıcıya görünen bütün metninde cümle içi genel teknik terimler başlık biçiminde büyük harfle başlatılamaz. `derin paket inceleme`, `taşıyıcı sınıfı`, `katman`, `control plane/kontrol düzlemi`, `data plane/veri düzlemi` gibi terimler cümle ortasında küçük harfle yazılır; gerçek kısaltmalar ve özel adlar korunur. Bu kural yalnız REFERANS NUMARALARI unsur adlarına değil tüm tarifname ve istem setine deterministik olarak uygulanır.

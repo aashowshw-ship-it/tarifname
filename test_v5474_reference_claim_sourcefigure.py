@@ -143,3 +143,95 @@ def test_figure_audit_prompt_receives_exact_extra_instruction():
         "Çizimler (algoritmalar) üzerinde yazı olmayacak şekilde düzenlenmeli",
     )
     assert "Çizimler (algoritmalar) üzerinde yazı olmayacak şekilde düzenlenmeli" in prompt
+
+
+def _clarity_draft_with_question():
+    return {
+        "system_claim": {
+            "preamble": "Telefon kanalında sentetik ses tespiti yapan teknik sistem",
+            "elements": ["son N pencere skor değerinin ortalamasını hesaplayan karar birleştirici (80b)"],
+            "closing": "içermesidir.",
+        },
+        "dependent_system_claims": [],
+        "method_claim": None,
+        "dependent_method_claims": [],
+        "additional_method_claims": [],
+        "clarity_questions": [{
+            "claim_number": "1",
+            "anchor_text": "son N pencere skor değerinin ortalamasını",
+            "question": "Karar hesabında kullanılan N değeri nasıl ve hangi teknik kritere göre belirlenmektedir?",
+            "reason": "N istem içinde tanımlanmamış ve kaynakta kesin belirleme kuralı bulunmamaktadır.",
+        }],
+        "claim_clarity_review": {
+            "review_complete": True,
+            "all_issues_resolved_or_queried": True,
+            "claim_reviews": [{
+                "claim_number": "1",
+                "status": "customer_question",
+                "issue_type": "undefined_variable",
+                "problematic_phrase": "son N pencere",
+                "source_quote": "",
+                "resolution": "",
+            }],
+        },
+        "coverage_audit": {
+            "epo_pct_claim_clarity_reviewed": True,
+            "epo_pct_claim_clarity_handled": True,
+        },
+    }
+
+
+def test_epo_pct_clarity_unresolved_issue_is_allowed_only_with_customer_question():
+    draft = _clarity_draft_with_question()
+    app._validate_epo_pct_claim_clarity_review(draft, "Türkçe")
+    draft["clarity_questions"] = []
+    with pytest.raises(ValueError, match="Word comment sorusu"):
+        app._validate_epo_pct_claim_clarity_review(draft, "Türkçe")
+
+
+def test_epo_pct_clarity_resolved_from_source_requires_basis_and_resolution():
+    draft = _clarity_draft_with_question()
+    draft["clarity_questions"] = []
+    draft["claim_clarity_review"]["claim_reviews"][0].update({
+        "status": "resolved_from_source",
+        "source_quote": "Kaynakta son pencere sayısının önceden belirlenen bir parametre olduğu açıklanmaktadır.",
+        "resolution": "N ifadesi önceden belirlenen sayıda son pencere olarak açıklaştırıldı.",
+    })
+    app._validate_epo_pct_claim_clarity_review(draft, "Türkçe")
+    draft["claim_clarity_review"]["claim_reviews"][0]["source_quote"] = ""
+    with pytest.raises(ValueError, match="kaynak alıntısı"):
+        app._validate_epo_pct_claim_clarity_review(draft, "Türkçe")
+
+
+def test_clarity_question_is_word_comment_at_relevant_phrase_with_destek_patent_author():
+    import io, zipfile
+    from docx import Document
+    draft = _clarity_draft_with_question()
+    doc = Document()
+    doc.add_paragraph("İSTEMLER")
+    doc.add_paragraph("son N pencere skor değerinin ortalamasını hesaplayan karar birleştirici (80b)")
+    app.add_word_comment_at_phrase(
+        doc,
+        draft["clarity_questions"][0]["anchor_text"],
+        draft["clarity_questions"][0]["question"],
+        author="Destek Patent",
+        initials="DP",
+    )
+    bio = io.BytesIO(); doc.save(bio); data = bio.getvalue()
+    app._validate_epo_pct_clarity_comments_docx(data, draft)
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        comments = zf.read("word/comments.xml").decode("utf-8")
+        document = zf.read("word/document.xml").decode("utf-8")
+    assert 'w:author="Destek Patent"' in comments
+    assert 'w:initials="DP"' in comments
+    assert "Karar hesabında kullanılan N değeri" in comments
+    assert "commentRangeStart" in document and "son N pencere" in document
+
+
+def test_epo_pct_clarity_prompt_says_do_not_block_delivery_and_comment_at_issue():
+    prompt = app.tarifname_epo_pct_claim_clarity_prompt(
+        "Kaynak teknik metin", "", {"technical_facts": []}, _clarity_draft_with_question(), "Sistem ve yöntem", "Türkçe"
+    )
+    assert "tarifname üretimini DURDURMA" in prompt
+    assert "Word'de tam bu `anchor_text` üzerinde `Destek Patent` yazarlı COMMENT" in prompt
+    assert "Yeni teknik bilgi" in prompt

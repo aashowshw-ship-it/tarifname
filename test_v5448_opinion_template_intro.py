@@ -18,8 +18,8 @@ def _opinion(intro: str):
 
 
 def test_version_bumped():
-    assert APP_VERSION == 'v5.4.72'
-    assert RULESET_VERSION == '2026-09-18.v64'
+    assert APP_VERSION == 'v5.4.73'
+    assert RULESET_VERSION == '2026-09-21.v65'
 
 
 def test_rules_bind_template_intro_and_forbid_institutional_lead():

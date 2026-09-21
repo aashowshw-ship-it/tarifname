@@ -8,8 +8,8 @@ ROOT = Path(__file__).resolve().parent
 
 
 def test_version_and_ruleset():
-    assert APP_VERSION == "v5.4.72"
-    assert RULESET_VERSION == "2026-09-18.v64"
+    assert APP_VERSION == "v5.4.73"
+    assert RULESET_VERSION == "2026-09-21.v65"
 
 
 def test_content_addressed_source_key_uses_exact_bytes():

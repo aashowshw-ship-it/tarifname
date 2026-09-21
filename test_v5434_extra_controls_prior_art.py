@@ -8,8 +8,8 @@ from rules import (
 ROOT = Path(__file__).resolve().parent
 
 def test_version_and_notice_rule():
-    assert APP_VERSION == "v5.4.72"
-    assert RULESET_VERSION == "2026-09-18.v64"
+    assert APP_VERSION == "v5.4.73"
+    assert RULESET_VERSION == "2026-09-21.v65"
     assert EXTRA_CONTROLS_NOTICE == "EKSTRA KONTROLLER YAPILDI"
     assert "en az üç gelişmiş paragraf" in TARIFNAME_RULES
     assert "en az 2400 karakter" in TARIFNAME_RULES
@@ -19,7 +19,7 @@ def test_extra_notice_is_strict_boolean_gate():
     gates = {
         "source_completeness": True, "independent_raw_second_read": True, "detail_source_transfer": True, "prior_art": True, "draft_quality": True,
         "claims": True, "references": True, "template": True,
-        "element_step_language": True, "formula_format": True, "how_test": True,
+        "element_step_language": True, "formula_format": True, "how_test": True, "claim_clarity": True,
     }
     assert not tarifname_extra_controls_completed(gates, render_passed=False)
     assert tarifname_extra_controls_completed(gates, render_passed=True)

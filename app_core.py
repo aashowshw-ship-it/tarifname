@@ -62,6 +62,7 @@ from source_guards import (
     validate_invention_domain,
 )
 from word_math import EQ_MARKER_RE, append_text_with_equations as _append_text_with_equations, add_display_equation
+from tarifname_update import add_word_comment_at_phrase
 from tarifname_figure_generation import (
     protect_turkish_claim_transition,
     protected_claim_tail_word_count,
@@ -1667,6 +1668,8 @@ TARIFNAME_DRAFT_SCHEMA = r"""
   "method_claim":null,
   "dependent_method_claims":[""],
   "additional_method_claims":[{"claim":{"preamble":"","steps":[""],"closing":"işlem adımlarını içermesidir."},"dependent_claims":[""]}],
+  "clarity_questions":[{"claim_number":"","anchor_text":"","question":"","reason":""}],
+  "claim_clarity_review":{"review_complete":true,"all_issues_resolved_or_queried":true,"claim_reviews":[{"claim_number":"1","status":"clear","issue_type":"","problematic_phrase":"","source_quote":"","resolution":""}]},
   "abstract":"",
   "source_coverage_map":[{"fact_id":"T001","covered":true,"sections":["BULUŞUN DETAYLI AÇIKLAMASI"],"evidence":""}],
   "coverage_audit":{
@@ -1683,6 +1686,8 @@ TARIFNAME_DRAFT_SCHEMA = r"""
     "method_how_steps_passed":true,
     "sentence_case_clean":true,
     "technical_term_clarity_passed":true,
+    "epo_pct_claim_clarity_reviewed":true,
+    "epo_pct_claim_clarity_handled":true,
     "core_difference_present":true,
     "scope_not_overlimited":true,
     "dependent_claims_non_redundant":true,
@@ -2081,12 +2086,71 @@ KONTROL EDİLECEK TASLAK:
 """
 
 
+
+
+def tarifname_epo_pct_claim_clarity_prompt(
+    source_text: str,
+    technical_supplement_text: str,
+    extracted: dict[str, Any],
+    draft: dict[str, Any],
+    claim_mode: str,
+    language: str = "Türkçe",
+) -> str:
+    return f"""{TARIFNAME_RULES}
+
+EPO/PCT İSTEM AÇIKLIK VE BELİRLİLİK İNCELEMESİ — AYRI ZORUNLU TUR
+Çıktı dili: {language}
+İstem yapısı: {claim_mode}
+
+Bu tur, normal teknik-terim kontrolünden AYRIDIR. EPO Article 84 / PCT Article 6 yaklaşımına benzer biçimde,
+her istemi önce yalnız kendi lafzından okuyarak teknikte uzman kişinin koruma sınırını objektif biçimde belirleyip belirleyemediğini incele.
+Daha sonra tarifname taslağı, BBF ve ek teknik kaynaklara dönerek yalnız kaynakta doğrudan dayanağı bulunan açıklık düzeltmelerini yap.
+Yeni teknik bilgi, sayısal değer, formül, eşik, katsayı, algoritmik ilişki veya parametre uydurma.
+
+ZORUNLU İNCELEME:
+1. Her bağımsız ve bağımlı istem ayrı ayrı incelenecek; `claim_clarity_review.claim_reviews` içinde her gerçek istem numarası TAM BİR KEZ yer alacak.
+2. Özellikle tanımsız değişken/sembol (`N`, `X`, `Y` vb.), öncülü olmayan `aynı`, `söz konusu`, `bahsedilen`, `bu`, tanımsız eşik/ölçek/güven/ölçüt,
+   göreli veya öznel ifadeler (`yüksek`, `düşük`, `yoğun`, `uygun`, `optimum`, `yaklaşık`, `yeterli` vb.), sonuçla tanımlama,
+   belirsiz teknik özne/nesne, belirsiz bağımlılık, bağımsız istemde başka isteme örtülü gönderme ve kapsam sınırını objektif belirlemeyi engelleyen ifadeler ayrıca taranacak.
+3. Geniş ifade sırf geniş olduğu için sorun sayılmaz; ilgili alandaki uzman için anlamı ve sınırı objektif ise `clear` ver.
+4. Kaynakta doğrudan açıklık giderici bilgi varsa istemi minimum değişiklikle düzelt ve ilgili `claim_reviews` kaydında `status="resolved_from_source"`,
+   `source_quote` ve `resolution` yaz. Kaynak dayanağı bulunmayan hiçbir teknik ayrıntıyı isteme ekleme.
+5. Kaynakta çözüm YOKSA tarifname üretimini DURDURMA. `status="customer_question"` ver ve `clarity_questions` içine ayrı kayıt ekle.
+   Bu kayıt `claim_number`, istem içinde BENZERSİZ ve birebir geçen mümkün olan en kısa `anchor_text`, müşteriye yöneltilecek somut `question` ve `reason` alanlarını içersin.
+   Soru genel not/paragraf olarak tarifname gövdesine yazılmayacak; Word'de tam bu `anchor_text` üzerinde `Destek Patent` yazarlı COMMENT olarak gösterilecektir.
+6. Müşteriye sorulacak soru teknik olarak cevaplanabilir ve tek konuya odaklı olsun. Örn. `Bileşik ölçüt temiz ve kanal-bozulmuş hata oranlarından tam olarak hangi matematiksel ilişkiyle hesaplanmaktadır?`
+7. Bir sorun kaynakla çözüldüyse ayrıca müşteriye soru sorma. Sorun yoksa `status="clear"`.
+8. İnceleme sonunda `claim_clarity_review.review_complete=true`, `all_issues_resolved_or_queried=true`,
+   `coverage_audit.epo_pct_claim_clarity_reviewed=true` ve `coverage_audit.epo_pct_claim_clarity_handled=true` olmalıdır.
+9. `clarity_questions` yalnız gerçekten kaynakta çözülemeyen açıklık/belirlilik konularını içerir; boşsa `[]` döndür.
+10. Açıklık düzeltmesi diğer bölümlerdeki birebir teknik tanımı etkiliyorsa yalnız tutarlılık için gereken minimum eş düzeltmeyi yap; yeni konu yaratma.
+
+TAM TASLAĞI aşağıdaki şemaya uygun olarak geri döndür. JSON dışında hiçbir şey yazma.
+{TARIFNAME_DRAFT_SCHEMA}
+
+YAPILANDIRILMIŞ ENVANTER:
+{json.dumps(extracted, ensure_ascii=False, indent=2)}
+
+HAM BBF / ANA TEKNİK KAYNAK:
+---
+{source_text}
+---
+
+EK TEKNİK KAYNAKLAR:
+---
+{technical_supplement_text}
+---
+
+İNCELENECEK MEVCUT TASLAK:
+{json.dumps(draft, ensure_ascii=False, indent=2)}
+"""
+
 def _tarifname_visible_draft_for_audit(draft: dict[str, Any]) -> dict[str, Any]:
     """Kaynak kapsam meta alanlarını dışarıda bırakarak kullanıcıya gidecek teknik taslak içeriğini döndürür."""
     return {
         key: value
         for key, value in draft.items()
-        if key not in {"source_coverage_map", "coverage_audit"}
+        if key not in {"source_coverage_map", "coverage_audit", "clarity_questions", "claim_clarity_review"}
     }
 
 
@@ -2501,6 +2565,114 @@ def _all_method_dependent_claims(draft: dict[str, Any]) -> list[str]:
         out.extend(str(x or "").strip() for x in (group.get("dependent_claims") or []) if str(x or "").strip())
     return out
 
+
+
+
+def _claim_blocks_for_clarity(draft: dict[str, Any]) -> list[tuple[str, str]]:
+    """Return final claim numbers and their visible text in delivery order."""
+    blocks: list[tuple[str, str]] = []
+    number = 1
+    system_claim = draft.get("system_claim") or {}
+    if isinstance(system_claim, dict) and (system_claim.get("preamble") or system_claim.get("elements")):
+        text = " ".join([
+            str(system_claim.get("preamble", "") or ""),
+            *_system_claim_all_texts(system_claim),
+            str(system_claim.get("closing", "") or ""),
+        ]).strip()
+        blocks.append((str(number), text)); number += 1
+        for dep in draft.get("dependent_system_claims") or []:
+            blocks.append((str(number), str(dep or "").strip())); number += 1
+    method_claim = draft.get("method_claim") or {}
+    if isinstance(method_claim, dict) and (method_claim.get("preamble") or method_claim.get("steps")):
+        text = " ".join([
+            str(method_claim.get("preamble", "") or ""),
+            *[str(x or "") for x in (method_claim.get("steps") or [])],
+            str(method_claim.get("closing", "") or ""),
+        ]).strip()
+        blocks.append((str(number), text)); number += 1
+        for dep in draft.get("dependent_method_claims") or []:
+            blocks.append((str(number), str(dep or "").strip())); number += 1
+    for group in _additional_method_claim_groups(draft):
+        claim = group.get("claim") or {}
+        text = " ".join([
+            str(claim.get("preamble", "") or ""),
+            *[str(x or "") for x in (claim.get("steps") or [])],
+            str(claim.get("closing", "") or ""),
+        ]).strip()
+        blocks.append((str(number), text)); number += 1
+        for dep in group.get("dependent_claims") or []:
+            blocks.append((str(number), str(dep or "").strip())); number += 1
+    return blocks
+
+
+def _validate_epo_pct_claim_clarity_review(draft: dict[str, Any], language: str = "Türkçe") -> None:
+    """Every claim gets a separate clarity review; unresolved points become anchored customer comments."""
+    review = draft.get("claim_clarity_review") or {}
+    if review.get("review_complete") is not True or review.get("all_issues_resolved_or_queried") is not True:
+        raise ValueError("EPO/PCT istem açıklık kapısı: ayrı açıklık incelemesi tamamlanmamış veya bütün sorunlar çözülüp/sorulaştırılmamış.")
+    blocks = _claim_blocks_for_clarity(draft)
+    expected = [number for number, _ in blocks]
+    rows = list(review.get("claim_reviews") or [])
+    reviewed = [str(row.get("claim_number", "") or "").strip() for row in rows]
+    if reviewed != expected:
+        raise ValueError(
+            "EPO/PCT istem açıklık kapısı: her gerçek istem teslim sırasıyla tam bir kez incelenmelidir. "
+            f"Beklenen {expected}, gelen {reviewed}."
+        )
+    allowed = {"clear", "resolved_from_source", "customer_question"}
+    questions = list(draft.get("clarity_questions") or [])
+    by_claim = {number: text for number, text in blocks}
+    q_by_claim: dict[str, list[dict[str, Any]]] = {}
+    for q in questions:
+        claim_no = str(q.get("claim_number", "") or "").strip()
+        anchor = str(q.get("anchor_text", "") or "").strip()
+        question = str(q.get("question", "") or "").strip()
+        reason = str(q.get("reason", "") or "").strip()
+        if claim_no not in by_claim:
+            raise ValueError(f"EPO/PCT açıklık sorusu geçersiz istem numarasına bağlı: {claim_no}")
+        if len(anchor) < 6 or by_claim[claim_no].count(anchor) != 1:
+            raise ValueError("EPO/PCT açıklık sorusu anchor_text ilgili istem içinde birebir ve benzersiz olmalıdır: " + anchor[:120])
+        if len(question) < 15 or not reason:
+            raise ValueError("EPO/PCT açıklık sorusu müşteriye yöneltilecek somut soru ve gerekçe içermelidir.")
+        q_by_claim.setdefault(claim_no, []).append(q)
+    for row in rows:
+        claim_no = str(row.get("claim_number", "") or "").strip()
+        status = str(row.get("status", "") or "").strip()
+        if status not in allowed:
+            raise ValueError(f"EPO/PCT istem açıklık kapısı: istem {claim_no} için geçersiz status: {status}")
+        if status == "customer_question" and not q_by_claim.get(claim_no):
+            raise ValueError(f"EPO/PCT istem açıklık kapısı: istem {claim_no} kaynakla çözülememiş ancak müşteriye Word comment sorusu oluşturulmamış.")
+        if status == "resolved_from_source":
+            if not str(row.get("source_quote", "") or "").strip() or not str(row.get("resolution", "") or "").strip():
+                raise ValueError(f"EPO/PCT istem açıklık kapısı: istem {claim_no} kaynakla çözüldü denmiş ancak kaynak alıntısı/çözüm kaydı eksik.")
+    audit = draft.get("coverage_audit") or {}
+    if audit.get("epo_pct_claim_clarity_reviewed") is not True or audit.get("epo_pct_claim_clarity_handled") is not True:
+        raise ValueError("EPO/PCT istem açıklık kapısı coverage_audit bayrakları PASS değil.")
+
+
+def _validate_epo_pct_clarity_comments_docx(data: bytes, draft: dict[str, Any]) -> None:
+    questions = list(draft.get("clarity_questions") or [])
+    if not questions:
+        return
+    with zipfile.ZipFile(io.BytesIO(data), "r") as zf:
+        if "word/comments.xml" not in zf.namelist():
+            raise ValueError("EPO/PCT açıklık Word kapısı: müşteri soruları için comments.xml bulunamadı.")
+        from lxml import etree
+        W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        root = etree.fromstring(zf.read("word/comments.xml"))
+        comments = root.xpath(".//w:comment", namespaces={"w": W})
+        if len(comments) < len(questions):
+            raise ValueError("EPO/PCT açıklık Word kapısı: planlanan müşteri sorularının tamamı Word comment olarak yazılmadı.")
+        actual_texts = []
+        for comment in comments:
+            author = str(comment.get(f"{{{W}}}author", "") or "")
+            if author != "Destek Patent":
+                raise ValueError("EPO/PCT açıklık Word kapısı: görünür yorum yazarı yalnız `Destek Patent` olmalıdır.")
+            actual_texts.append(" ".join(comment.xpath(".//w:t/text()", namespaces={"w": W})).strip())
+        for q in questions:
+            question = str(q.get("question", "") or "").strip()
+            if question not in actual_texts:
+                raise ValueError("EPO/PCT açıklık Word kapısı: müşteri sorusu comments.xml içinde birebir bulunamadı: " + question[:120])
 
 def _is_human_actor_element_name(name: str) -> bool:
     text = re.sub(r"\s+", " ", str(name or "").strip().casefold())
@@ -4211,9 +4383,12 @@ def validate_tarifname_draft(
         _validate_abstract_shape(str(draft.get("abstract", "") or ""), language)
 
     audit = draft.get("coverage_audit") or {}
+    _validate_epo_pct_claim_clarity_review(draft, language)
+
     mandatory_audit_flags = [
         "prior_art_complete", "reference_table_complete", "claims_consistent",
         "reference_names_clear", "reference_order_valid", "how_test_passed", "method_how_steps_passed", "sentence_case_clean", "technical_term_clarity_passed",
+        "epo_pct_claim_clarity_reviewed", "epo_pct_claim_clarity_handled",
         "core_difference_present", "scope_not_overlimited", "dependent_claims_non_redundant",
         "dependent_claim_dependencies_valid", "example_dimensions_not_claim_limited",
         "product_claim_language_valid", "abstract_single_paragraph_sentence", "source_attribution_removed",
@@ -4223,7 +4398,7 @@ def validate_tarifname_draft(
     if failed_flags:
         raise ValueError("Tarifname kalite denetiminde başarısız alanlar: " + ", ".join(failed_flags))
 
-    user_facing_text = json.dumps(draft, ensure_ascii=False)
+    user_facing_text = json.dumps(_tarifname_visible_draft_for_audit(draft), ensure_ascii=False)
     if re.search(r"\bBBF\b|buluş bildirim formu|invention disclosure form|müşteri tarafından iletilen(?: teknik)? (?:çizim|belge)|müşteri bilgilerine göre|ek teknik belgede|iletilen teknik çizimde", user_facing_text, flags=re.IGNORECASE):
         raise ValueError("Tarifname taslağında kullanıcıya görünmemesi gereken kaynak/iletilen belge atfı bulundu; teknik bilgi doğrudan buluş anlatımı olarak yazılmalıdır.")
     if not _english_spec(language) and re.search(r"\bmevcut buluş\b", user_facing_text, flags=re.IGNORECASE):
@@ -4780,6 +4955,11 @@ def validate_tarifname_post_generation_quality(
     _validate_method_step_action_language(draft, language)
     _validate_method_claim_how_test(draft, language)
 
+    # EPO/PCT açıklık: kaynakta çözülemeyen hususlar teslimi durdurmaz; ilgili ifade üzerinde
+    # görünür yazarı Destek Patent olan Word comment sorusu bulunması zorunludur.
+    _validate_epo_pct_claim_clarity_review(draft, language)
+    _validate_epo_pct_clarity_comments_docx(data, draft)
+
     # Ek sert alt-kapı: formüller nihai .docx içinde düz metin değil gerçek Word matematik nesnesidir.
     _validate_word_math_format(data, draft)
 
@@ -4795,6 +4975,7 @@ def validate_tarifname_post_generation_quality(
         "element_step_language": True,
         "formula_format": True,
         "how_test": True,
+        "claim_clarity": True,
         **source_stats,
         **independent_stats,
         **detail_stats,
@@ -5307,6 +5488,15 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
     tpl_text(103, str(draft.get("abstract", "") or ""))
     tpl_blank(104)
     tpl_blank(105)
+
+    for clarity_question in draft.get("clarity_questions") or []:
+        add_word_comment_at_phrase(
+            doc,
+            str(clarity_question.get("anchor_text", "") or ""),
+            str(clarity_question.get("question", "") or ""),
+            author="Destek Patent",
+            initials="DP",
+        )
 
     _enforce_claim_numbering_alignment(doc)
     _validate_claim_numbering_alignment(doc)
