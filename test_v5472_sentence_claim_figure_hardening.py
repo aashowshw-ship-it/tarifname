@@ -35,13 +35,13 @@ def test_numbered_claim_has_direct_hanging_and_num_tab():
     assert num_tabs[0].get(qn("w:pos")) == "720"
 
 
-def test_text_heavy_nonreference_numbering_forces_exclusion_even_if_model_final_use_include():
+def test_text_heavy_nonreference_numbering_is_cleaned_not_auto_excluded():
     audit = {
         "final_use": "include",
         "text_heavy_nonreference_numbering": True,
         "nonreference_numeric_or_step_marks": ["1", "A1", "B2"],
     }
-    assert app._figure_audit_requests_exclusion(audit) is True
+    assert app._figure_audit_requests_exclusion(audit) is False
 
 
 def test_dependent_system_claim_rejects_nominative_subject_before_possession_closure():

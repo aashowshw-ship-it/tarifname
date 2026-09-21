@@ -8,7 +8,7 @@ from rules import APP_VERSION, RULESET_VERSION
 
 
 def test_version_is_v5453_rev2():
-    assert APP_VERSION == "v5.4.71"
+    assert APP_VERSION == "v5.4.72"
     assert RULESET_VERSION == "2026-09-18.v64"
 
 

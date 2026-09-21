@@ -931,7 +931,7 @@ def _figure_reference_context(draft: dict[str, Any], figure_index: int) -> dict[
     }
 
 
-def _figure_reference_audit_prompt(draft: dict[str, Any], figure_index: int, language: str) -> str:
+def _figure_reference_audit_prompt(draft: dict[str, Any], figure_index: int, language: str, extra_instruction: str = "") -> str:
     context = _figure_reference_context(draft, figure_index)
     return f"""{TARIFNAME_RULES}
 
@@ -940,6 +940,7 @@ BİRİNCİ şekli nihai tarifnamedeki REFERANS NUMARALARI ve teknik açıklamayl
 Bu aşamada görsel üretme veya değiştirme. Yalnız teknik referans denetimi yap ve JSON döndür.
 Şekil sırası: {figure_index}
 Tarifname dili: {language}
+İşe özel ek talimat: {_normalize_extra_instruction(extra_instruction) or "(yok)"}
 
 KRİTİK DENETİM MANTIĞI:
 - Şekildeki mevcut numara veya okun doğru olduğunu varsayma.
@@ -958,10 +959,10 @@ KRİTİK DENETİM MANTIĞI:
 - Doğru numara ve doğru hedef varsa action=`keep` yap.
 - Unsur bu şekilde görünmüyorsa action=`omit` yap; sırf tüm referansları kullanmak için ekleme yapma.
 - Geçici/yardımcı şekil numaralarını gerçek tarifname referansı gibi kabul etme.
-- ŞEKİL UYGUNLUK KAPISI: Görsel esas olarak metin/karar kutularından oluşuyorsa ve `1`, `2`, `3`, `A1`, `B2` gibi REFERANS NUMARALARI ile ilgisiz adım/kol işaretleri patent unsur referansı gibi algılanabilecek yoğunlukta bulunuyorsa ayrıca değerlendir. Bu işaretler referans tablosundaki unsur/yöntem numaralarıyla örtüşmüyorsa ve görsel buluşun zorunlu geometrik/şematik ilişkisini bağımsız olarak açıklamıyorsa görsel nihai ŞEKİLLER dosyasına ALINMAMALI ve `final_use=exclude_text_heavy_nonreference_numbering` seçilmelidir.
-- Metin-ağırlıklı kaynak akış/karar şeması, yalnız açıklayıcı metin ve REFERANS NUMARALARI ile ilgisiz iç numaralandırmalar taşıyorsa, aynı teknik akış tarifname gövdesine eksiksiz aktarılmış olmak şartıyla kaynak şekil dışlanır; gerekiyorsa gerçek yöntem adımı numaralarıyla sade ayrı yöntem akış şekli oluşturulur.
-- Böyle bir görseli dışlamadan önce görselde bulunan benzersiz teknik bilgileri `unique_technical_information` alanında atomik olarak yaz ve bunların tarifname gövdesinde gerçekten yer alan birebir kanıtlarını `spec_coverage_evidence` alanına koy. Tek bir benzersiz teknik bilgi bile tarifnameye aktarılmamışsa dışlama kararı verilemez; status=`unresolved` yap.
-- Metin-ağırlıklı olduğu halde vazgeçilmez bir teknik geometri/bağlantı ilişkisi taşıyan görsel sırf yazılı diye dışlanmaz.
+- KAYNAK ŞEKİL SADAKATİ: Müşterinin teknik şekli kullanılabilir bir akış/geometri taşıyorsa metin yoğunluğu veya referans dışı iç etiketler nedeniyle otomatik dışlama yapma. Özgün kutu/ok/bağlantı/kesikli çizgi/dallanma geometrisini koru ve gerekiyorsa yalnız yazı/referans katmanını temizle.
+- Kullanıcı/ek talimat algoritma şeklinin yazısız olmasını gerektiriyorsa referanslı kutudaki unsur açıklamasını kaldırıp GERÇEK referans numarasını aynı kutu içinde ortala. Numarasız bağlam/karar yazısı ancak ek talimat açıkça bütün yazıları kaldırmayı istiyorsa silinir.
+- Yazı temizliği sırasında kutu kenarı, yarım ok, ok ucu, bağlantı çizgisi veya kesikli çizgi kaybolamaz. Bu öğeler kaynakla birebir ikinci kontrolde doğrulanmalıdır.
+- Kaynak şekil ancak teknik değer taşımıyor veya güvenilir biçimde temizlenemiyorsa dışlanabilir. Yazısı silinen/dışlanan görseldeki benzersiz teknik bilgileri `unique_technical_information` alanında atomik olarak yaz ve tarifname gövdesindeki gerçek kanıtlarını `spec_coverage_evidence` alanına koy; eksik teknik bilgi varsa status=`unresolved` yap.
 - confidence, teknik fiziksel eşleştirme güvenidir. 0.86 altında add/correct önerme; unresolved olarak bildir.
 
 JSON ŞEMASI:
@@ -971,7 +972,10 @@ JSON ŞEMASI:
   "figure_kind": "system/method/mixed/other",
   "dedicated_method_flow": false,
   "status": "ok/needs_edit/unresolved",
-  "final_use": "include/exclude_text_heavy_nonreference_numbering",
+  "final_use": "include/exclude_only_if_nontechnical_or_unrecoverable",
+  "text_cleanup_required": false,
+  "text_to_remove": [""],
+  "preserve_unnumbered_context_text": true,
   "text_heavy_nonreference_numbering": false,
   "nonreference_numeric_or_step_marks": [""],
   "unique_technical_information": [""],
@@ -1005,6 +1009,7 @@ def audit_figure_references(
     figure_index: int,
     language: str,
     context_images: list[UploadedAsset] | None = None,
+    extra_instruction: str = "",
 ) -> dict[str, Any]:
     visual_context = [asset]
     for candidate in context_images or []:
@@ -1014,7 +1019,7 @@ def audit_figure_references(
         if len(visual_context) >= 4:
             break
     audit = ask_json(
-        _figure_reference_audit_prompt(draft, figure_index, language),
+        _figure_reference_audit_prompt(draft, figure_index, language, extra_instruction),
         images=visual_context,
     )
     audit["figure_index"] = figure_index
@@ -1079,6 +1084,7 @@ def edit_figure_reference_annotations(
     figure_index: int,
     language: str,
     audit: dict[str, Any],
+    extra_instruction: str = "",
 ) -> UploadedAsset:
     """Özgün şeklin yalnız referans numarası/kılavuz çizgisi katmanını düzeltir."""
     client = get_client()
@@ -1092,6 +1098,9 @@ REFERANS DENETİMİ:
 TARİFNAME BAĞLAMI:
 {json.dumps(context, ensure_ascii=False, indent=2)}
 
+İŞE ÖZEL EK TALİMAT:
+{_normalize_extra_instruction(extra_instruction) or "(yok)"}
+
 UYGULAMA KURALLARI:
 - action=keep olan referansı ve doğru hedefini koru.
 - action=correct olan numaranın kılavuz çizgisi/okunu location_description içinde tarif edilen fiziksel unsura yönelt.
@@ -1101,6 +1110,9 @@ UYGULAMA KURALLARI:
 - Ok/kılavuz çizgisi ucu doğrudan ilgili fiziksel unsur üzerinde sonlansın; boş alana veya genel tertibata yönelmesin.
 - Referans belirli bir alt parçaya aitse tüm tertibatı işaretleme.
 - Mümkün olduğunca çizgi kesişmelerini azalt; fakat teknik geometrinin hiçbir bölümünü değiştirme.
+- audit.text_cleanup_required=true ise yalnız audit.text_to_remove kapsamındaki yazıları temizle. Referanslı kutuda açıklama + referans varsa açıklamayı sil ve mevcut referansı AYNI KUTUNUN içinde ortala.
+- Numara taşımayan bağlam yazılarını preserve_unnumbered_context_text=true ise KORU. Ek talimat açıkça tüm algoritma yazılarının silinmesini istiyorsa bu talimata göre audit tarafından işaretlenen yazıları kaldır.
+- Yazı silerken kutu kenarı, ok, yarım ok, ok ucu, bağlantı çizgisi, kesikli çizgi veya dalı asla silme/kısaltma. Müşteri şeklinin göreli yerleşimini yeniden çizme.
 - Çıktıda yalnız patent şekli bulunsun; açıklama listesi, referans lejandı, başlık veya ek metin ekleme.
 - Siyah-beyaz patent çizimi ve özgün en-boy oranı korunmalıdır.
 """
@@ -1136,6 +1148,7 @@ def verify_figure_reference_edit(
     figure_index: int,
     language: str,
     audit: dict[str, Any],
+    extra_instruction: str = "",
 ) -> dict[str, Any]:
     context = _figure_reference_context(draft, figure_index)
     prompt = f"""İki patent şekli veriliyor. BİRİNCİ görsel özgün müşteri şekli, İKİNCİ görsel yalnız referans numarası/okları düzeltilmiş aday görseldir.
@@ -1149,6 +1162,8 @@ KABUL KRİTERLERİ:
 5. Bu şekilde görünmeyen unsurlar sırf numaralandırma amacıyla eklenmemelidir.
 6. REFERANS NUMARALARI bölümünde ayrı olan unsurlar tek `2-3`/tek kutu/tek hedefte birleştirilmemelidir; ortak taşıyıcı içinde dahi ayrı kutucuk/çağrı/ok ile ayırt edilebilir olmalıdır.
 7. Denetimde unresolved kalan unsur varsa annotations_correct=false yap.
+8. Özgündeki bütün oklar, ok uçları/yarım oklar, kutu kenarları, kesikli çizgiler ve bağlantılar adayda korunmuş olmalıdır. Yazı silme sırasında bir çizgi parçası dahi kaybolmuşsa ilgili preserve alanını false yap.
+9. Yalnız istenen yazı/referans katmanı değişmiş olmalıdır; kutu/ok/yerleşim yeniden çizilmişse only_requested_text_changed=false yap.
 
 ÖN DENETİM:
 {json.dumps(audit, ensure_ascii=False, indent=2)}
@@ -1156,9 +1171,16 @@ KABUL KRİTERLERİ:
 TARİFNAME BAĞLAMI:
 {json.dumps(context, ensure_ascii=False, indent=2)}
 
+İŞE ÖZEL EK TALİMAT:
+{_normalize_extra_instruction(extra_instruction) or "(yok)"}
+
 JSON ŞEMASI:
 {{
   "geometry_preserved": true,
+  "arrows_preserved": true,
+  "box_edges_preserved": true,
+  "connections_preserved": true,
+  "only_requested_text_changed": true,
   "annotations_correct": true,
   "distinct_references_separated": true,
   "wrong_or_missing": [""],
@@ -1249,17 +1271,13 @@ JSON: {{"geometry_preserved":true,"references_preserved":true,"no_unexpected_cha
 
 
 
-def _validate_text_heavy_figure_exclusion(audit: dict[str, Any], draft: dict[str, Any]) -> str | None:
-    final_use = str(audit.get("final_use", "include") or "include").strip().casefold()
-    marks = [str(x or "").strip() for x in (audit.get("nonreference_numeric_or_step_marks") or []) if str(x or "").strip()]
-    explicit_exclusion = final_use in {"exclude_text_heavy_nonreference_numbering", "excluded_text_heavy_nonreference_numbering"}
-    deterministic_exclusion = bool(audit.get("text_heavy_nonreference_numbering")) and bool(marks)
-    if not (explicit_exclusion or deterministic_exclusion):
+def _validate_source_figure_exclusion(audit: dict[str, Any], draft: dict[str, Any]) -> str | None:
+    """Fail closed when a source figure is excluded: exclusion must be genuinely justified."""
+    if not _figure_audit_requests_exclusion(audit):
         return None
-    if not bool(audit.get("text_heavy_nonreference_numbering")):
-        return "metin-ağırlıklı/referans-dışı numaralandırma bayrağı doğrulanmadı"
-    if not marks:
-        return "referans dışı numara/adım işaretleri listelenmedi"
+    reason = str(audit.get("exclusion_reason", "") or "").strip()
+    if len(reason) < 12:
+        return "kaynak şeklin dışlanma gerekçesi yeterince açık değil"
     unique = [str(x or "").strip() for x in (audit.get("unique_technical_information") or []) if str(x or "").strip()]
     evidence = [str(x or "").strip() for x in (audit.get("spec_coverage_evidence") or []) if str(x or "").strip()]
     if unique and len(evidence) < len(unique):
@@ -1270,16 +1288,10 @@ def _validate_text_heavy_figure_exclusion(audit: dict[str, Any], draft: dict[str
             return "görsel dışlama aktarım kanıtlarından biri nihai tarifname taslağında birebir bulunmuyor"
     return None
 
-
 def _figure_audit_requests_exclusion(audit: dict[str, Any]) -> bool:
+    """Latest rule: text-heavy customer figures are cleaned in-place, not auto-excluded."""
     final_use = str(audit.get("final_use", "include") or "include").strip().casefold()
-    if final_use in {"exclude_text_heavy_nonreference_numbering", "excluded_text_heavy_nonreference_numbering"}:
-        return True
-    # Fail-closed deterministik kural: denetim, görselin metin-ağırlıklı olduğunu ve gerçek
-    # REFERANS NUMARALARI dışında numara/adım işaretleri taşıdığını saptadıysa final_use alanı
-    # yanlışlıkla `include` kalsa dahi kaynak görsel nihai şekil setine alınmaz.
-    nonrefs = [str(x or "").strip() for x in (audit.get("nonreference_numeric_or_step_marks") or []) if str(x or "").strip()]
-    return bool(audit.get("text_heavy_nonreference_numbering")) and bool(nonrefs)
+    return final_use in {"exclude_only_if_nontechnical_or_unrecoverable", "excluded_nontechnical_or_unrecoverable"}
 
 
 def prepare_figures_with_reference_audit(
@@ -1287,6 +1299,7 @@ def prepare_figures_with_reference_audit(
     draft: dict[str, Any],
     language: str = "Türkçe",
     progress_callback: Any | None = None,
+    extra_instruction: str = "",
 ) -> tuple[list[UploadedAsset], list[dict[str, Any]], list[str]]:
     """Audit source figures, normalize patent style, and create a separate method-flow figure when required."""
     prepared: list[UploadedAsset] = []
@@ -1310,7 +1323,7 @@ def prepare_figures_with_reference_audit(
         if progress_callback:
             progress_callback(index, total, "audit")
         try:
-            audit = audit_figure_references(asset, draft, index, language, context_images=images)
+            audit = audit_figure_references(asset, draft, index, language, context_images=images, extra_instruction=extra_instruction)
         except Exception as exc:
             message = f"ŞEKİL {index}: referans denetimi çalıştırılamadı ({exc})."
             unresolved.append(message)
@@ -1335,13 +1348,13 @@ def prepare_figures_with_reference_audit(
         if style_report is not None:
             report["style_normalization"] = style_report
         if _figure_audit_requests_exclusion(audit):
-            exclusion_error = _validate_text_heavy_figure_exclusion(audit, draft)
+            exclusion_error = _validate_source_figure_exclusion(audit, draft)
             if exclusion_error:
-                message = f"ŞEKİL {index}: metin-ağırlıklı kaynak görsel dışlama kapısı başarısız ({exclusion_error})."
+                message = f"ŞEKİL {index}: kaynak şekil dışlama kapısı başarısız ({exclusion_error})."
                 unresolved.append(message)
                 report.update({"final_status": "unresolved", "message": message})
             else:
-                report["final_status"] = "excluded_text_heavy_nonreference_numbering"
+                report["final_status"] = "excluded_nontechnical_or_unrecoverable"
             reports.append(report)
             continue
         if _audit_has_unsafe_edit(audit):
@@ -1353,7 +1366,7 @@ def prepare_figures_with_reference_audit(
             continue
 
         status = str(audit.get("status", "ok")).strip().casefold()
-        needs_edit = status == "needs_edit" or any(
+        needs_edit = status == "needs_edit" or bool(audit.get("text_cleanup_required")) or any(
             str(x.get("action", "")).strip().casefold() in {"add", "correct", "split"}
             for x in audit.get("annotations") or []
         ) or _has_nonempty_items(audit.get("merged_reference_groups"))
@@ -1366,7 +1379,7 @@ def prepare_figures_with_reference_audit(
         if progress_callback:
             progress_callback(index, total, "edit")
         try:
-            edited = edit_figure_reference_annotations(asset, draft, index, language, audit)
+            edited = edit_figure_reference_annotations(asset, draft, index, language, audit, extra_instruction)
         except Exception as exc:
             message = f"ŞEKİL {index}: referans düzeltmesi uygulanamadı ({exc})."
             unresolved.append(message)
@@ -1378,7 +1391,7 @@ def prepare_figures_with_reference_audit(
         if progress_callback:
             progress_callback(index, total, "verify")
         try:
-            verification = verify_figure_reference_edit(asset, edited, draft, index, language, audit)
+            verification = verify_figure_reference_edit(asset, edited, draft, index, language, audit, extra_instruction)
         except Exception as exc:
             message = f"ŞEKİL {index}: düzeltme sonrası doğrulama çalıştırılamadı ({exc})."
             unresolved.append(message)
@@ -1393,6 +1406,10 @@ def prepare_figures_with_reference_audit(
             verify_confidence = 0.0
         accepted = (
             bool(verification.get("geometry_preserved"))
+            and bool(verification.get("arrows_preserved"))
+            and bool(verification.get("box_edges_preserved"))
+            and bool(verification.get("connections_preserved"))
+            and bool(verification.get("only_requested_text_changed"))
             and bool(verification.get("annotations_correct"))
             and bool(verification.get("distinct_references_separated", True))
             and not _has_nonempty_items(verification.get("wrong_or_missing"))
@@ -1416,7 +1433,7 @@ def prepare_figures_with_reference_audit(
     dedicated_method_reports = [
         r for r in reports
         if bool((r.get("audit") or {}).get("dedicated_method_flow"))
-        and r.get("final_status") not in {"unresolved", "excluded_text_heavy_nonreference_numbering"}
+        and r.get("final_status") not in {"unresolved", "excluded_nontechnical_or_unrecoverable"}
     ]
     if expected_methods and not dedicated_method_reports:
         try:
@@ -1449,7 +1466,7 @@ def prepare_figures_with_reference_audit(
     represented: set[str] = set()
     method_represented_on_dedicated: set[str] = set()
     for report in reports:
-        if report.get("final_status") == "excluded_text_heavy_nonreference_numbering":
+        if report.get("final_status") == "excluded_nontechnical_or_unrecoverable":
             continue
         audit = report.get("audit") or {}
         dedicated = bool(audit.get("dedicated_method_flow"))
@@ -1860,6 +1877,7 @@ TARIFNAME_DRAFT_SCHEMA = r"""
   "dependent_system_claims":[""],
   "method_claim":null,
   "dependent_method_claims":[""],
+  "additional_method_claims":[{"claim":{"preamble":"","steps":[""],"closing":"işlem adımlarını içermesidir."},"dependent_claims":[""]}],
   "abstract":"",
   "source_coverage_map":[{"fact_id":"T001","covered":true,"sections":["BULUŞUN DETAYLI AÇIKLAMASI"],"evidence":""}],
   "coverage_audit":{
@@ -1875,6 +1893,7 @@ TARIFNAME_DRAFT_SCHEMA = r"""
     "how_test_passed":true,
     "method_how_steps_passed":true,
     "sentence_case_clean":true,
+    "technical_term_clarity_passed":true,
     "core_difference_present":true,
     "scope_not_overlimited":true,
     "dependent_claims_non_redundant":true,
@@ -2080,8 +2099,12 @@ KRİTİK TALİMATLAR:
 - İstemleri yalnız hedeflenen sonuç veya fonksiyonla bırakma. Özellikle bağımsız istemde teknikte uzman kişinin “nasıl gerçekleştiriliyor?” sorusuna cevap verecek şekilde, kaynakta açık dayanağı bulunduğu ölçüde işlemi yapan teknik unsur/taşıyıcıyı, kullanılan girdiyi veya önceki unsurdan gelen veriyi, teknik işlem/mekanizmayı ve ortaya çıkan teknik çıktının sonraki unsurla bağlantısını yaz. “tespit eden / dönüştüren / optimize eden / classifying / transforming / determining” gibi sonuç bildiren fiiller kaynak mekanizmayı açıklıyorsa tek başına yeterli sayılmaz. Buna karşılık tercihli uygulama ayrıntılarıyla ana istemi gereksiz daraltma. Yazılım/modül unsurlarını İngilizce claim sırasını taklit ederek `X modülü (N), ... yapan bir modül` biçiminde kurma; Türkçe istemde önce kaynak destekli teknik işlev/mekanizma yazılır, unsur adı ve `(N)` referansı bu işlevi tanımlayan sıfat-fiil yapısının sonunda gelir: `... verilerini birlikte değerlendirerek ... değerini hesaplayan X modülü (N),`.
 - Kaynakta açık matematiksel bağıntı/formül varsa `formulas[].expression` alanında formül metnini koru. Aynı bağıntının bağımlı istemde açıkça yazılması gerekiyorsa düz `x = ...` metni kullanma; bağıntıyı `[[EQ: x = ...]]` işaretleyicisi içinde yaz. Word üreticisi bunu gerçek OMML denklem nesnesine dönüştürecektir. Formül zorunlu teknik çekirdek değilse ana istemi gereksiz daraltma; bağımlı istem/detaylı açıklamada tut.
 - Bağımlı istemleri kaynakta geçen her ayrıntı için çoğaltma. Yalnız ana isteme gerçek teknik daraltma/geri çekilme konumu sağlayan seçilmiş özellikleri kullan; istem bağımlılığı ana donanımsal taşıyıcıyı zaten taşıyorsa alt istemde elektronik cihaz/yazılım ifadesini gereksiz yere tekrar etme.
+- Türkçe bağımlı sistem istemi `olmasıdır.` ile bitiyorsa daraltılan unsurun türünü tekrar eden teknik isimle kapanmalıdır (`bir modül olmasıdır`, `bir birim olmasıdır`, `bir eleman olmasıdır` vb.); `bir yapıda olmasıdır` kullanma.
+- Kaynakta birincil yöntemden bağımsız ikinci bir yöntem akışı varsa `additional_method_claims` kullan. Birincil yöntemin gerçek alt uygulaması olan eğitim/ön işleme akışı ise uygun olduğunda `dependent_method_claims` altında birincil yönteme bağlanabilir; farklı adım numarası grubu tek başına bağımsız istem gerekçesi değildir.
+- Teknik terim açıklığını ayrıca değerlendir. Alandaki uzman için standart olmayan/çok anlamlı/özel çevrilmiş bir terim kapsamı belirsiz bırakıyorsa Detaylı Açıklamada işlev ve mekanizmasıyla tanımla; standart tek-anlamlı terimleri gereksiz yere ders kitabı gibi açıklama.
 - Eğitim/genel aşama ile test aşamasındaki paralel akışları aynı mantıkla fakat ayrı teknik aşamalar olarak kur.
 - REFERANS NUMARALARI bölümünde müşteri tarafından sistem/cihaz unsurları veya yöntem işlem adımları için verilmiş açık referansları AYNEN koru; 10, 20..., S101..., M1... veya başka bir referans ailesini sırf standartlaştırmak için değiştirme. Sistem/cihaz modüllerinde hiç referans yoksa kaynak sırasıyla 1, 2, 3... ver. Yöntem işlem adımlarında hiç referans yoksa varsayılan 1001, 1002, 1003... ailesini kullan. Kısmen numaralandırılmış kaynakta mevcut müşteri işaretlerini koru, yalnız boş kalanlara çakışmayacak varsayılan referans ata. Word'deki yöntem referans satırı `1001. ...` biçiminde başlar; bu satırın içinde sistem/cihaz unsur işaretleri `(1)`, `(2)` vb. yazılmaz. Parantezli unsur referansları BULUŞUN DETAYLI AÇIKLAMASI bölümünden itibaren başlar. TEKNİK ALAN, ÖNCEKİ TEKNİK, patent literatürü, BULUŞUN KISA AÇIKLAMASI/amaçlar ve ŞEKİLLERİN KISA AÇIKLAMASI içinde `(1)`, `(90)`, `(1001)` gibi bilinen referans işaretleri kullanma.
+- Referans çıktı sırası: sayısal unsur referansları doğal sayısal sırada, sonra K/R/O gibi harfli-sembolik bağlam referansları, en son yöntem adımları. Salt bütün sistemi ifade eden `Sistem/Buluş/Yöntem` kapsayıcısını ayrı referanslı unsur yapma. İnsan rolleri (operatör/kullanıcı/arayan vb.) teknik istem unsuru değildir; yalnız terminal/cihaz/arayüz gibi gerçek teknik nesne varsa istem unsuruna dönüştürülebilir.
 - “Yöntemin gerçekleştirdiği işlem adımları aşağıdaki gibidir:” bölümü için method_steps tam ve tutarlı olsun. Kaynaktaki yöntem referansları varsa aynen korunsun; yalnız kaynakta hiç yöntem referansı yoksa 1001’den başlayan varsayılan sıra oluşturulsun. REFERANS NUMARALARI, detaylı açıklamadaki yöntem listesi ve bağımsız yöntem isteminde aynı referanslı adımın teknik metni birebir aynı olsun. Detaylı açıklamadaki ara maddeler virgülle, son madde noktayla bitsin. Bağımsız yöntem istemindeki ara adımlar virgülle bitsin, son adım noktalamasız bitsin.
 - Yalnızca yöntem modunda system_claim null olmalıdır. Yalnızca sistem modunda method_claim null olmalıdır.
 - Her bağımlı istem ana isteme göre gerçek bir daraltma sağlamalıdır.
@@ -2241,6 +2264,8 @@ ZORUNLU KONTROL LİSTESİ:
 61C. Gövde düzyazısında `Buluş;`, `Sistem;`, `Yöntem;`, `Düzenek;` veya gereksiz `;` var mı? İstemlerdeki `olup, özelliği;` ve izinli ortak-grup `ve;` dışında virgül/nokta kullan. Detaylı Açıklamada `uygundur` sözcüğü veya buluşu kasteden `Sunulan çözüm/Bu çözüm` öznesi varsa nesnel patent diline ve `Buluş/Sistem/Yöntem` öznesine düzelt.
 61D. Kullanıcıya görünen TÜM Türkçe cümlelerde cümle içi unsur/modül/işlem adları başlık biçiminde büyük harfle mi başlıyor? `Çıktı eşleştirme tablosu`, `Büyük dil modeli motoru`, `Dosya kodek motoru` gibi normal sözcükler cümlenin ortasındaysa küçük harfe düzelt; yalnız gerçek kısaltma/özel ad ve cümle başlangıcı büyük kalabilir. Bu tarama yalnız Detaylı Açıklama girişinde değil bütün tarifname ve istem setinde yapılmalı; temiz değilse `coverage_audit.sentence_case_clean=false` ver.
 61E. Ana yöntem istemindeki HER işlem adımı ayrı ayrı uzman-NASIL testinden geçti mi? Özellikle `alınması` varsa neyin nereden/kimden ve hangi teknik girdi/arayüz/yazılım üzerinden alındığı; `işlenmesi/dönüştürülmesi/oluşturulması/belirlenmesi` gibi adımlarda hangi girdi/önceki çıktı üzerinde hangi teknik işlem yapıldığı görünür mü? Tek bir adım belirsizse `coverage_audit.method_how_steps_passed=false` ver.
+61F. Teknik terim açıklık kontrolü yapıldı mı? Uzman için standart olmayan, çok anlamlı veya özel çevrilmiş terimler ilk uygun kullanımda işlev/mekanizma ile açıklanmış mı? Belirsizlik varsa `coverage_audit.technical_term_clarity_passed=false` ver.
+61G. Salt Sistem/Buluş/Yöntem bütünü numaralı unsur yapılmış mı; insan rolü teknik istem unsuru olarak kullanılmış mı; referans çıktı sırası sayısal unsur → harfli/sembolik unsur → yöntem adımı mantığına uygun mu?
 61. Türkçe BAĞIMSIZ istemlerin preamble'ı yalnız buluş adı kadar kısa mı? `olup, özelliği;` öncesi kaynak-destekli teknik giriş Word şablonunda en az iki fiziksel satır oluşturacak kadar anlamlı teknik bağlam/temel işlev içermeli; manuel satır sonu veya anlamsız dolgu kullanılmamalıdır. Açıkça kısa preamble varsa yeniden yaz.
 
 JSON dışında hiçbir şey yazma. Çıktı, aşağıdaki şemaya tam uymalıdır:
@@ -2646,6 +2671,127 @@ def _assign_missing_element_numbers(draft: dict[str, Any]) -> None:
         next_default += 1
 
 
+
+def _reference_natural_key(ref: str) -> tuple[int, int, str]:
+    """Natural order for numeric technical refs such as 2, 10, 80a, 140b."""
+    raw = str(ref or "").strip()
+    match = re.match(r"^(\d+)(.*)$", raw)
+    if not match:
+        return (1, 0, raw.casefold())
+    return (0, int(match.group(1)), match.group(2).casefold())
+
+
+def _ordered_reference_elements(elements: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """REFERANS NUMARALARI display order: numeric refs, then symbolic refs in source order."""
+    rows = list(elements or [])
+    numeric = [row for row in rows if re.match(r"^\d", str((row or {}).get("number", "") or "").strip())]
+    symbolic = [row for row in rows if not re.match(r"^\d", str((row or {}).get("number", "") or "").strip())]
+    numeric.sort(key=lambda row: _reference_natural_key(str((row or {}).get("number", "") or "")))
+    return [*numeric, *symbolic]
+
+
+def _additional_method_claim_groups(draft: dict[str, Any]) -> list[dict[str, Any]]:
+    groups: list[dict[str, Any]] = []
+    for raw in draft.get("additional_method_claims") or []:
+        if not isinstance(raw, dict):
+            continue
+        claim = raw.get("claim") or {}
+        if isinstance(claim, dict) and (claim.get("preamble") or claim.get("steps")):
+            groups.append({"claim": claim, "dependent_claims": list(raw.get("dependent_claims") or [])})
+    return groups
+
+
+def _all_method_claim_objects(draft: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    primary = draft.get("method_claim") or {}
+    if isinstance(primary, dict) and (primary.get("preamble") or primary.get("steps")):
+        out.append(primary)
+    out.extend(group["claim"] for group in _additional_method_claim_groups(draft))
+    return out
+
+
+def _all_method_dependent_claims(draft: dict[str, Any]) -> list[str]:
+    out = [str(x or "").strip() for x in (draft.get("dependent_method_claims") or []) if str(x or "").strip()]
+    for group in _additional_method_claim_groups(draft):
+        out.extend(str(x or "").strip() for x in (group.get("dependent_claims") or []) if str(x or "").strip())
+    return out
+
+
+def _is_human_actor_element_name(name: str) -> bool:
+    text = re.sub(r"\s+", " ", str(name or "").strip().casefold())
+    if not text:
+        return False
+    technical_nouns = ("terminal", "cihaz", "ekipman", "arayüz", "modül", "birim", "sunucu", "sistem", "istasyon", "platform", "sensör", "motor")
+    if any(noun in text for noun in technical_nouns):
+        return False
+    human = {
+        "operatör", "kullanıcı", "arayan", "abone", "hasta", "müşteri", "müşteri temsilcisi",
+        "personel", "uzman", "hekim", "doktor", "teknisyen", "görevli", "çalışan",
+    }
+    return text in human or any(text.startswith(x + " ") for x in human)
+
+
+def _validate_reference_role_rules(draft: dict[str, Any], language: str = "Türkçe") -> None:
+    if _english_spec(language):
+        return
+    generic_whole = {"sistem", "buluş", "yöntem"}
+    numbered_whole = []
+    human_refs: dict[str, str] = {}
+    for element in draft.get("elements") or []:
+        number = str(element.get("number", "") or "").strip()
+        name = str(element.get("name", "") or "").strip()
+        if number and name.casefold() in generic_whole:
+            numbered_whole.append(f"{name} ({number})")
+        if number and _is_human_actor_element_name(name):
+            human_refs[number] = name
+    if numbered_whole:
+        raise ValueError("Referans rolü kapısı: buluşun bütünü salt Sistem/Buluş/Yöntem adıyla ayrı unsur olarak numaralandırılamaz: " + "; ".join(numbered_whole))
+    if human_refs:
+        claim_text = "\n".join([
+            *_system_claim_all_texts(draft.get("system_claim") or {}),
+            *map(str, draft.get("dependent_system_claims") or []),
+            *[str(x) for claim in _all_method_claim_objects(draft) for x in ([claim.get("preamble", "")] + list(claim.get("steps") or []))],
+            *_all_method_dependent_claims(draft),
+        ])
+        used = [f"{name} ({ref})" for ref, name in human_refs.items() if re.search(r"\(\s*" + re.escape(ref) + r"\s*\)", claim_text)]
+        if used:
+            raise ValueError("İstem teknik-unsur kapısı: insan rolü/kullanıcı bağımsız teknik istem unsuru olarak kullanılamaz; terminal/cihaz/arayüz gibi teknik nesne tanımlanmalıdır. Hatalı: " + "; ".join(used))
+
+
+def _claim_element_type(name: str) -> str | None:
+    low = str(name or "").strip().casefold()
+    pairs = [
+        (("modülü", "modül"), "modül"), (("birimi", "birim"), "birim"), (("elemanı", "eleman"), "eleman"),
+        (("katmanı", "katman"), "katman"), (("başlığı", "başlık"), "başlık"), (("yönlendiricisi", "yönlendirici"), "yönlendirici"),
+        (("kontrolcüsü", "kontrolcü"), "kontrolcü"), (("zinciri", "zincir"), "zincir"), (("kuralı", "kural"), "kural"),
+        (("kapısı", "kapı"), "kapı"), (("birleştiricisi", "birleştirici"), "birleştirici"), (("birleştirici",), "birleştirici"),
+        (("terminali", "terminal"), "terminal"), (("platformu", "platform"), "platform"), (("motoru", "motor"), "motor"),
+        (("ağı", "ağ"), "ağ"), (("deposu", "depo"), "depo"), (("sunucusu", "sunucu"), "sunucu"),
+    ]
+    for endings, canonical in pairs:
+        if any(low.endswith(x) for x in endings):
+            return canonical
+    return None
+
+
+def _validate_dependent_system_claim_type_closure(claims: list[str], draft: dict[str, Any], language: str = "Türkçe") -> None:
+    if _english_spec(language):
+        return
+    element_map = {str(e.get("number", "") or "").strip(): str(e.get("name", "") or "").strip() for e in (draft.get("elements") or [])}
+    for idx, raw in enumerate(claims, start=1):
+        claim = str(raw or "").strip()
+        if re.search(r"\bbir\s+yapıda\s+olmasıdır\.?$", claim, re.IGNORECASE):
+            raise ValueError(f"Bağımlı sistem istemi {idx}: `bir yapıda olmasıdır` kullanılamaz; daraltılan unsurun teknik türü (bir modül/birim/eleman vb.) yazılmalıdır.")
+        if not re.search(r"olmasıdır\.?$", claim, re.IGNORECASE):
+            continue
+        refs = re.findall(r"\(\s*([^()]+?)\s*\)", claim)
+        target_ref = next((r for r in reversed(refs) if r in element_map), None)
+        if not target_ref:
+            continue
+        kind = _claim_element_type(element_map[target_ref])
+        if kind and not re.search(r"\bbir\s+" + re.escape(kind) + r"\s+olmasıdır\.?$", claim, re.IGNORECASE):
+            raise ValueError(f"Bağımlı sistem istemi {idx}: {element_map[target_ref]} ({target_ref}) için `olmasıdır` kapanışı unsur türüyle uyumlu `bir {kind} olmasıdır.` biçiminde olmalıdır.")
+
 def _convert_mapping_tables_to_prose(draft: dict[str, Any], language: str = "Türkçe") -> None:
     """İşlem Adımı/Gerçekleştiren Unsur açıklama tablolarını teknik paragrafa çevir."""
     kept: list[dict[str, Any]] = []
@@ -2862,6 +3008,14 @@ def _normalize_known_technical_case_in_draft(draft: dict[str, Any]) -> None:
         method_claim["steps"] = [
             _normalize_known_mid_sentence_technical_case(str(x or "")) for x in (method_claim.get("steps") or [])
         ]
+    for group in _additional_method_claim_groups(draft):
+        claim = group.get("claim") or {}
+        if isinstance(claim.get("preamble"), str):
+            claim["preamble"] = _normalize_known_mid_sentence_technical_case(claim["preamble"])
+        claim["steps"] = [_normalize_known_mid_sentence_technical_case(str(x or "")) for x in (claim.get("steps") or [])]
+        group["dependent_claims"] = [_normalize_known_mid_sentence_technical_case(str(x or "")) for x in (group.get("dependent_claims") or [])]
+    if draft.get("additional_method_claims"):
+        draft["additional_method_claims"] = _additional_method_claim_groups(draft)
     # coverage evidence nihai görünür metinle birebir eşleşmek zorunda olduğundan aynı dönüşüm burada da uygulanır.
     for row in draft.get("source_coverage_map") or []:
         if isinstance(row, dict) and isinstance(row.get("evidence"), str):
@@ -3033,8 +3187,8 @@ def _validate_reference_identity(draft: dict[str, Any]) -> None:
         str(draft.get("working_principle", "") or ""),
         *_system_claim_all_texts(draft.get("system_claim") or {}),
         *map(str, draft.get("dependent_system_claims") or []),
-        *map(str, (draft.get("method_claim") or {}).get("steps") or []),
-        *map(str, draft.get("dependent_method_claims") or []),
+        *[str(x) for claim in _all_method_claim_objects(draft) for x in (claim.get("steps") or [])],
+        *_all_method_dependent_claims(draft),
     ]
     for text in texts:
         for m in re.finditer(r"\(([^()]+)\)", str(text)):
@@ -3063,7 +3217,12 @@ def _reference_mention_pattern(name: str) -> re.Pattern:
 
 
 def _validate_all_elements_covered_in_claims(draft: dict[str, Any]) -> None:
-    """Every explicitly referenced source element must occur in at least one system claim, regardless of new/old checkbox."""
+    """Require claim coverage only for numeric technical system/component refs.
+
+    Symbolic context references (K/R/O...) and human roles may legitimately remain in
+    figures/detail without becoming claim elements. Method-step references are audited
+    by the method-claim gates separately.
+    """
     elements = [x for x in (draft.get("elements") or []) if str(x.get("number", "") or "").strip() and str(x.get("name", "") or "").strip()]
     if not elements:
         return
@@ -3074,6 +3233,10 @@ def _validate_all_elements_covered_in_claims(draft: dict[str, Any]) -> None:
     for element in elements:
         number=str(element.get("number", "") or "").strip()
         name=str(element.get("name", "") or "").strip()
+        # K/R/O gibi harfli işaretler bağlam referansıdır; isteme zorla taşınmaz.
+        # İnsan rolleri de bağımsız teknik unsur değildir.
+        if not re.match(r"^\d", number) or _is_human_actor_element_name(name):
+            continue
         mention=_reference_mention_pattern(name)
         found=False
         for m in mention.finditer(joined):
@@ -3083,7 +3246,7 @@ def _validate_all_elements_covered_in_claims(draft: dict[str, Any]) -> None:
         if not found:
             missing.append(f"{name} ({number})")
     if missing:
-        raise ValueError("İstem unsur-kapsam kapısı: referans tablosundaki açık unsur(lar) istem setinde hiç kullanılmamış: " + "; ".join(missing))
+        raise ValueError("İstem unsur-kapsam kapısı: referans tablosundaki sayısal teknik unsur(lar) sistem istem setinde hiç kullanılmamış: " + "; ".join(missing))
 
 
 def _validate_reference_presence(draft: dict[str, Any]) -> None:
@@ -3099,9 +3262,10 @@ def _validate_reference_presence(draft: dict[str, Any]) -> None:
     sc = draft.get("system_claim") or {}
     texts.extend(("Ana sistem istemi", str(t or "")) for t in _system_claim_all_texts(sc))
     texts.extend((f"Bağımlı sistem istemi {i}", str(t or "")) for i, t in enumerate(draft.get("dependent_system_claims") or [], start=1))
-    mc = draft.get("method_claim") or {}
-    texts.extend(("Ana yöntem istemi", str(t or "")) for t in (mc.get("steps") or []))
-    texts.extend((f"Bağımlı yöntem istemi {i}", str(t or "")) for i, t in enumerate(draft.get("dependent_method_claims") or [], start=1))
+    for claim_idx, mc in enumerate(_all_method_claim_objects(draft), start=1):
+        texts.append((f"Bağımsız yöntem istemi {claim_idx} girişi", str(mc.get("preamble", "") or "")))
+        texts.extend((f"Bağımsız yöntem istemi {claim_idx}", str(t or "")) for t in (mc.get("steps") or []))
+    texts.extend((f"Bağımlı yöntem istemi {i}", str(t or "")) for i, t in enumerate(_all_method_dependent_claims(draft), start=1))
 
     for element in elements:
         number = str(element.get("number", "") or "").strip()
@@ -3261,12 +3425,12 @@ def _validate_method_step_action_language(draft: dict[str, Any], language: str =
         clean = re.sub(rf"\s*\(\s*{re.escape(number)}\s*\)\s*$", "", text).strip().rstrip(".,;:") if number else text.rstrip(".,;:")
         if clean and not action_end_re.search(clean):
             raise ValueError(f"Yöntem işlem adımı {number or '?'} salt isimle veya işlem-sonu olmayan ifadeyle bitiyor: '{clean}'. '... yapılması/edilmesi/aktarılması/belirlenmesi' gibi gerçek işlem fiilimsisi kullanın.")
-    method = draft.get("method_claim") or {}
-    for raw in method.get("steps") or []:
-        text = str(raw or "").strip().rstrip(".,;:")
-        text = re.sub(r"\s*\(\s*[^()]+\s*\)\s*$", "", text).strip()
-        if text and not action_end_re.search(text):
-            raise ValueError(f"Bağımsız yöntem istemindeki adım gerçek işlem fiilimsisiyle bitmiyor: '{text}'.")
+    for method in _all_method_claim_objects(draft):
+        for raw in method.get("steps") or []:
+            text = str(raw or "").strip().rstrip(".,;:")
+            text = re.sub(r"\s*\(\s*[^()]+\s*\)\s*$", "", text).strip()
+            if text and not action_end_re.search(text):
+                raise ValueError(f"Bağımsız yöntem istemindeki adım gerçek işlem fiilimsisiyle bitmiyor: '{text}'.")
 
 
 def _validate_method_claim_how_test(draft: dict[str, Any], language: str = "Türkçe") -> None:
@@ -3274,8 +3438,7 @@ def _validate_method_claim_how_test(draft: dict[str, Any], language: str = "Tür
     if _english_spec(language):
         return
     method_steps = list(draft.get("method_steps") or [])
-    method_claim = draft.get("method_claim") or {}
-    claim_steps = [str(x or "").strip() for x in (method_claim.get("steps") or [])]
+    claim_steps = [str(x or "").strip() for claim in _all_method_claim_objects(draft) for x in (claim.get("steps") or [])]
     if not method_steps and not claim_steps:
         return
 
@@ -3323,7 +3486,7 @@ def _validate_method_claim_how_test(draft: dict[str, Any], language: str = "Tür
 def _validate_no_generic_unsur_in_claims(draft: dict[str, Any], language: str = "Türkçe") -> None:
     if _english_spec(language):
         return
-    texts = [*_system_claim_all_texts(draft.get("system_claim") or {}), *map(str, draft.get("dependent_system_claims") or []), *map(str, (draft.get("method_claim") or {}).get("steps") or []), *map(str, draft.get("dependent_method_claims") or [])]
+    texts = [*_system_claim_all_texts(draft.get("system_claim") or {}), *map(str, draft.get("dependent_system_claims") or []), *[str(x) for claim in _all_method_claim_objects(draft) for x in (claim.get("steps") or [])], *_all_method_dependent_claims(draft)]
     for text in texts:
         if re.search(r"\bbir\s+unsur\b|\bunsur\s+olmasıdır|\bunsur\s+içermesidir", str(text), re.IGNORECASE):
             raise ValueError("İstemlerde teknik eleman türü yerine belirsiz 'unsur' kullanılamaz; anten/modül/birim/eleman/sunucu/veritabanı gibi gerçek teknik tür yazılmalıdır.")
@@ -3407,8 +3570,8 @@ def _validate_claim_formula_markers(draft: dict[str, Any], language: str = "Tür
     texts = [
         *_system_claim_all_texts(draft.get("system_claim") or {}),
         *map(str, draft.get("dependent_system_claims") or []),
-        *map(str, (draft.get("method_claim") or {}).get("steps") or []),
-        *map(str, draft.get("dependent_method_claims") or []),
+        *[str(x) for claim in _all_method_claim_objects(draft) for x in (claim.get("steps") or [])],
+        *_all_method_dependent_claims(draft),
     ]
     formula_like = re.compile(r"\b[A-Za-zÇĞİÖŞÜçğıöşü][A-Za-zÇĞİÖŞÜçğıöşü0-9_]{0,30}\s*(?:=|≤|≥|<|>)\s*[-+()0-9A-Za-zÇĞİÖŞÜçğıöşü_]", re.I)
     for text in texts:
@@ -3426,8 +3589,8 @@ def _validate_word_math_format(data: bytes, draft: dict[str, Any]) -> None:
     claim_texts = [
         *_system_claim_all_texts(draft.get("system_claim") or {}),
         *map(str, draft.get("dependent_system_claims") or []),
-        *map(str, (draft.get("method_claim") or {}).get("steps") or []),
-        *map(str, draft.get("dependent_method_claims") or []),
+        *[str(x) for claim in _all_method_claim_objects(draft) for x in (claim.get("steps") or [])],
+        *_all_method_dependent_claims(draft),
     ]
     expected_inline = sum(len(EQ_MARKER_RE.findall(str(t or ""))) for t in claim_texts)
     expected = expected_display + expected_inline
@@ -3482,8 +3645,8 @@ def _validate_turkish_reference_sentence_case(draft: dict[str, Any], language: s
         *_system_claim_all_texts(draft.get("system_claim") or {}),
         *map(str, draft.get("dependent_system_claims") or []),
         str((draft.get("method_claim") or {}).get("preamble", "") or ""),
-        *map(str, (draft.get("method_claim") or {}).get("steps") or []),
-        *map(str, draft.get("dependent_method_claims") or []),
+        *[str(x) for claim in _all_method_claim_objects(draft) for x in (claim.get("steps") or [])],
+        *_all_method_dependent_claims(draft),
         *map(str, draft.get("alternatives") or []),
         str(draft.get("abstract", "") or ""),
     ])
@@ -3895,8 +4058,8 @@ def _validate_turkish_terminology(draft: dict[str, Any], language: str = "Türk�
     parts.append(str(draft.get("working_principle", "") or ""))
     parts.extend(_system_claim_all_texts(draft.get("system_claim") or {}))
     parts.extend(map(str, draft.get("dependent_system_claims") or []))
-    parts.extend(map(str, (draft.get("method_claim") or {}).get("steps") or []))
-    parts.extend(map(str, draft.get("dependent_method_claims") or []))
+    parts.extend(str(x) for claim in _all_method_claim_objects(draft) for x in ([claim.get("preamble", "")] + list(claim.get("steps") or [])))
+    parts.extend(_all_method_dependent_claims(draft))
     parts.append(str(draft.get("abstract", "") or ""))
     visible = "\n".join(x for x in parts if x)
 
@@ -4019,6 +4182,7 @@ def validate_tarifname_draft(
             "dependent_system_claims": draft.get("dependent_system_claims"),
             "method_claim": draft.get("method_claim"),
             "dependent_method_claims": draft.get("dependent_method_claims"),
+            "additional_method_claims": draft.get("additional_method_claims"),
         },
         ensure_ascii=False,
     )
@@ -4037,7 +4201,8 @@ def validate_tarifname_draft(
 
     # v5.4.38: Word render öncesi erken uyarı. Nihai otorite PDF fiziksel-satır kapısıdır.
     if not _english_spec(language):
-        for claim_label, claim_obj in (("sistem", draft.get("system_claim")), ("yöntem", draft.get("method_claim"))):
+        independent_claims = [("sistem", draft.get("system_claim"))] + [("yöntem", c) for c in _all_method_claim_objects(draft)]
+        for claim_label, claim_obj in independent_claims:
             if not claim_obj:
                 continue
             preamble = re.sub(r"\s+", " ", str((claim_obj or {}).get("preamble", "") or "").strip().rstrip(" ,;:"))
@@ -4057,11 +4222,8 @@ def validate_tarifname_draft(
         ])
         if len(software_terms_re.findall(system_text)) >= 2 and not hardware_anchor_re.search(system_text):
             raise ValueError("Yazılım/modül ağırlıklı bağımsız sistem istemi geniş bir donanımsal taşıyıcıya dayandırılmalıdır; örneğin elektronik cihaz üzerinde koşturulan yazılım vasıtasıyla.")
-    if draft.get("method_claim"):
-        method_text = " ".join([
-            str((draft.get("method_claim") or {}).get("preamble", "")),
-            *map(str, (draft.get("method_claim") or {}).get("steps") or []),
-        ])
+    for method_obj in _all_method_claim_objects(draft):
+        method_text = " ".join([str(method_obj.get("preamble", "")), *map(str, method_obj.get("steps") or [])])
         if len(software_terms_re.findall(method_text)) >= 2 and not hardware_anchor_re.search(method_text):
             raise ValueError("Yazılım/algoritma ağırlıklı bağımsız yöntem istemi elektronik cihaz/işlemci gibi geniş bir donanımsal taşıyıcıya dayandırılmalıdır.")
 
@@ -4171,7 +4333,9 @@ def validate_tarifname_draft(
                 raise ValueError(f"İstem {idx} içinde standart ‘olup, özelliği;’ kalıbı dışında noktalı virgül kullanılmış.")
         _validate_dependent_system_claim_product_language(dependents, language)
         _validate_dependent_system_claim_possessive_grammar(dependents, language)
-        method_dependents = [str(x or "").strip() for x in (draft.get("dependent_method_claims") or []) if str(x or "").strip()]
+        _validate_dependent_system_claim_type_closure(dependents, draft, language)
+        _validate_reference_role_rules(draft, language)
+        method_dependents = _all_method_dependent_claims(draft)
         dependent_method_start_re = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*e\s+uygun\s+yöntem\s+olup,\s*özelliği;", re.IGNORECASE)
         for dep_index, claim in enumerate(method_dependents, start=1):
             if not dependent_method_start_re.match(claim):
@@ -4186,6 +4350,8 @@ def validate_tarifname_draft(
             draft.get("method_claim") or {},
             [str(x or "").strip() for x in (draft.get("dependent_method_claims") or []) if str(x or "").strip()],
         )
+        for group in _additional_method_claim_groups(draft):
+            _validate_dependent_method_claim_semantic_repetition(group.get("claim") or {}, [str(x or "").strip() for x in (group.get("dependent_claims") or []) if str(x or "").strip()])
         _validate_no_generic_unsur_in_claims(draft, language)
         _validate_method_step_action_language(draft, language)
         _validate_method_claim_how_test(draft, language)
@@ -4195,7 +4361,7 @@ def validate_tarifname_draft(
     audit = draft.get("coverage_audit") or {}
     mandatory_audit_flags = [
         "prior_art_complete", "reference_table_complete", "claims_consistent",
-        "reference_names_clear", "reference_order_valid", "how_test_passed", "method_how_steps_passed", "sentence_case_clean",
+        "reference_names_clear", "reference_order_valid", "how_test_passed", "method_how_steps_passed", "sentence_case_clean", "technical_term_clarity_passed",
         "core_difference_present", "scope_not_overlimited", "dependent_claims_non_redundant",
         "dependent_claim_dependencies_valid", "example_dimensions_not_claim_limited",
         "product_claim_language_valid", "abstract_single_paragraph_sentence", "source_attribution_removed",
@@ -4329,7 +4495,7 @@ def _validate_dependent_claim_short_starts_texts(numbered_claim_texts: list[str]
     if _english_spec(language):
         return
     dependent_texts = [str(t or "").replace("\u00a0", " ").strip() for t in numbered_claim_texts if re.match(r"^\s*İstem\s+\d+", str(t or "").replace("\u00a0", " "), re.IGNORECASE)]
-    expected_dep_kinds = (["sistem"] * len(draft.get("dependent_system_claims") or [])) + (["yöntem"] * len(draft.get("dependent_method_claims") or []))
+    expected_dep_kinds = (["sistem"] * len(draft.get("dependent_system_claims") or [])) + (["yöntem"] * len(_all_method_dependent_claims(draft)))
     if len(dependent_texts) != len(expected_dep_kinds):
         raise ValueError("Word istem kalite kapısı: bağımlı istem başlangıçları beklenen sayıda/biçimde bulunamadı.")
     for text, kind in zip(dependent_texts, expected_dep_kinds):
@@ -4527,7 +4693,8 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
         numid = numpr.find(qn("w:numId"))
         if numid is not None and numid.get(qn("w:val")) == "2":
             numbered_count += 1
-    expected_claims = (1 if draft.get("system_claim") else 0) + len(draft.get("dependent_system_claims") or []) + (1 if draft.get("method_claim") else 0) + len(draft.get("dependent_method_claims") or [])
+    additional_groups = _additional_method_claim_groups(draft)
+    expected_claims = (1 if draft.get("system_claim") else 0) + len(draft.get("dependent_system_claims") or []) + (1 if draft.get("method_claim") else 0) + len(draft.get("dependent_method_claims") or []) + sum(1 + len(g.get("dependent_claims") or []) for g in additional_groups)
     if numbered_count < expected_claims:
         raise ValueError("Word şablon kontrolü: İstemlerin tamamında gerçek Word otomatik numaralandırması uygulanmamış.")
 
@@ -4543,6 +4710,7 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
     _validate_dependent_claim_short_starts_texts(numbered_claim_texts, draft, language)
     _validate_dependent_system_claim_product_language(numbered_claim_texts, language)
     _validate_dependent_system_claim_possessive_grammar(numbered_claim_texts, language)
+    _validate_dependent_system_claim_type_closure([x for x in numbered_claim_texts if re.match(r"^\s*İstem\s+\d+", x, re.IGNORECASE) and "uygun sistem" in x.casefold()], draft, language)
 
     # Türkçe istem girişleri doğal Word satır kaydırmasıyla akmalıdır. Önceki
     # çok-kelimeli NBSP kuyruğu iki yana yaslı satırlarda aşırı kelime aralığı
@@ -4579,7 +4747,7 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
 
     claim_region = paras[ci + 1:ai]
     closings = [p for p in claim_region if p.text.strip() in {"içermesidir.", "işlem adımlarını içermesidir."}]
-    expected_closings = (1 if draft.get("system_claim") else 0) + (1 if draft.get("method_claim") else 0)
+    expected_closings = (1 if draft.get("system_claim") else 0) + (1 if draft.get("method_claim") else 0) + len(_additional_method_claim_groups(draft))
     if len(closings) != expected_closings:
         raise ValueError("Word şablon kontrolü: bağımsız istem kapanış paragraflarının sayısı beklenenle uyuşmuyor.")
     for p in closings:
@@ -5100,7 +5268,7 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
     # REFERANS NUMARALARI: sistem referansları bitişik; yöntem varsa arada tek boşluk; detay başlığından önce tek boşluk.
     tpl_text(47, labels["refs"])
     tpl_blank(48)
-    elements = draft.get("elements") or []
+    elements = _ordered_reference_elements(draft.get("elements") or [])
     for element in elements:
         # Referans listesinde unsur adı draft.elements ile karakter-karakter aynıdır;
         # sentence-case dönüşümü teknik kısaltma/proper-case adlarını (örn. Monte Carlo) bozabilir.
@@ -5269,6 +5437,24 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
             # 98 numaralı şablon paragrafı ÖZET öncesindeki manuel sayfa sonunu içerir;
             # istemler arasında kullanılması her bağımlı yöntem istemini yeni sayfaya atar.
             # İstemler arasındaki normal boşluk arketipi 96 kullanılır.
+            tpl_blank(96)
+
+    for group in _additional_method_claim_groups(draft):
+        additional_claim = group.get("claim") or {}
+        if en:
+            add_numbered_claim(doc, template, f"{additional_claim.get('preamble','').rstrip(' ,;:')}, comprising:")
+        else:
+            add_numbered_claim(doc, template, f"{additional_claim.get('preamble','')} olup, özelliği;")
+        additional_steps = list(additional_claim.get("steps") or [])
+        for idx, item in enumerate(additional_steps):
+            base_step = str(item).rstrip(".,;:")
+            step_text = base_step + (("." if idx == len(additional_steps)-1 else ";") if en else ("" if idx == len(additional_steps)-1 else ","))
+            add_template_list_item(doc, template, 86, step_text)
+        if not en:
+            tpl_text(93, additional_claim.get("closing", "işlem adımlarını içermesidir."))
+        tpl_blank(94)
+        for dependent in group.get("dependent_claims") or []:
+            add_numbered_claim(doc, template, str(dependent))
             tpl_blank(96)
 
     # ÖZET öncesi tam bir boşluk ve yeni sayfa.
@@ -8286,6 +8472,7 @@ if work_type == "Tarifname oluşturma":
                                 draft,
                                 language_choice,
                                 progress_callback=figure_progress,
+                                extra_instruction=extra_instruction,
                             )
                             if not figure_unresolved:
                                 progress.progress(98, text="Referansları doğrulanmış şekiller Word dosyasına yerleştiriliyor...")

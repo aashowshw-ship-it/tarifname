@@ -13,7 +13,7 @@ from tarifname_figure_generation import has_material_gray_fill, normalize_graysc
 
 
 def test_v5465_versions_and_binding_rules():
-    assert APP_VERSION == "v5.4.71"
+    assert APP_VERSION == "v5.4.72"
     assert RULESET_VERSION == "2026-09-18.v64"
     low = TARIFNAME_RULES.casefold()
     assert "source_exact_phrases" in low or "open gateway / api sunucusu" in low

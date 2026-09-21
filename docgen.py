@@ -106,6 +106,21 @@ def _strip_known_element_reference_marks(text: str, element_numbers: list[str]) 
     return re.sub(r"\s{2,}", " ", result).strip()
 
 
+def _reference_natural_key(ref: str):
+    raw = str(ref or "").strip()
+    m = re.match(r"^(\d+)(.*)$", raw)
+    return (0, int(m.group(1)), m.group(2).casefold()) if m else (1, 0, raw.casefold())
+
+def _ordered_reference_elements(elements):
+    rows = list(elements or [])
+    numeric = [r for r in rows if re.match(r"^\d", str((r or {}).get("number", "") or "").strip())]
+    symbolic = [r for r in rows if not re.match(r"^\d", str((r or {}).get("number", "") or "").strip())]
+    numeric.sort(key=lambda r: _reference_natural_key(str((r or {}).get("number", "") or "")))
+    return [*numeric, *symbolic]
+
+def _additional_method_claim_groups(draft):
+    return [g for g in (draft.get("additional_method_claims") or []) if isinstance(g, dict) and isinstance(g.get("claim"), dict)]
+
 def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
     template = Document(str(template_path))
     doc = Document(str(template_path))
@@ -165,7 +180,7 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
 
     _add_heading(doc, "REFERANS NUMARALARI")
     doc.add_paragraph()
-    for e in draft.get("elements") or []:
+    for e in _ordered_reference_elements(draft.get("elements") or []):
         _add_text(doc, f"{e['number']}. {e['name']}")
     if draft.get("elements") and draft.get("method_steps"):
         doc.add_paragraph()
@@ -223,6 +238,18 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
         _copy_template_paragraph_with_text(doc, template, 93, mc.get("closing", "işlem adımlarını içermesidir."))
         claim_no += 1
         for dep in draft.get("dependent_method_claims") or []:
+            _numbered_claim(doc, claim_no, dep)
+            claim_no += 1
+
+    for group in _additional_method_claim_groups(draft):
+        mc2 = group.get("claim") or {}
+        _numbered_claim(doc, claim_no, mc2.get("preamble", "") + " olup, özelliği;")
+        for idx, step in enumerate(mc2.get("steps") or []):
+            base = str(step).rstrip().rstrip(".;,")
+            _add_bullet(doc, base if idx == len(mc2.get("steps") or []) - 1 else base + ",")
+        _copy_template_paragraph_with_text(doc, template, 93, mc2.get("closing", "işlem adımlarını içermesidir."))
+        claim_no += 1
+        for dep in group.get("dependent_claims") or []:
             _numbered_claim(doc, claim_no, dep)
             claim_no += 1
 

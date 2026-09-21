@@ -1,4 +1,14 @@
-# Patent Atölyesi v5.4.71
+# Patent Atölyesi v5.4.72
+
+## v5.4.72 / 2026-09-21 — Referans, istem ve kaynak-şekil sadakati sertleştirmesi
+
+- REFERANS NUMARALARI görünüm sırası artık deterministiktir: sayısal unsur referansları doğal sayısal sırada, ardından K/R/O gibi sembolik bağlam referansları, en son yöntem işlem adımları. `80a/80b`, `140a/140b/140c`, `203b` gibi ekli referanslar doğal sırada tutulur.
+- Salt buluş bütününü ifade eden `Sistem/Buluş/Yöntem` kapsayıcısı numaralı unsur yapılamaz. İnsan rolleri teknik istem unsuru olarak kullanılamaz; teknik cihaz/terminal/arayüz ayrı değerlendirilir.
+- Bağımlı sistem istemlerinde `bir yapıda olmasıdır` yasaktır; `olmasıdır` kapanışı unsur türüyle (modül/birim/eleman vb.) uyumlu olmalıdır. Teknik terim açıklığı AI kalite kapısında zorunlu bayraktır.
+- Birincil yöntemden bağımsız ek yöntemler `additional_method_claims` ile modellenebilir; birincil yöntemin alt uygulaması olan eğitim/ön işleme akışları gerektiğinde bağımlı yöntem istemi olarak tutulabilir.
+- Kaynak müşteri şekilleri metin yoğunluğu nedeniyle otomatik dışlanmaz. Özgün geometri, kutu, ok, yarım ok, kesikli çizgi ve bağlantılar korunarak yalnız gerekli yazı/referans katmanı temizlenir. Referanslı kutuda ad siliniyorsa referans aynı kutuda ortalanır; numarasız bağlam yazıları ek talimat aksini söylemedikçe korunabilir.
+- Şekil ikinci görsel kontrolünde oklar, kutu kenarları, bağlantılar ve yalnız talep edilen yazı değişikliği ayrı PASS koşullarıdır. `Ek Talimat` şekil audit/düzenleme/doğrulama çağrılarına da aktarılır.
+
 
 ## v5.4.71 — Görüş final-kapı ve otomatik akış sertleştirmesi (18.09.2026)
 
@@ -9,12 +19,12 @@
 
 
 
-### v5.4.71+ / 2026-09-21 — Tarifname istem/dil/şekil kalite sıkılaştırması
+### v5.4.72 / 2026-09-21 — Tarifname istem/dil/şekil kalite sıkılaştırması
 - Cümle içi teknik terimlerde sentence-case kontrolü taslak ve nihai Word boyunca deterministik çalışır; `Derin Paket İnceleme`, `Katman 7`, `Control Plane`, `Taşıyıcı Sınıfı` gibi bağlama göre gereksiz büyük harfli kullanımlar reddedilir.
 - `app.py` ve `app_core.py` tarifname kalite bayrakları eşitlenmiştir; `method_how_steps_passed` ve `sentence_case_clean` iki akışta da zorunludur.
 - Bağımlı sistem istemlerinde referanslı unsur virgülden önceyse Türkçe tamlayan/iyelik uyumu zorunludur: `motoru (20), ... sahip olmasıdır.` reddedilir, `motorunun (20), ... sahip olmasıdır.` kabul edilir.
 - İstem otomatik numaralandırmasında tab/hanging-indent geometrisi ve render devam-satırı hizası kontrol edilir.
-- Metin-ağırlıklı ve `1/2/A1/B2...` gibi referans dışı numaralandırmalar içeren kaynak şekiller, ayrı teknik şekil değeri taşımıyorsa nihai Şekiller dosyasından dışlanır; görseldeki benzersiz teknik bilgi tarifnameye aktarılmadan görsel sessizce atılamaz.
+- Metin-ağırlıklı veya `1/2/A1/B2...` gibi referans dışı iç etiketler taşıyan teknik müşteri şekilleri sırf bu nedenle dışlanmaz; özgün kutu/ok/çizgi/dal geometrisi korunarak yalnız gerekli yazı katmanı temizlenir. Dışlama yalnız teknik değeri bulunmayan veya güvenilir biçimde temizlenemeyen kaynak için gerekçeli olarak mümkündür; benzersiz teknik bilgi tarifnameye aktarılmadan kaynak sessizce atılamaz.
 
 ## v5.4.70 — Görüş teslim özeti: ikna oranı + AI kullanım maliyeti (16.09.2026)
 
@@ -762,7 +772,7 @@ Bu sürüm Türkçe `i/İ` normalizasyon hatasını giderir, UTM/teknik kısaltm
 - Bağımlı sistem istemlerinde son kapanışın yalnız `olmasıdır/içermesidir` olması artık tek başına yeterli değildir. Teknik gövdedeki `sağlaması`, `çalıştırmaması`, `saklaması`, `bağlaması`, `üretilmesi` vb. eylem isimleştirmeleri reddedilir; işlev `sağlayan`, `çalıştırmayan`, `saklayan`, `bağlayan`, `üreten` gibi sıfat-fiille somut teknik unsura bağlanmalıdır. Salt `... uygun olmasıdır` istemi de reddedilir.
 - Her iki kontrol hem taslak kalite turunda hem nihai DOCX çıktı kapısında tekrar çalışır; model/audit PASS beyanı bu kontrolleri bypass edemez.
 
-## v5.4.71 — İşe özel Ek Talimat alanı
+## v5.4.72 — İşe özel Ek Talimat alanı
 
 - Tarifname oluşturma, Görüş hazırlama ve Tip 3 Ön Araştırma Raporu arayüzlerinde `Ek Talimat (varsa)` alanı bulunur.
 - Alan isteğe bağlıdır ve en fazla 500 karakter kabul eder. Talimat yalnız o çalışmaya özeldir; başka dosya/iş akışına kalıcı tercih olarak taşınmaz.

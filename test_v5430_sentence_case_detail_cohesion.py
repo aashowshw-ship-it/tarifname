@@ -41,7 +41,7 @@ def extracted():
 
 
 def test_versions():
-    assert APP_VERSION=='v5.4.71'
+    assert APP_VERSION=='v5.4.72'
     assert RULESET_VERSION=='2026-09-18.v64'
 
 

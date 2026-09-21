@@ -36,7 +36,7 @@ def base_draft():
         'system_claim':system_claim, 'dependent_system_claims':[], 'method_claim':None, 'dependent_method_claims':[],
         'abstract':'Buluş, adaptif hücre optimizasyon sistemi ile ilgilidir.',
         'source_coverage_map':[],
-        'coverage_audit':{'prior_art_complete':True,'reference_table_complete':True,'claims_consistent':True,'reference_names_clear':True,'reference_order_valid':True,'how_test_passed':True,'method_how_steps_passed':True,'sentence_case_clean':True,'core_difference_present':True,'scope_not_overlimited':True,'dependent_claims_non_redundant':True,'dependent_claim_dependencies_valid':True,'example_dimensions_not_claim_limited':True,'product_claim_language_valid':True,'abstract_single_paragraph_sentence':True,'source_attribution_removed':True,'all_technical_facts_covered':True,'software_carrier_valid':True,'detail_intro_sentence_case':True},
+        'coverage_audit':{'prior_art_complete':True,'reference_table_complete':True,'claims_consistent':True,'reference_names_clear':True,'reference_order_valid':True,'how_test_passed':True,'method_how_steps_passed':True,'sentence_case_clean':True, 'technical_term_clarity_passed':True,'core_difference_present':True,'scope_not_overlimited':True,'dependent_claims_non_redundant':True,'dependent_claim_dependencies_valid':True,'example_dimensions_not_claim_limited':True,'product_claim_language_valid':True,'abstract_single_paragraph_sentence':True,'source_attribution_removed':True,'all_technical_facts_covered':True,'software_carrier_valid':True,'detail_intro_sentence_case':True},
     }
 
 
@@ -45,7 +45,7 @@ def extracted():
 
 
 def test_versions():
-    assert APP_VERSION == 'v5.4.71'
+    assert APP_VERSION == 'v5.4.72'
     assert RULESET_VERSION == '2026-09-18.v64'
 
 

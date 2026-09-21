@@ -93,5 +93,6 @@ test_v5471_opinion_final_gate_flow.py
 test_v5471b_tarifname_domain_ui.py
 test_v5472_sentence_claim_figure_hardening.py
 test_v5473_extra_instruction_ui.py
+test_v5474_reference_claim_sourcefigure.py
 validators.py
 word_math.py

@@ -8,8 +8,8 @@ from source_guards import INVENTION_DOMAINS, validate_invention_domain
 ROOT = Path(__file__).resolve().parent
 
 
-def test_release_stays_v5471_and_domain_rule_is_binding():
-    assert APP_VERSION == "v5.4.71"
+def test_release_is_v5472_and_domain_rule_is_binding():
+    assert APP_VERSION == "v5.4.72"
     assert RULESET_VERSION == "2026-09-18.v64"
     assert "6V. BULUŞ ALANI OTOMATİK SINIFLANDIRMA KURALI" in TARIFNAME_RULES
     assert INVENTION_DOMAINS == (

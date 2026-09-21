@@ -1,3 +1,13 @@
+
+## v5.4.72 / 2026-09-21 — Referans, istem ve kaynak-şekil sadakati sertleştirmesi
+
+- REFERANS NUMARALARI görünüm sırası artık deterministiktir: sayısal unsur referansları doğal sayısal sırada, ardından K/R/O gibi sembolik bağlam referansları, en son yöntem işlem adımları. `80a/80b`, `140a/140b/140c`, `203b` gibi ekli referanslar doğal sırada tutulur.
+- Salt buluş bütününü ifade eden `Sistem/Buluş/Yöntem` kapsayıcısı numaralı unsur yapılamaz. İnsan rolleri teknik istem unsuru olarak kullanılamaz; teknik cihaz/terminal/arayüz ayrı değerlendirilir.
+- Bağımlı sistem istemlerinde `bir yapıda olmasıdır` yasaktır; `olmasıdır` kapanışı unsur türüyle (modül/birim/eleman vb.) uyumlu olmalıdır. Teknik terim açıklığı AI kalite kapısında zorunlu bayraktır.
+- Birincil yöntemden bağımsız ek yöntemler `additional_method_claims` ile modellenebilir; birincil yöntemin alt uygulaması olan eğitim/ön işleme akışları gerektiğinde bağımlı yöntem istemi olarak tutulabilir.
+- Kaynak müşteri şekilleri metin yoğunluğu nedeniyle otomatik dışlanmaz. Özgün geometri, kutu, ok, yarım ok, kesikli çizgi ve bağlantılar korunarak yalnız gerekli yazı/referans katmanı temizlenir. Referanslı kutuda ad siliniyorsa referans aynı kutuda ortalanır; numarasız bağlam yazıları ek talimat aksini söylemedikçe korunabilir.
+- Şekil ikinci görsel kontrolünde oklar, kutu kenarları, bağlantılar ve yalnız talep edilen yazı değişikliği ayrı PASS koşullarıdır. `Ek Talimat` şekil audit/düzenleme/doğrulama çağrılarına da aktarılır.
+
 # Patent Atölyesi – Kayıtlı İş Kuralları
 
 ## v5.4.71 / 2026-09-18.v64 — Görüş final-kapı ve otomatik akış sertleştirmesi
@@ -183,7 +193,7 @@ Başvuru bilgi alanlarında **Başvuru No**, **Başvuru Sahibi** ve **Referans**
 - **Cümle-içi sentence-case kapısı genişletildi:** yalnız unsur adları değil, `katman 7`, `control plane`, `data plane`, `layer 3`, `derin paket inceleme`, `taşıyıcı sınıfı ...` gibi özel ad/kısaltma olmayan teknik terimler de cümle ortasında normal küçük harfle yazılır. Bu kontrol taslak + istemler + nihai Word üzerinde deterministik çalışır; modelin `sentence_case_clean=true` beyanı tek başına yeterli değildir.
 - **İstem numarası hizası bağlayıcıdır:** Word otomatik numaralandırmasında numara sonrası ilk satır metni ve devam satırları aynı metin başlangıcına hizalanır. Numbering seviyesi `tab` son eki kullanır; tab durağı devam satırı `left` girintisiyle aynı olmalıdır. `space` son eki ile oluşan ilk-satır kayması kalite kapısında reddedilir.
 - **Bağımlı istem tamlayan/iyelik kapısı:** referanslı unsur virgülden önce kullanılıp bağımlı sistem istemi `... olmasıdır.` / `... içermesidir.` ile kapanıyorsa unsur adı genitif hâlinde kurulmalıdır. `motoru (20), ... sahip olmasıdır.` reddedilir; `motorunun (20), ... sahip olmasıdır.` kabul edilir. Bu kontrol taslak ve nihai Word istem metninde deterministik çalışır.
-- **Metin-ağırlıklı şekil dışlama kuralı:** Kaynak şekil çok yazılıysa ve `1/2/3`, `A1/B2` gibi REFERANS NUMARALARI ile ilgisiz işaretler patent referansı gibi algılanabilecekse, ayrıca buluşu açıklamak için gerekli ayrı bir şekil değeri taşımıyorsa nihai Şekiller dosyasına alınmaz. Ancak görseldeki benzersiz teknik bilgi önce technical_fact olarak tarifnameye aktarılır ve aktarım kanıtlanır. Her kaynak görsel envanterde `included` veya gerekçeli `excluded_text_heavy_nonreference_numbering` olarak izlenir; sessizce atlanamaz.
+- **Kaynak şekil sadakati kuralı:** Kaynak şekil çok yazılı veya `1/2/3`, `A1/B2` gibi gerçek referans olmayan iç işaretler taşısa dahi teknik akış/geometri değeri varsa nihai şekil için esas alınır. Yazı temizliği özgün kutu, ok, yarım ok, kesikli/solid çizgi, bağlantı ve dallanmayı değiştiremez. Dışlama yalnız `excluded_nontechnical_or_unrecoverable` gerekçesiyle mümkündür; benzersiz teknik bilgi önce technical_fact olarak tarifnameye aktarılır ve aktarım kanıtlanır.
 
 ## 12. Görüş akışı – analiz, revizyon mutabakatı ve Markup
 
@@ -798,12 +808,12 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Bağımlı sistem isteminde `olmasıdır/içermesidir` kapanışı tek başına PASS sağlamaz. Gövde `sağlaması`, `çalıştırmaması`, `saklaması`, `bağlaması`, `üretilmesi` vb. yöntem isimleştirmesi içeremez; `sağlayan`, `çalıştırmayan`, `saklayan`, `bağlayan`, `üreten` gibi unsur-merkezli sıfat-fiil dili zorunludur. `... uygun olmasıdır` şeklindeki salt uygunluk istemi yasaktır.
 - Kontroller taslak + nihai DOCX olmak üzere iki ayrı fail-closed noktada çalışır.
 
-## v5.4.71+ kalite sıkılaştırmaları (2026-09-21)
+## v5.4.72 kalite sıkılaştırmaları (2026-09-21)
 - Türkçe tarifname ve istemlerin kullanıcıya görünen bütün metninde cümle içi genel teknik terimler başlık biçiminde büyük harfle başlatılamaz. `derin paket inceleme`, `taşıyıcı sınıfı`, `katman`, `control plane/kontrol düzlemi`, `data plane/veri düzlemi` gibi terimler cümle ortasında küçük harfle yazılır; gerçek kısaltmalar ve özel adlar korunur. Bu kural yalnız REFERANS NUMARALARI unsur adlarına değil tüm tarifname ve istem setine deterministik olarak uygulanır.
 - İstemlerde otomatik numara sonrası ilk metin başlangıcı ile devam satırları aynı X ekseninde olmalıdır. Numaralandırma tanımına ek olarak istem paragrafında açık `left + hanging + num-tab` geometrisi bulunmalı ve render kalite kapısı bu hizayı doğrulamalıdır.
 - Kaynak şekil esas olarak metin/karar kutularından oluşuyor ve REFERANS NUMARALARI ile ilgisiz `1/2/3`, `A1/B2` vb. numara-adım işaretlerini yoğun biçimde taşıyorsa, şekil zorunlu bir teknik geometri/bağlantı ilişkisini bağımsız açıklamadığı sürece nihai ŞEKİLLER dosyasına alınmaz. Dışlamadan önce şekle özgü teknik bilgi tarifname gövdesine eksiksiz aktarılır. Yöntem akışı gerekiyorsa kaynak numaralar korunmak yerine gerçek 1001+ yöntem adımı referanslarıyla sade ayrı yöntem şekli oluşturulur.
 
-## v5.4.71 — İşe özel Ek Talimat alanı
+## v5.4.72 — İşe özel Ek Talimat alanı
 
 - Tarifname oluşturma, Görüş hazırlama ve Tip 3 Ön Araştırma Raporu arayüzlerinde `Ek Talimat (varsa)` alanı bulunur.
 - Alan isteğe bağlıdır ve en fazla 500 karakter kabul eder. Talimat yalnız o çalışmaya özeldir; başka dosya/iş akışına kalıcı tercih olarak taşınmaz.

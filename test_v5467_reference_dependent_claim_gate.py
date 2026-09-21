@@ -7,7 +7,7 @@ from app_core import _validate_no_reference_marks_before_detail, _validate_depen
 
 
 def test_version_and_written_rules():
-    assert APP_VERSION == "v5.4.71"
+    assert APP_VERSION == "v5.4.72"
     assert RULESET_VERSION == "2026-09-18.v64"
     low = TARIFNAME_RULES.casefold()
     assert "referans numaralari bölümünden önce" in low

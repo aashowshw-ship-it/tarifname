@@ -34,9 +34,9 @@ def _response(*, input_tokens=10_000, cached=2_000, cache_write=1_000, output=1_
 
 
 def test_release_version_and_manifest():
-    assert APP_VERSION == "v5.4.71"
+    assert APP_VERSION == "v5.4.72"
     assert RULESET_VERSION == "2026-09-18.v64"
-    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.71")
+    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.72")
     manifest = (ROOT / "REPO_FILE_MANIFEST.txt").read_text(encoding="utf-8").splitlines()
     assert "test_v5457_global_cache_gorus_lead_try.py" in manifest
 
