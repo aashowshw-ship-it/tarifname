@@ -31,8 +31,8 @@ def _opinion():
 
 
 def test_version_bumped():
-    assert APP_VERSION == "v5.4.73"
-    assert RULESET_VERSION == "2026-09-21.v65"
+    assert APP_VERSION == "v5.4.74"
+    assert RULESET_VERSION == "2026-09-22.v66"
 
 
 def test_binding_title_paragraphs_are_centered_and_gate_enforces_it():
@@ -71,3 +71,56 @@ def test_rules_require_auto_flow_and_internal_label_gate():
     assert "GÖRÜŞ OTOMATİK AKIŞ KAPISI" in GORUS_RULES
     assert "NİHAİ GÖRÜŞ İÇ-SÜREÇ ETİKETİ KAPISI" in GORUS_RULES
     assert "GÖRÜŞ KURUM BAŞLIĞI HİZALAMA KAPISI" in GORUS_RULES
+
+
+def _utility_model_opinion():
+    return {
+        "application_no": "2024/018834",
+        "applicant": "ASELSAN ELEKTRONİK SANAYİ VE TİCARET ANONİM ŞİRKETİ",
+        "reference": "700286",
+        "intro": "20.01.2026 tarihli araştırma raporunda, 1 ve 2 numaralı istemlerin yenilik kriterini sağlamadığı belirtilmiştir. Başvuru sahibinin görüşleri aşağıda dikkatinize sunulmaktadır. Araştırma raporunda 1 ve 2 numaralı istemler bakımından gösterilen benzer dokümanlar aşağıdadır: D1",
+        "amendment_assessment": {"heading": "", "blocks": []},
+        "cited_documents": [{"label": "D1", "number": "CN117039321A", "category": "X"}],
+        "sections": [{
+            "label": "D1",
+            "heading": "D1 (CN117039321A) dokümanı:",
+            "blocks": [{"type": "paragraph", "text": "D1 bir batarya kapağı düzeneğini açıklamaktadır."}],
+            "novelty_heading": "",
+            "novelty_paragraphs": ["Ayırt edici teknik fark, istemdeki yaylı pin ile kapak içindeki iletken plaka arasındaki doğrudan temas ilişkisidir. D1 bu yapısal ilişkiyi doğrudan ve açık biçimde açıklamamaktadır."],
+            "inventive_step_heading": "",
+            "inventive_step_paragraphs": [],
+        }],
+        "combined_assessment": {"heading": "", "paragraphs": [], "groups": []},
+        "conclusion": ["Bu nedenle mevcut istemlerin D1 karşısında yenilik yönünden yeniden değerlendirilmesi gerektiği düşünülmektedir."],
+        "signoff": "Saygılarımızla,\nDESTEK PATENT A.Ş.",
+    }
+
+
+def test_utility_model_opinion_is_novelty_only_and_rejects_ai_chain_symbols():
+    from gorus_audit import is_utility_model_search_report
+    report = "TÜRK PATENT VE MARKA KURUMU\nFAYDALI MODEL ARAŞTIRMA RAPORU\nD1: CN117039321A"
+    assert is_utility_model_search_report(report)
+    op = _utility_model_opinion()
+    validate_opinion_narrative_rules(op, report, "ayırt edici teknik fark")
+    op["sections"][0]["novelty_paragraphs"] = ["Yaylı pin → vida → plaka biçiminde bir zincir olduğu ileri sürülmüştür."]
+    with pytest.raises(ValueError, match="ok işaretli teknik zincir"):
+        validate_opinion_narrative_rules(op, report, "ayırt edici teknik fark")
+
+
+def test_utility_model_opinion_rejects_inventive_step_and_claim_transfer_meta_language():
+    report = "TÜRK PATENT VE MARKA KURUMU\nFAYDALI MODEL ARAŞTIRMA RAPORU\nD1: CN117039321A"
+    op = _utility_model_opinion()
+    op["sections"][0]["inventive_step_paragraphs"] = ["Buluş basamağı bakımından ayrıca değerlendirme yapılmalıdır."]
+    with pytest.raises(ValueError, match="Faydalı model görüş kapısı"):
+        validate_opinion_narrative_rules(op, report, "ayırt edici teknik fark")
+    op = _utility_model_opinion()
+    op["conclusion"] = ["İstem 3 özelliğinin ana isteme taşınması gerekmez. Ayırt edici teknik fark korunmaktadır."]
+    with pytest.raises(ValueError, match="Revizyonsuz görüş kapısı"):
+        validate_opinion_narrative_rules(op, report, "ayırt edici teknik fark")
+
+
+def test_rules_include_utility_model_novelty_only_and_original_figure_extraction():
+    assert "FAYDALI MODEL ARAŞTIRMA RAPORU ÖZEL KAPISI" in GORUS_RULES
+    assert "NİHAİ GÖRÜŞ DOĞAL PATENT DİLİ KAPISI" in GORUS_RULES
+    assert "REVİZYONSUZ GÖRÜŞTE İSTEM-TAŞIMA META DİLİ YASAĞI" in GORUS_RULES
+    assert "D-DOKÜMANI ŞEKİL KULLANIM KAPISI" in GORUS_RULES

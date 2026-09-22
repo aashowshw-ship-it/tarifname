@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parent
 
 
 def test_release_is_v5472_and_domain_rule_is_binding():
-    assert APP_VERSION == "v5.4.73"
-    assert RULESET_VERSION == "2026-09-21.v65"
+    assert APP_VERSION == "v5.4.74"
+    assert RULESET_VERSION == "2026-09-22.v66"
     assert "6V. BULUŞ ALANI OTOMATİK SINIFLANDIRMA KURALI" in TARIFNAME_RULES
     assert INVENTION_DOMAINS == (
         "Elektrik-Elektronik / Yazılım",

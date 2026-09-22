@@ -54,8 +54,8 @@ def _base_report():
 
 
 def test_version_and_filename_are_v5453_and_underscore_safe():
-    assert APP_VERSION == "v5.4.73"
-    assert RULESET_VERSION == "2026-09-21.v65"
+    assert APP_VERSION == "v5.4.74"
+    assert RULESET_VERSION == "2026-09-22.v66"
     assert safe_output_name("Ön%20Araştırma%20Raporu_182046_rev.docx", "x.docx") == "Ön_Araştırma_Raporu_182046_rev.docx"
     assert safe_output_name("Ön Araştırma Raporu_182046_rev.docx", "x.docx") == "Ön_Araştırma_Raporu_182046_rev.docx"
 

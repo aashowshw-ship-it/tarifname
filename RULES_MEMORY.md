@@ -1,3 +1,11 @@
+## v5.4.74 / 2026-09-22.v66 — Faydalı model yenilik-only görüş + doğal dil + özgün D-şekli
+
+- Resmi belge `FAYDALI MODEL ARAŞTIRMA RAPORU` ise görüş savunması yalnız raporda olumsuz değerlendirilen **yenilik** noktalarına yönelir. **Buluş basamağı/inventive step kesinlikle savunulmaz**. Sanayiye uygulanabilirlik olumluysa görüşe gereksiz savunma konusu yapılmaz.
+- Faydalı model X dokümanı yalnız yenilik açısından ele alınır. Buluş-basamağı paragrafları ve kombinasyon bölümü boş kalır; kalite kapıları da bu modda buluş-basamağı zinciri aramaz.
+- Görüşte teknik ilişki `→`, `->`, `⇒` veya `+` işaretiyle yapay zincir halinde yazılmaz. Tam doğal patent cümlesi zorunludur.
+- İstem revizyonu yapılmıyorsa, alt istem özelliklerini ana isteme taşıma/taşımama ihtimalini tartışan meta paragraflar yazılmaz; mevcut istemler doğrudan savunulur.
+- D dokümanında savunulan farkı gösteren özgün şekil varsa kullanılır. Sayfa başlığındaki Çince/Han yazı yüzünden şekil otomatik dışlanmaz; gerçek şekil görüntüsü sayfa başlığından/captiondan ayrıştırılabiliyorsa özgün görüntü kırpılarak kullanılır.
+
 ## v5.4.73 / 2026-09-21.v65 — EPO/PCT istem açıklık turu + ilgili yerde Destek Patent comment
 
 - Her tarifname normal teknik-terim kontrolünden ayrı bir EPO/PCT istem açıklık ve belirlilik turundan geçer; bütün bağımsız ve bağımlı istemler tek tek incelenir.
@@ -37,7 +45,7 @@
 - İngilizce çıktı Word kapısı Türkçe şablon kalıntılarını deterministik olarak reddeder.
 - İngilizce görüş varsayılan dosya adı `Response Letter_XXXXXX.docx` olur.
 
-Kural sürümü: **2026-09-21.v65**
+Kural sürümü: **2026-09-22.v66**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 

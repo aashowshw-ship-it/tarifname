@@ -668,6 +668,7 @@ def _section_model_paragraphs(sec: dict[str, Any]) -> list[str]:
 
 def validate_opinion_long_form_depth(opinion: dict[str, Any], report_text: str) -> None:
     """Fail-closed long-form gate for generated opinions. Called only by UI flow with preanalysis."""
+    utility_model = is_utility_model_search_report(report_text)
     docs = opinion.get("cited_documents") or []
     if not docs:
         return
@@ -687,9 +688,11 @@ def validate_opinion_long_form_depth(opinion: dict[str, Any], report_text: str) 
         pars = _section_model_paragraphs(sec)
         text = _norm(" ".join(pars))
         words = _opinion_word_count(text)
-        if len(pars) < 4 or words < 700:
+        min_words = 650 if utility_model else 700
+        if len(pars) < 4 or words < min_words:
+            mode_note = "yenilik" if utility_model else "teknik"
             raise ValueError(
-                f"Görüş uzunluk/derinlik kapısı: {label} X savunması en az dört dolu teknik paragraf ve 700 kelime olmalıdır (mevcut: {len(pars)} paragraf, {words} kelime)."
+                f"Görüş uzunluk/derinlik kapısı: {label} X savunması ({mode_note}) en az dört dolu paragraf ve {min_words} kelime olmalıdır (mevcut: {len(pars)} paragraf, {words} kelime)."
             )
         total_parts.append(text)
 
@@ -708,9 +711,10 @@ def validate_opinion_long_form_depth(opinion: dict[str, Any], report_text: str) 
     if conclusion_text:
         total_parts.append(conclusion_text)
     total_words = _opinion_word_count(" ".join(total_parts))
-    if total_words < 2200:
+    min_total_words = 1200 if utility_model else 2200
+    if total_words < min_total_words:
         raise ValueError(
-            f"Görüş uzunluk/derinlik kapısı: esas savunma gövdesi en az 2200 kelime olmalıdır; mevcut {total_words} kelime. Giriş, Y objektif tanıtımları, şekil başlıkları ve birebir alıntılar bu sayıya dahil edilmez."
+            f"Görüş uzunluk/derinlik kapısı: esas savunma gövdesi en az {min_total_words} kelime olmalıdır; mevcut {total_words} kelime. Giriş, Y objektif tanıtımları, şekil başlıkları ve birebir alıntılar bu sayıya dahil edilmez."
         )
 
 
@@ -879,7 +883,17 @@ def validate_opinion_payload(opinion: dict[str, Any], report_text: str, spec_tex
     combined = opinion.get("combined_assessment") or {}
     combination_groups = _combined_assessment_groups(opinion)
     combined_text = _combined_assessment_text(opinion)
-    inventive_objection = any(x in report_norm for x in ["buluş basamağı", "buluş basamagi", "inventive step"])
+    utility_model = is_utility_model_search_report(report_text)
+    if utility_model:
+        for sec in opinion.get("sections") or []:
+            if _norm(" ".join(sec.get("inventive_step_paragraphs") or [])):
+                raise ValueError("Faydalı model görüş kapısı: inventive_step_paragraphs boş olmalıdır.")
+        if combination_groups or combined_text or _norm(combined.get("heading", "")):
+            raise ValueError("Faydalı model görüş kapısı: combined_assessment/buluş basamağı kombinasyon bölümü oluşturulamaz.")
+        model_text = _norm(" ".join(t for _, t in _iter_generated_narrative(opinion))).casefold()
+        if any(x in model_text for x in ["buluş basamağı", "buluş basamagi", "inventive step", "sanayiye uygulanabilirlik", "industrial applicability"]):
+            raise ValueError("Faydalı model görüş kapısı: nihai görüş yalnız yenilik savunmasına odaklanmalıdır.")
+    inventive_objection = (not utility_model) and any(x in report_norm for x in ["buluş basamağı", "buluş basamagi", "inventive step"])
     if inventive_objection:
         sections = opinion.get("sections") or []
         individual_length_by_label: dict[str, int] = {}
@@ -969,6 +983,12 @@ def detect_examiner_reasoned_documents(report_text: str) -> list[dict[str, str]]
         if m:
             labels = [m.group(1).upper()]
     return [{"label": lab, "number": mapping.get(lab, "")} for lab in labels]
+
+
+def is_utility_model_search_report(report_text: str) -> bool:
+    """Detect Turkish utility-model search reports for novelty-only opinion logic."""
+    upper = str(report_text or "").upper()
+    return "FAYDALI MODEL ARAŞTIRMA RAPORU" in upper or "UTILITY MODEL SEARCH REPORT" in upper
 
 
 def is_ep_search_report(report_text: str) -> bool:
@@ -1278,6 +1298,7 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
     report_low = report_raw.casefold()
     report_upper = report_raw.upper()
     is_tr_research = ("TÜRK PATENT VE MARKA KURUMU" in report_upper and "ARAŞTIRMA RAPORU" in report_upper and "EXTENDED EUROPEAN SEARCH REPORT" not in report_upper)
+    utility_model = is_utility_model_search_report(report_text)
     if is_tr_research:
         if intro_low.startswith("türk patent ve marka kurumu tarafından") or intro_low.startswith("türk patent ve marka kurumu"):
             raise ValueError("Görüş giriş kapısı: Türkiye araştırma görüşü `Türk Patent ve Marka Kurumu tarafından ...` diye başlayamaz, 696809 taslak kalıbı kullanılmalıdır.")
@@ -1311,8 +1332,12 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
         if ";" in text:
             raise ValueError(f"Görüş noktalama kapısı: model anlatımında noktalı virgül kullanılamaz ({kind}).")
         if "+" in text:
-            raise ValueError(f"Görüş noktalama kapısı: model anlatımında doküman kombinasyonu artı işaretiyle yazılamaz ({kind}); `ve/and` kullanılmalıdır.")
+            raise ValueError(f"Görüş doğal dil kapısı: model anlatımında artı işaretiyle teknik/doküman zinciri yazılamaz ({kind}); doğal cümle kullanılmalıdır.")
+        if any(sym in text for sym in ("→", "->", "⇒")):
+            raise ValueError(f"Görüş doğal dil kapısı: model anlatımında ok işaretli teknik zincir kullanılamaz ({kind}); unsur ilişkisi tam cümlelerle açıklanmalıdır.")
         low_text = _norm(text).casefold()
+        if utility_model and any(x in low_text for x in ["buluş basamağı", "buluş basamagi", "inventive step", "sanayiye uygulanabilirlik", "industrial applicability"]):
+            raise ValueError(f"Faydalı model görüş kapısı: nihai anlatım yalnız yenilik itirazına odaklanmalıdır ({kind}); buluş basamağı ve olumlu sanayiye uygulanabilirlik savunması yazılamaz.")
         if any(x in low_text for x in forbidden_style):
             raise ValueError(f"Görüş dil kapısı: hindsight/geriye-dönük kalıp savunma kullanılamaz ({kind}).")
         if re.search(r"\bBBF\b", text, flags=re.I) or any(x in low_text for x in forbidden_internal):
@@ -1343,7 +1368,12 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
         if _norm(sec.get("novelty_heading", "")) or _norm(sec.get("inventive_step_heading", "")):
             raise ValueError(f"Görüş başlık kapısı: {label} bireysel doküman bölümünde ayrı yenilik/buluş basamağı ara başlığı kullanılamaz.")
         if category == "X":
-            if not novelty_text or not inventive_text:
+            if utility_model:
+                if not novelty_text:
+                    raise ValueError(f"Faydalı model görüş kapısı: {label} X dokümanı için yenilik savunması zorunludur.")
+                if inventive_text:
+                    raise ValueError(f"Faydalı model görüş kapısı: {label} X dokümanı için buluş basamağı savunması yazılamaz.")
+            elif not novelty_text or not inventive_text:
                 raise ValueError(f"Görüş X/Y kapısı: {label} X dokümanı için hem yenilik hem buluş basamağı savunması zorunludur.")
         elif category == "Y":
             if novelty_text or inventive_text:
@@ -1360,10 +1390,14 @@ def validate_opinion_narrative_rules(opinion: dict[str, Any], report_text: str, 
 
     full = _norm(" ".join(t for _, t in narratives))
     low = full.casefold()
+    amendment = opinion.get("amendment_assessment") or {}
+    has_amendment = bool(_norm(amendment.get("heading", "")) or any(_norm(str(b.get("text", ""))) for b in amendment.get("blocks") or []))
+    if not has_amendment and any(x in low for x in ["ana isteme taşın", "bağımsız isteme taşın", "ana isteme alınmadan", "bağımsız isteme alınmadan"]):
+        raise ValueError("Revizyonsuz görüş kapısı: istem özelliklerini ana/bağımsız isteme taşıma veya taşımama stratejisi görüş gövdesinde tartışılamaz; mevcut istem doğrudan savunulmalıdır.")
     if not any(x in low for x in ["teknik katk", "ayırt edici teknik fark", "technical contribution", "technical difference", "distinguishing technical"]):
         raise ValueError("Görüş teknik katkı kapısı: teknik katkı/ayırt edici teknik fark açıkça kurulmamış.")
     report_low = _norm(report_text).casefold()
-    if any(x in report_low for x in ["buluş basamağı", "buluş basamagi", "inventive step"]):
+    if (not utility_model) and any(x in report_low for x in ["buluş basamağı", "buluş basamagi", "inventive step"]):
         if not any(x in low for x in ["teknik etki", "technical effect"]):
             raise ValueError("Görüş teknik katkı kapısı: teknik etki değerlendirmesi eksik.")
         if not any(x in low for x in ["objektif teknik problem", "objective technical problem"]):
@@ -1544,7 +1578,9 @@ def validate_gorus_docx_content_flow(docx_data: bytes) -> None:
         if ";" in narrative_only:
             raise ValueError("Görüş noktalama kapısı: Word gövdesinde noktalı virgül bulundu.")
         if "+" in narrative_only:
-            raise ValueError("Görüş noktalama kapısı: Word gövdesinde model anlatımına ait artı işareti bulundu; doküman kombinasyonları `ve/and` ile yazılmalıdır.")
+            raise ValueError("Görüş doğal dil kapısı: Word gövdesinde model anlatımına ait artı işareti bulundu; teknik ilişki ve doküman kombinasyonu doğal dille yazılmalıdır.")
+        if any(sym in narrative_only for sym in ("→", "->", "⇒")):
+            raise ValueError("Görüş doğal dil kapısı: Word gövdesinde ok işaretli teknik zincir bulundu; unsur ilişkisi tam cümlelerle yazılmalıdır.")
         low = _norm(narrative_only).casefold()
         if any(x in low for x in ["devralmaktadır", "devralır", "devraldığı", "devralan", "inherits", "inherited", "mimari", "architecture", "architectural", "benzersiz sinerji", "paradigma", "sofistike yaklaşım"]):
             raise ValueError("Görüş dil kapısı: Word gövdesinde devralma/mimari gibi yasak model dili bulundu.")
@@ -1658,18 +1694,39 @@ def _matching_pdf_assets(number: str, assets: Iterable[Any]) -> list[Any]:
     return [x[2] for x in candidates]
 
 
+def _embedded_technical_figure_candidates(page) -> list[tuple[float, int, Any]]:
+    out: list[tuple[float, int, Any]] = []
+    page_area = max(1.0, float(page.rect.width * page.rect.height))
+    for item in page.get_images(full=True):
+        xref = int(item[0])
+        for rect in page.get_image_rects(xref):
+            area = float(rect.width * rect.height)
+            if area < page_area * 0.08 or rect.width < page.rect.width * 0.28 or rect.height < page.rect.height * 0.16:
+                continue
+            # Han text in the page header/caption does not disqualify a separate embedded figure raster.
+            overlaps_han = False
+            for block in page.get_text("blocks") or []:
+                brect = fitz.Rect(block[:4])
+                if brect.intersects(rect) and _contains_han_text(str(block[4] or "")):
+                    overlaps_han = True
+                    break
+            if not overlaps_han:
+                out.append((area, xref, rect))
+    return sorted(out, reverse=True, key=lambda x: x[0])
+
+
 def has_usable_non_chinese_figure(number: str, assets: Iterable[Any]) -> bool:
-    """True when a matching uploaded source has at least one figure page without visible Han text."""
+    """True when a matching source has an extractable original technical figure without Han inside the figure itself."""
     for asset in _matching_pdf_assets(number, assets):
         try:
             pdf = fitz.open(stream=_asset_data(asset), filetype="pdf")
         except Exception:
             continue
         for page in pdf:
+            if _embedded_technical_figure_candidates(page):
+                return True
             text = page.get_text("text") or ""
-            if _contains_han_text(text):
-                continue
-            if _figure_marker_count(text) > 0:
+            if not _contains_han_text(text) and _figure_marker_count(text) > 0:
                 return True
     return False
 
@@ -1682,11 +1739,12 @@ def _best_figure_page_png(pdf_data: bytes, figure_reference: str = "") -> bytes:
     scored: list[tuple[float, int]] = []
     for i, page in enumerate(pdf):
         text = page.get_text("text") or ""
-        # User rule: a figure page carrying visible Chinese/Han writing is not eligible.
-        if _contains_han_text(text):
+        embedded = _embedded_technical_figure_candidates(page)
+        # Han in page headers/captions is acceptable when the actual original figure raster is separable.
+        if _contains_han_text(text) and not embedded:
             continue
         markers = _figure_marker_count(text)
-        if not markers:
+        if not markers and not embedded:
             continue
         score = markers * 100.0 - min(len(text), 6000) / 800.0
         if target:
@@ -1695,12 +1753,27 @@ def _best_figure_page_png(pdf_data: bytes, figure_reference: str = "") -> bytes:
             target_tail = re.sub(r"^FIG", "", target)
             if ("FIG" + target_tail) in page_key or ("FIGURE" + target_tail) in page_key:
                 score += 1000.0
+            digits = re.sub(r"\D", "", target_tail)
+            if digits and re.search(rf"图\s*{re.escape(digits)}\b", text):
+                score += 1000.0
         score += i * 0.01
         scored.append((score, i))
     if not scored:
         raise ValueError("Çince/Han yazı içermeyen kullanılabilir özgün teknik şekil bulunamadı.")
     _, idx = max(scored)
     page = pdf[idx]
+    embedded = _embedded_technical_figure_candidates(page)
+    if embedded:
+        _, xref, _rect = embedded[0]
+        extracted = pdf.extract_image(xref)
+        raw = extracted.get("image", b"")
+        if raw:
+            try:
+                from PIL import Image
+                im = Image.open(io.BytesIO(raw)).convert("RGB")
+                out = io.BytesIO(); im.save(out, format="PNG"); return out.getvalue()
+            except Exception:
+                pass
     pix = page.get_pixmap(matrix=fitz.Matrix(2.2, 2.2), alpha=False)
     png = pix.tobytes("png")
     # Preserve the COMPLETE selected figure content. Crop only uniform outer whitespace.

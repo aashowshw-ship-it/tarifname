@@ -20,7 +20,7 @@ def _df(text):
 
 
 def test_versions_and_rules():
-    assert APP_VERSION == 'v5.4.73' and RULESET_VERSION == '2026-09-21.v65'
+    assert APP_VERSION == 'v5.4.74' and RULESET_VERSION == '2026-09-22.v66'
     assert 'independent_raw_second_read' in EXTRA_CONTROL_GATE_KEYS
     assert 'önceki `source_passage_audit`' in TARIFNAME_RULES
 

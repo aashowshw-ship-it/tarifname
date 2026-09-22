@@ -1,4 +1,13 @@
-# Patent Atölyesi v5.4.73
+# Patent Atölyesi v5.4.74
+
+
+## v5.4.74 / 2026-09-22 — Faydalı model yenilik-only görüş + doğal dil + D-şekli kapısı
+
+- Türkiye **Faydalı Model Araştırma Raporu** görüşlerinde buluş basamağı/inventive-step savunması artık üretilmez. Olumsuzluk yoksa sanayiye uygulanabilirlik de gereksiz yere tartışılmaz; görüş yalnız yenilik itirazına ve ilgili istemlere odaklanır.
+- X dokümanı faydalı modelde yalnız yenilik bakımından savunulur; `inventive_step_paragraphs` ve birleşik buluş-basamağı bölümleri boş bırakılır. İkinci okuma ve final kapıları bu modda buluş-basamağı zinciri istemez.
+- Nihai görüş anlatımında `pin → vida → plaka`, `özellik + özellik` gibi yapay zekâ kokan sembolik zincirler yasaktır. Teknik ilişki doğal patent vekili cümleleriyle açıklanır.
+- Kullanıcı istem düzenlemesi istemiyorsa görüşte alt istem özelliklerini ana isteme taşıma/taşımama stratejisi hakkında gereksiz meta paragraf kurulmaz; mevcut istem doğrudan savunulur.
+- Savunulan yapısal farkı göstermeye yarayan özgün D-dokümanı şekli mevcutsa kullanılır. Patent sayfasındaki yabancı dil başlık/caption ayrıştırılabiliyorsa şeklin özgün rasterı doğrudan çıkarılır; tüm sayfa sırf Çince/Han başlık içeriyor diye otomatik dışlanmaz.
 
 ## v5.4.73 / 2026-09-21 — EPO/PCT istem açıklık ve müşteri-sorusu comment kapısı
 
