@@ -19,8 +19,8 @@ def _docx_bytes(text: str) -> bytes:
 
 
 def test_v5435_versions_and_visibility_rule():
-    assert APP_VERSION == "v5.4.74"
-    assert RULESET_VERSION == "2026-09-22.v66"
+    assert APP_VERSION == "v5.4.75"
+    assert RULESET_VERSION == "2026-09-22.v67"
     assert "zaten semantik olarak var" in tarifname_update_analysis_prompt(
         TARIFNAME_DUZENLEME_RULES,
         "mini sıvı yükleme testi ve pasif bacak kaldırma testi",

@@ -235,3 +235,58 @@ def test_epo_pct_clarity_prompt_says_do_not_block_delivery_and_comment_at_issue(
     assert "tarifname üretimini DURDURMA" in prompt
     assert "Word'de tam bu `anchor_text` üzerinde `Destek Patent` yazarlı COMMENT" in prompt
     assert "Yeni teknik bilgi" in prompt
+
+
+# v5.4.75 — central final compliance gate regressions
+
+def _tiny_docx_bytes(text="x"):
+    import io
+    from docx import Document
+    doc=Document(); doc.add_paragraph(text); bio=io.BytesIO(); doc.save(bio); return bio.getvalue()
+
+
+def test_final_compliance_gate_decodes_url_name_and_preserves_gorus_spaces():
+    from rules import final_compliance_gate
+    checks={"raw_sources":True,"quotes":True,"template":True,"content_flow":True,"render":True,"examiner":True}
+    name=final_compliance_gate("gorus", data=_tiny_docx_bytes(), output_name="G%C3%B6r%C3%BC%C5%9F%20Metni_700286.docx", default_name="Görüş Metni.docx", checks=checks)
+    assert name == "Görüş Metni_700286.docx"
+    assert "%" not in name
+
+
+def test_final_compliance_gate_missing_single_receipt_is_fail_closed():
+    from rules import final_compliance_gate
+    import pytest
+    checks={"raw_sources":True,"quotes":True,"template":True,"content_flow":True,"render":True,"examiner":False}
+    with pytest.raises(ValueError, match="examiner"):
+        final_compliance_gate("gorus", data=_tiny_docx_bytes(), output_name="Görüş Metni_1.docx", default_name="x.docx", checks=checks)
+
+
+def test_tip3_canonical_name_keeps_underscore_convention():
+    from rules import final_compliance_gate
+    checks={"delivery":True,"render":True}
+    name=final_compliance_gate("tip3", data=_tiny_docx_bytes(), output_name="Ön Araştırma Raporu_181612.docx", default_name="x.docx", checks=checks)
+    assert name == "Ön_Araştırma_Raporu_181612.docx"
+
+
+def test_markup_final_gate_rejects_non_destek_patent_author():
+    from rules import final_compliance_gate
+    import io, zipfile, pytest
+    from docx import Document
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    doc=Document(); p=doc.add_paragraph(); ins=OxmlElement('w:ins'); ins.set(qn('w:author'),'Other Author'); r=OxmlElement('w:r'); t=OxmlElement('w:t'); t.text='x'; r.append(t); ins.append(r); p._p.append(ins)
+    bio=io.BytesIO(); doc.save(bio)
+    with pytest.raises(ValueError, match="Destek Patent"):
+        final_compliance_gate("tarifname_update", data=bio.getvalue(), output_name="Tarifname_markup.docx", default_name="x.docx", checks={"update_result":True})
+
+
+def test_ui_has_single_download_entrypoint_only():
+    from pathlib import Path
+    source=Path(__file__).with_name('app.py').read_text(encoding='utf-8')
+    assert source.count('st.download_button(') == 1
+    assert 'def compliant_download_button' in source
+    assert source.count('compliant_download_button(') >= 8
+
+
+def test_safe_output_name_gorus_no_longer_turns_space_into_underscore():
+    assert app.safe_output_name('Görüş%20Metni_700286.docx','x.docx','gorus') == 'Görüş Metni_700286.docx'

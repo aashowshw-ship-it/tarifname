@@ -51,7 +51,7 @@ except ImportError:  # pragma: no cover - bağımlılık Render üzerinde requir
     fitz = None
 from pypdf import PdfReader
 
-from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES, TARIFNAME_DUZENLEME_RULES, EXTRA_CONTROLS_NOTICE, tarifname_extra_controls_completed
+from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES, TARIFNAME_DUZENLEME_RULES, EXTRA_CONTROLS_NOTICE, tarifname_extra_controls_completed, canonical_output_name, final_compliance_gate
 from template_audit import validate_full_tarifname_template_fidelity
 from source_guards import (
     build_source_passage_registry,
@@ -1822,35 +1822,27 @@ def _with_extra_instruction(prompt: str, value: str | None) -> str:
           "zorunlu kontrolleri atlamak için kullanılamaz."
     )
 
-def safe_output_name(name: str, default: str) -> str:
-    """Return a human-readable, filesystem-safe DOCX download name.
+def safe_output_name(name: str, default: str, artifact_type: str = "generic") -> str:
+    """Compatibility wrapper over the single canonical filename policy."""
+    return canonical_output_name(name, default, artifact_type)
 
-    URL-encoded fragments are decoded and whitespace is normalized to
-    underscores so browser downloads never expose literal ``%20``/``%C3...``
-    fragments. Turkish characters are deliberately preserved.
-    """
-    raw = str(name or default).strip()
 
-    # Decode once or twice so a previously double-encoded filename is also
-    # repaired, while avoiding an unbounded decode loop.
-    for _ in range(2):
-        decoded = unquote(raw)
-        if decoded == raw:
-            break
-        raw = decoded
-
-    raw = raw.replace("\u00a0", " ")
-    raw = re.sub(r"[\r\n\t]+", " ", raw)
-    raw = re.sub(r"\s+", "_", raw).strip("_ ")
-
-    # Strip any user-supplied path and keep only the filename. Handle both
-    # Windows and POSIX separators regardless of the server OS.
-    raw = raw.replace("\\", "/").split("/")[-1].strip()
-    if not raw:
-        raw = default
-    if not raw.lower().endswith(".docx"):
-        raw += ".docx"
-    return raw
+def compliant_download_button(
+    label: str,
+    *,
+    data: bytes,
+    output_name: str,
+    default_name: str,
+    artifact_type: str,
+    checks: dict[str, bool],
+    mime: str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    **kwargs,
+):
+    """The ONLY UI path allowed to expose a generated Word file for download."""
+    final_name = final_compliance_gate(
+        artifact_type, data=data, output_name=output_name, default_name=default_name, checks=checks
+    )
+    return st.download_button(label, data=data, file_name=final_name, mime=mime, **kwargs)
 
 
 # -----------------------------------------------------------------------------
@@ -8748,12 +8740,12 @@ if work_type == "Tarifname oluşturma":
 
                 progress.progress(100, text="Hazır")
                 st.success("Tarifname oluşturuldu ve BBF tamlık kontrolü tamamlandı.")
-                st.download_button(
-                    "Tarifname Word dosyasını indir",
-                    data=data,
-                    file_name=safe_output_name(output_name, f"Tarifname_{str(reference).strip()}.docx"),
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    type="primary",
+                _tarifname_final_checks = {key: final_gates.get(key) is True for key in ("source_completeness", "independent_raw_second_read", "detail_source_transfer", "prior_art", "draft_quality", "claims", "references", "template", "element_step_language", "formula_format", "how_test", "claim_clarity")}
+                _tarifname_final_checks["render"] = True
+                compliant_download_button(
+                    "Tarifname Word dosyasını indir", data=data, output_name=output_name,
+                    default_name=f"Tarifname_{str(reference).strip()}.docx", artifact_type="tarifname",
+                    checks=_tarifname_final_checks, type="primary",
                 )
                 if separate_figures and figure_reports:
                     with st.expander("Şekil referans kontrolü", expanded=bool(figure_unresolved)):
@@ -8779,11 +8771,10 @@ if work_type == "Tarifname oluşturma":
                     for message in figure_unresolved:
                         st.warning(message)
                 if figure_data is not None:
-                    st.download_button(
-                        "Şekiller Word dosyasını indir",
-                        data=figure_data,
-                        file_name=safe_output_name(figures_output_name, f"Şekiller_{str(reference).strip()}.docx"),
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    compliant_download_button(
+                        "Şekiller Word dosyasını indir", data=figure_data, output_name=figures_output_name,
+                        default_name=f"Şekiller_{str(reference).strip()}.docx", artifact_type="figures",
+                        checks={"references": not bool(figure_unresolved), "structure": True, "render": True},
                     )
             except Exception as exc:
                 st.exception(exc)
@@ -8978,12 +8969,10 @@ elif work_type == "Tarifname düzenleme":
                         f"açıklamayla cevaplanan {counts.get('explain', 0)}, şekil aksiyonu {counts.get('figure_action', 0)}, "
                         f"usuli/stratejik aksiyon {counts.get('procedural_action', 0)}."
                     )
-                    st.download_button(
-                        "Markup Word dosyasını indir",
-                        data=markup_data,
-                        file_name=output_name,
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        type="primary",
+                    compliant_download_button(
+                        "Markup Word dosyasını indir", data=markup_data, output_name=output_name,
+                        default_name="Tarifname_markup.docx", artifact_type="tarifname_update",
+                        checks={"update_result": True}, type="primary",
                     )
 
                 figure_actions = list(final_plan.get("figure_actions") or [])
@@ -9031,11 +9020,11 @@ elif work_type == "Tarifname düzenleme":
                             fig_stem = re.sub(r"tarifname", "Şekiller", stem, count=1, flags=re.I)
                         else:
                             fig_stem = f"Şekiller_{stem}"
-                        st.download_button(
-                            "Revize Şekiller Word dosyasını indir",
-                            data=figure_update_data,
-                            file_name=f"{fig_stem}_revize.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        render_figures_docx_smoke_test(figure_update_data)
+                        compliant_download_button(
+                            "Revize Şekiller Word dosyasını indir", data=figure_update_data,
+                            output_name=f"{fig_stem}_revize.docx", default_name="Şekiller_revize.docx",
+                            artifact_type="figure_update", checks={"render": True},
                         )
 
                 open_items = [str(x).strip() for x in (final_plan.get("open_procedural_items") or []) if str(x).strip()]
@@ -9844,13 +9833,32 @@ elif work_type == "Görüş hazırlama":
                         except Exception as exc:
                             st.exception(exc)
 
-            st.download_button(
-                "Word görüş metnini indir",
-                data=st.session_state.gorus_opinion_data,
-                file_name=safe_output_name(source_state.get("output_name") or output_name, "Response Letter.docx" if _english_spec(source_state.get("language") or opinion_language) else "Görüş Metni.docx"),
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                type="primary",
-                use_container_width=True,
+            # v5.4.75: indirme anında bütün bağlayıcı görüş kapıları SON KEZ yeniden çalışır.
+            _delivery_opinion = deepcopy(st.session_state.gorus_opinion_json or {})
+            _delivery_spec_text = final_spec_text or source_state.get("spec_text") or ""
+            validate_revision_amendment_section(_delivery_opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize"))
+            validate_quotes(_delivery_opinion, _delivery_spec_text)
+            validate_opinion_against_raw_sources(
+                _delivery_opinion, source_state.get("report_text") or "", _delivery_spec_text,
+                source_state.get("prior_text") or "", source_state.get("sim_text") or "", source_state.get("cust_text") or "",
+                allowed_documents=source_state.get("required_docs"), preanalysis=analysis,
+            )
+            _delivery_sections = {str(sec.get("label", "")).upper(): sec for sec in _delivery_opinion.get("sections") or []}
+            _delivery_figure_labels = [
+                str(d.get("label", "")) for d in _delivery_opinion.get("cited_documents") or []
+                if bool(_delivery_sections.get(str(d.get("label", "")).upper(), {}).get("use_figure", False))
+            ]
+            validate_gorus_template_fidelity(st.session_state.gorus_opinion_data, GORUS_TEMPLATE, _delivery_opinion, _delivery_figure_labels)
+            validate_gorus_docx_content_flow(st.session_state.gorus_opinion_data)
+            render_gorus_docx_smoke_test(st.session_state.gorus_opinion_data)
+            validate_examiner_persuasion_assessment(st.session_state.gorus_examiner_assessment or {})
+            compliant_download_button(
+                "Word görüş metnini indir", data=st.session_state.gorus_opinion_data,
+                output_name=source_state.get("output_name") or output_name,
+                default_name="Response Letter.docx" if _english_spec(source_state.get("language") or opinion_language) else "Görüş Metni.docx",
+                artifact_type="gorus",
+                checks={"raw_sources": True, "quotes": True, "template": True, "content_flow": True, "render": True, "examiner": True},
+                type="primary", use_container_width=True,
             )
 
 # ARAŞTIRMA
@@ -10042,7 +10050,13 @@ elif work_type == "Tip 3 - Ön araştırma raporu":
                         progress.progress(100, text="Tüm kalite kapıları geçti")
                         st.info(f"Yenilik: {final_selection.get('novelty_result','')} | Buluş basamağı: {final_selection.get('inventive_step_result','')}")
                         effective_output_name = output_name.replace("XXXXXX", reference.strip()) if reference.strip() else output_name
-                        st.download_button("Word raporunu indir", data=data, file_name=safe_output_name(effective_output_name, "Ön_Araştırma_Raporu.docx"), mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", type="primary")
+                        validate_research_docx_delivery(data)
+                        render_research_docx_smoke_test(data)
+                        compliant_download_button(
+                            "Word raporunu indir", data=data, output_name=effective_output_name,
+                            default_name="Ön_Araştırma_Raporu.docx", artifact_type="tip3",
+                            checks={"delivery": True, "render": True}, type="primary",
+                        )
                     except Exception as exc:
                         st.exception(exc)
 
@@ -10210,13 +10224,12 @@ else:
                     progress.progress(100, text="Tüm kalite kapıları geçti")
                     effective_output = update_output_name.replace("XXXXXX", update_reference.strip())
                     st.success("Güncelleme raporu standart Ön Araştırma Raporu formatında oluşturuldu.")
-                    st.download_button(
-                        "Word raporunu indir",
-                        data=data,
-                        file_name=safe_output_name(effective_output, "Ön_Araştırma_Raporu_rev.docx"),
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        type="primary",
-                        use_container_width=True,
+                    validate_research_docx_delivery(data)
+                    render_research_docx_smoke_test(data)
+                    compliant_download_button(
+                        "Word raporunu indir", data=data, output_name=effective_output,
+                        default_name="Ön_Araştırma_Raporu_rev.docx", artifact_type="tip3_update",
+                        checks={"delivery": True, "render": True}, type="primary", use_container_width=True,
                     )
                 except Exception as exc:
                     st.exception(exc)

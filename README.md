@@ -1,7 +1,15 @@
-# Patent Atölyesi v5.4.74
+# Patent Atölyesi v5.4.75
+
+## v5.4.75 / 2026-09-22 — Tek merkezi final compliance gate + gerçek dosya adı kapısı
+
+- Kullanıcıya indirilebilir olarak verilen bütün Word çıktıları artık tek `final_compliance_gate()` üzerinden geçer. Tarifname, Şekiller, Tarifname düzenleme, Görüş, Tip 3 ve Araştırma güncelleme dahil hiçbir akış doğrudan `st.download_button` çağıramaz.
+- Her çıktı türünün zorunlu PASS makbuzları merkezi listede tanımlıdır. Tek bir kontrol eksik/False ise final gate fail-closed çalışır ve indirme açılmaz. İş akışı içindeki önceki PASS beyanı final kapının yerine geçmez.
+- Görüş indirme anında kaynak kapsamı, birebir alıntılar, şablon, içerik akışı, render ve bağımsız uzman-perspektifi yeniden doğrulanır. Faydalı model yenilik-only ve doğal patent dili yasakları bu son turda da fiilen çalışır.
+- Dosya adı URL kodlu olarak teslim edilemez. `%20`, `%C3...` gibi girdiler önce decode edilir ve kullanıcıya verilen gerçek ad örneğin `Görüş Metni_700286.docx` olur. Görüş adında insan-okunur boşluk korunur; Tip 3 kendi underscore standardını korur.
+- Tarifname düzenleme çıktısındaki Track Changes/Word comment yazarları final gate tarafından ayrıca kontrol edilir ve `Destek Patent` dışında görünür yazar kabul edilmez.
 
 
-## v5.4.74 / 2026-09-22 — Faydalı model yenilik-only görüş + doğal dil + D-şekli kapısı
+## v5.4.75 / 2026-09-22 — Faydalı model yenilik-only görüş + doğal dil + D-şekli kapısı
 
 - Türkiye **Faydalı Model Araştırma Raporu** görüşlerinde buluş basamağı/inventive-step savunması artık üretilmez. Olumsuzluk yoksa sanayiye uygulanabilirlik de gereksiz yere tartışılmaz; görüş yalnız yenilik itirazına ve ilgili istemlere odaklanır.
 - X dokümanı faydalı modelde yalnız yenilik bakımından savunulur; `inventive_step_paragraphs` ve birleşik buluş-basamağı bölümleri boş bırakılır. İkinci okuma ve final kapıları bu modda buluş-basamağı zinciri istemez.

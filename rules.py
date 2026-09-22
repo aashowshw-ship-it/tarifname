@@ -1,7 +1,128 @@
 from __future__ import annotations
 
-APP_VERSION = "v5.4.74"
-RULESET_VERSION = "2026-09-22.v66"
+import io
+import re
+import zipfile
+from urllib.parse import unquote
+
+APP_VERSION = "v5.4.75"
+RULESET_VERSION = "2026-09-22.v67"
+
+# v5.4.75 — Tek merkezi son teslim kapısı.
+# Kullanıcıya indirilebilir olarak sunulan HER Word çıktısı, iş akışından bağımsız
+# olarak bu kapıdan geçer. Bir iş akışının kendi iç kalite kontrolleri bu kapının
+# yerine geçmez; final gate, gereken kontrol makbuzlarının eksiksiz ve True
+# olduğunu ayrıca doğrular.
+FINAL_COMPLIANCE_REQUIRED_CHECKS = {
+    "tarifname": (
+        "source_completeness", "independent_raw_second_read", "detail_source_transfer",
+        "prior_art", "draft_quality", "claims", "references", "template",
+        "element_step_language", "formula_format", "how_test", "claim_clarity", "render",
+    ),
+    "figures": ("references", "structure", "render"),
+    "gorus": ("raw_sources", "quotes", "template", "content_flow", "render", "examiner"),
+    "tarifname_update": ("update_result",),
+    "figure_update": ("render",),
+    "tip3": ("delivery", "render"),
+    "tip3_update": ("delivery", "render"),
+}
+
+
+def canonical_output_name(name: str, default: str, artifact_type: str = "generic") -> str:
+    """Produce the exact user-visible download filename, never a URL-encoded alias.
+
+    Görüş/Response Letter names remain human-readable with literal spaces and
+    Turkish characters. Tip-3 names intentionally retain the established
+    underscore convention. Path components and control characters are removed.
+    """
+    raw = str(name or default).strip()
+    # Repair single/double URL encoding before the name can reach the UI.
+    for _ in range(3):
+        decoded = unquote(raw)
+        if decoded == raw:
+            break
+        raw = decoded
+    raw = raw.replace("\\", "/").split("/")[-1]
+    raw = raw.replace("\u00a0", " ")
+    raw = re.sub(r"[\x00-\x1f\x7f\r\n\t]+", " ", raw)
+    raw = re.sub(r"\s+", " ", raw).strip(" .")
+    if not raw:
+        raw = str(default or "output.docx").strip()
+    kind = str(artifact_type or "generic").strip().lower()
+    if kind in {"tip3", "tip3_update"}:
+        raw = re.sub(r"\s+", "_", raw)
+        raw = raw.replace("Ön_Araştırma_Raporu", "Ön_Araştırma_Raporu")
+    elif kind == "gorus":
+        # Keep the house-style visible name even if an old version supplied underscores.
+        raw = re.sub(r"^(Görüş|Gorus)_Metni", lambda m: ("Görüş" if m.group(1)=="Görüş" else "Gorus") + " Metni", raw)
+        raw = re.sub(r"^Response_Letter", "Response Letter", raw, flags=re.I)
+    if not raw.lower().endswith(".docx"):
+        raw += ".docx"
+    return raw
+
+
+def _validate_docx_package_bytes(data: bytes) -> None:
+    if not isinstance(data, (bytes, bytearray)) or len(data) < 100:
+        raise ValueError("Nihai uyumluluk kapısı: kullanıcıya verilecek Word çıktısı boş veya geçersiz.")
+    try:
+        with zipfile.ZipFile(io.BytesIO(bytes(data)), "r") as zf:
+            names = set(zf.namelist())
+            if "[Content_Types].xml" not in names or "word/document.xml" not in names:
+                raise ValueError("Nihai uyumluluk kapısı: DOCX paket yapısı eksik.")
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Nihai uyumluluk kapısı: çıktı geçerli bir DOCX paketi değil.") from exc
+
+
+def _validate_destek_patent_review_authors(data: bytes) -> None:
+    """Markup/comment çıktılarında görünür yazar başka bir ad olamaz."""
+    with zipfile.ZipFile(io.BytesIO(bytes(data)), "r") as zf:
+        for xml_name in ("word/document.xml", "word/comments.xml"):
+            if xml_name not in zf.namelist():
+                continue
+            xml = zf.read(xml_name).decode("utf-8", errors="ignore")
+            authors = re.findall(r'w:author="([^"]*)"', xml)
+            bad = [a for a in authors if a.strip() and a.strip() != "Destek Patent"]
+            if bad:
+                raise ValueError("Nihai uyumluluk kapısı: Track Changes/Word comment yazarı yalnız `Destek Patent` olabilir.")
+
+
+def final_compliance_gate(
+    artifact_type: str,
+    *,
+    data: bytes,
+    output_name: str,
+    default_name: str,
+    checks: dict | None = None,
+) -> str:
+    """Single fail-closed final gate for every user-downloadable Word artifact.
+
+    Returns the canonical user-visible filename only if the DOCX package, filename,
+    and every artifact-specific mandatory check are valid. Missing checks count as
+    failure; callers cannot silently skip a rule by omitting its receipt.
+    """
+    kind = str(artifact_type or "").strip().lower()
+    if kind not in FINAL_COMPLIANCE_REQUIRED_CHECKS:
+        raise ValueError(f"Nihai uyumluluk kapısı: tanımsız çıktı türü `{artifact_type}`.")
+    receipts = checks or {}
+    required = FINAL_COMPLIANCE_REQUIRED_CHECKS[kind]
+    failed = [key for key in required if receipts.get(key) is not True]
+    if failed:
+        raise ValueError("Nihai uyumluluk kapısı: zorunlu kontrol(ler) PASS değil: " + ", ".join(failed))
+    _validate_docx_package_bytes(data)
+    filename = canonical_output_name(output_name, default_name, kind)
+    # The filename handed to Streamlit must itself be clean; encoded fragments may
+    # be accepted only as input to canonicalization, never as the delivered name.
+    if "%" in filename or re.search(r"%[0-9A-Fa-f]{2}", filename):
+        raise ValueError("Nihai uyumluluk kapısı: URL-kodlu `%20/%C3...` dosya adı kullanıcıya verilemez.")
+    if "/" in filename or "\\" in filename:
+        raise ValueError("Nihai uyumluluk kapısı: çıktı adı dizin bileşeni içeremez.")
+    if kind == "gorus" and ("%20" in filename or "_Metni" in filename):
+        raise ValueError("Nihai uyumluluk kapısı: görüş dosya adı insan-okunur `Görüş Metni_...` biçiminde olmalıdır.")
+    if kind in {"tip3", "tip3_update"} and " " in filename:
+        raise ValueError("Nihai uyumluluk kapısı: Tip 3 dosya adında boşluk kullanılamaz; underscore düzeni zorunludur.")
+    if kind == "tarifname_update":
+        _validate_destek_patent_review_authors(data)
+    return filename
 
 EXTRA_CONTROLS_NOTICE = "EKSTRA KONTROLLER YAPILDI"
 EXTRA_CONTROL_GATE_KEYS = (
@@ -34,6 +155,8 @@ def tarifname_extra_controls_completed(
     gates = final_gates or {}
     figure_ok = (not figures_required) or figures_passed
     return bool(render_passed and figure_ok and all(gates.get(key) is True for key in EXTRA_CONTROL_GATE_KEYS))
+
+# BAĞLAYICI ORTAK TESLİM KURALI (v5.4.75): Uygulamanın Tarifname, Şekiller, Tarifname düzenleme, Görüş, Tip 3 ve Araştırma güncelleme akışlarının hiçbirinde doğrudan indirme verilemez. Her çıktı tek `final_compliance_gate()` üzerinden geçer. Gate kendi çıktı türüne ait zorunlu kontrol listesindeki tek bir PASS makbuzu eksikse fail-closed çalışır. Dosya adı dahil bütün bağlayıcı kurallar nihai Word üzerinde yeniden doğrulanmadan indirme açılmaz.
 
 TARIFNAME_RULES = r"""
 TÜRK PATENT TARİFNAME OLUŞTURMA KURALLARI

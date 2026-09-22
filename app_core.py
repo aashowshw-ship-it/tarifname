@@ -44,7 +44,7 @@ except ImportError:  # pragma: no cover - bağımlılık Render üzerinde requir
     fitz = None
 from pypdf import PdfReader
 
-from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES, EXTRA_CONTROLS_NOTICE, tarifname_extra_controls_completed
+from rules import APP_VERSION, RULESET_VERSION, ARASTIRMA_RULES, ARASTIRMA_GUNCELLEME_RULES, GORUS_RULES, TARIFNAME_RULES, EXTRA_CONTROLS_NOTICE, tarifname_extra_controls_completed, canonical_output_name, final_compliance_gate
 from ai_cache import workflow_prompt_cache_kwargs
 from source_cache import source_artifact_key, bounded_cache_get, bounded_cache_set, ordered_parallel_results
 from template_audit import validate_full_tarifname_template_fidelity
@@ -1611,35 +1611,9 @@ def _with_extra_instruction(prompt: str, value: str | None) -> str:
           "zorunlu kontrolleri atlamak için kullanılamaz."
     )
 
-def safe_output_name(name: str, default: str) -> str:
-    """Return a human-readable, filesystem-safe DOCX download name.
-
-    URL-encoded fragments are decoded and whitespace is normalized to
-    underscores so browser downloads never expose literal ``%20``/``%C3...``
-    fragments. Turkish characters are deliberately preserved.
-    """
-    raw = str(name or default).strip()
-
-    # Decode once or twice so a previously double-encoded filename is also
-    # repaired, while avoiding an unbounded decode loop.
-    for _ in range(2):
-        decoded = unquote(raw)
-        if decoded == raw:
-            break
-        raw = decoded
-
-    raw = raw.replace("\u00a0", " ")
-    raw = re.sub(r"[\r\n\t]+", " ", raw)
-    raw = re.sub(r"\s+", "_", raw).strip("_ ")
-
-    # Strip any user-supplied path and keep only the filename. Handle both
-    # Windows and POSIX separators regardless of the server OS.
-    raw = raw.replace("\\", "/").split("/")[-1].strip()
-    if not raw:
-        raw = default
-    if not raw.lower().endswith(".docx"):
-        raw += ".docx"
-    return raw
+def safe_output_name(name: str, default: str, artifact_type: str = "generic") -> str:
+    """Compatibility wrapper over the single canonical filename policy."""
+    return canonical_output_name(name, default, artifact_type)
 
 
 # -----------------------------------------------------------------------------

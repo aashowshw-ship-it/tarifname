@@ -1,4 +1,11 @@
-## v5.4.74 / 2026-09-22.v66 — Faydalı model yenilik-only görüş + doğal dil + özgün D-şekli
+## v5.4.75 / 2026-09-22.v67 — Merkezi zorunlu final compliance gate
+
+- Bütün indirilebilir Word çıktıları **tek `final_compliance_gate()`** üzerinden geçer. Her iş akışının zorunlu kontrol listesi merkezidir; eksik veya `False` tek makbuz indirmeyi kapatır. Doğrudan `st.download_button` kullanımı yasaktır.
+- Dosya adı da bağlayıcı final kuralıdır. URL-encoded `%20`, `%C3...` görünür ad olarak teslim edilemez; decode/normalize edilmiş gerçek ad kullanılır. Görüşte `Görüş Metni_<ref>.docx` / `Response Letter_<ref>.docx` insan-okunur boşlukla korunur. Tip 3 adları mevcut underscore standardını korur.
+- Görüş dosyası indirme anında kaynak, alıntı, şablon, içerik akışı, render ve uzman-perspektifi yeniden doğrulanır. Faydalı model yenilik-only kuralı ile `→`, `->`, `⇒`, teknik `+` zinciri ve revizyonsuz iç istem-stratejisi yasakları bu son turdan kaçamaz.
+- Tarifname düzenleme markup/comment yazarları son kapıda yeniden denetlenir; görünür yazar yalnız `Destek Patent` olabilir.
+
+## v5.4.75 / 2026-09-22.v67 — Faydalı model yenilik-only görüş + doğal dil + özgün D-şekli
 
 - Resmi belge `FAYDALI MODEL ARAŞTIRMA RAPORU` ise görüş savunması yalnız raporda olumsuz değerlendirilen **yenilik** noktalarına yönelir. **Buluş basamağı/inventive step kesinlikle savunulmaz**. Sanayiye uygulanabilirlik olumluysa görüşe gereksiz savunma konusu yapılmaz.
 - Faydalı model X dokümanı yalnız yenilik açısından ele alınır. Buluş-basamağı paragrafları ve kombinasyon bölümü boş kalır; kalite kapıları da bu modda buluş-basamağı zinciri aramaz.
@@ -45,7 +52,7 @@
 - İngilizce çıktı Word kapısı Türkçe şablon kalıntılarını deterministik olarak reddeder.
 - İngilizce görüş varsayılan dosya adı `Response Letter_XXXXXX.docx` olur.
 
-Kural sürümü: **2026-09-22.v66**
+Kural sürümü: **2026-09-22.v67**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 

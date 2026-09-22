@@ -8,8 +8,8 @@ from rules import APP_VERSION, RULESET_VERSION
 
 
 def test_version_is_v5453_rev2():
-    assert APP_VERSION == "v5.4.74"
-    assert RULESET_VERSION == "2026-09-22.v66"
+    assert APP_VERSION == "v5.4.75"
+    assert RULESET_VERSION == "2026-09-22.v67"
 
 
 def test_tip3_page2_layout_is_inline_and_auto_height():
