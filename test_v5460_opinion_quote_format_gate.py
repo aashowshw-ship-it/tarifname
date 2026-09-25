@@ -52,8 +52,8 @@ def _basis_doc(*, lead_bold=False, quote_bold=True, post_bold=False, inherited_l
 
 
 def test_release_version_and_rule_text():
-    assert APP_VERSION == "v5.4.77"
-    assert RULESET_VERSION == "2026-09-25.v69"
+    assert APP_VERSION == "v5.4.78"
+    assert RULESET_VERSION == "2026-09-25.v70"
     low = GORUS_RULES.casefold()
     assert "yalnız dış `“...”` tırnakları arasındaki birebir tarifname pasajı" in low
     assert "alıntıdan sonra" in low and "normal" in low

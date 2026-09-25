@@ -237,7 +237,7 @@ def test_epo_pct_clarity_prompt_says_do_not_block_delivery_and_comment_at_issue(
     assert "Yeni teknik bilgi" in prompt
 
 
-# v5.4.77 — central final compliance gate regressions
+# v5.4.78 — central final compliance gate regressions
 
 def _tiny_docx_bytes(text="x"):
     import io

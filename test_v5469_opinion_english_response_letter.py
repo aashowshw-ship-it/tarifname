@@ -24,8 +24,8 @@ def _opinion():
     }
 
 def test_version_and_ruleset():
-    assert APP_VERSION == "v5.4.77"
-    assert RULESET_VERSION == "2026-09-25.v69"
+    assert APP_VERSION == "v5.4.78"
+    assert RULESET_VERSION == "2026-09-25.v70"
 
 def test_uspto_inference_and_english_shell_passes():
     office = app.infer_gorus_target_office("UNITED STATES PATENT AND TRADEMARK OFFICE\n35 U.S.C. § 103", "Yurtdışı ofis aksiyon")

@@ -1699,7 +1699,7 @@ def validate_gorus_docx_content_flow(docx_data: bytes) -> None:
     doc = Document(io.BytesIO(docx_data))
     visible = [(idx, p.text.strip()) for idx, p in enumerate(doc.paragraphs) if p.text.strip()]
 
-    # v5.4.77 deterministic visible-order gate. The intro announces the cited documents,
+    # v5.4.78 deterministic visible-order gate. The intro announces the cited documents,
     # so D1/D2/... bibliography rows must precede the approved-amendment section, while
     # substantive D defences must follow it. This is checked on the produced Word, not only
     # in the model JSON/prompt.
@@ -2233,7 +2233,7 @@ def render_gorus_docx_smoke_test(data: bytes) -> int:
         return pages
 
 # -----------------------------------------------------------------------------
-# v5.4.77 — deterministic amendment redline integrity
+# v5.4.78 — deterministic amendment redline integrity
 # -----------------------------------------------------------------------------
 def _docx_revision_view_paragraphs(docx_data: bytes, *, accepted: bool) -> list[str]:
     """Render paragraph text from OOXML with Track Changes accepted/rejected.
@@ -2356,7 +2356,7 @@ def validate_tracked_changes_against_plan(
     amendments: list[dict[str, Any]],
     description_updates: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Three-way integrity gate required by v5.4.77.
+    """Three-way integrity gate required by v5.4.78.
 
     1) rejected Markup view equals source,
     2) accepted Markup view equals Clean,

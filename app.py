@@ -2100,6 +2100,7 @@ KRİTİK TALİMATLAR:
 - Yapılandırılmış envanter yalnızca yardımcıdır. Çelişki halinde ham BBF ve açık teknik müşteri belgeleri esas alınır.
 - Örnek tarifnamelerden yalnızca kurguyu öğren; teknik bilgi aktarma.
 - technical_field iki paragraf olmalıdır ve paragraflar \n\n ile ayrılmalıdır. Türkçe çıktıda ilk paragraf yalnız “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile; İngilizce çıktıda ilk paragraf yalnız “The invention relates to ... .”, ikinci paragraf “In particular, the invention relates to ... .” ile başlamalıdır. Seçilen istem modu “Sistem ve yöntem” ise Türkçe ilk paragrafın sonu özellikle “... sistemi ve yöntemi ile ilgilidir.” olmalıdır; yalnız sistemde “... sistemi ile ilgilidir.”, yalnız yöntemde “... yöntemi ile ilgilidir.” yapısı kullanılmalıdır.
+- ÖNCEKİ TEKNİK ilk genel paragrafı MUTLAKA `Günümüzde ...` ile başlasın. Bu ilk paragrafta müşterinin verdiği özel patent/standart/protokol/dokümana doğrudan dalma; önce ilgili teknik alanın güncel genel işleyişini ve yaygın yaklaşımını nötr biçimde açıkla. Sonraki paragraflarda BBF'deki 3GPP/A2A/MCP gibi somut önceki teknik örneklerine ve bunların eksikliklerine geç. Patent literatürü bundan sonra ayrı ayrı paragraf olsun.
 - ÖNCEKİ TEKNİK'teki aynı anlatımın devamı olan “Özellikle...”, “Bununla birlikte...”, “Bu nedenle...” gibi cümleleri ayrı paragraf yapma. Patent literatürü dokümanları ise ayrı ayrı paragraf olsun.
 - Türkçe tarifnamede her patent literatürü paragrafında doğrulanmış İngilizce başlık ile Türkçe başlık karşılığı birlikte yazılsın. Türkçe literatür paragrafı bağlayıcı taslak dilini izlesin: “Literatürde yapılan araştırmalar sonucu ... numaralı, İngilizce başlığı ‘...’ ve Türkçe karşılığı ‘...’ olan patent dokümanına rastlanmıştır. Söz konusu başvuru/doküman ... ile ilgilidir. Ancak bahsedilen başvuruda/dokümanda ... ile ilgili bir emareye rastlanmamıştır.” “Buluşta ise ...” biçiminde karşılaştırmalı görüş/savunma dili kullanılmasın. İngilizce tarifnamede özgün İngilizce patent başlığı kullanılsın; Türkçe başlık karşılığı nihai İngilizce metne eklenmesin.
 - BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı sistem/cihaz unsurlarını tek tek ayrı paragraf yapma; bütün unsur açıklamalarını teknik akış içinde tek sürekli paragrafta topla. Sistem unsuru-yöntem adımı ilişkisini açıklamak için “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü tablo oluşturma. Bu ilişkiyi modül (1), sonraki modül (2) ve ilgili yöntem adımı (1001, 1002...) arasındaki veri/işlev bağlantısını gösteren doğal teknik paragraf olarak yaz. Yalnız ham kaynakta gerçekten sayısal/deneysel veri tablosu olan tabloları tables alanında koru. Gerçekten ayrı bir yapılanma/alternatif/yöntem/çalışma prensibi ayrıca paragraf olabilir.
@@ -2218,13 +2219,16 @@ ZORUNLU KONTROL LİSTESİ:
 7. Eğitim/genel ve test aşamaları paralel fakat ayrı olarak mı kurulmuş?
 8. Formüller, değişken açıklamaları, tablolar, deneysel sonuçlar, alternatifler ve teknik etkiler eksiksiz mi?
 9. Seçilen istem modu ({claim_mode}) ile başlık, açıklama ve istemler tutarlı mı? Sistem ve yöntem ise başlık seçilen dile uygun biçimde “Sistemi ve Yöntemi” veya “System and Method” yapısını taşıyor mu?
-10. Bağımlı istemler gerçek daraltma sağlıyor mu?
+10. Bağımlı istemler gerçek daraltma sağlıyor mu? Her bağımlı istemi bağlandığı istem ve bütün atalarının TAM teknik kapsamıyla feature-by-feature karşılaştır; yüzde/kelime-benzerlik eşiği kullanma. Yeni teknik sınırlama yoksa istemi kaldır veya kaynak-destekli gerçek bir geri çekilme özelliği ekle. Ana yöntem istemindeki bir işlem adımının aynısını/parafrazını bağımlı yöntemde tekrar etme.
+10A. Türkçe bağımlı istemlerde sayı yönelme eki dilbilgisel olarak doğru mu (`1’e`, `2’ye`, `9’a`, `10’a`)? `İstem 9’e` gibi yanlış ek varsa düzelt.
+10B. Bir bağımlı istem iki veya daha fazla ayrı yeni referanslı unsur tanımlıyorsa gerçek `•` madde işaretleriyle ayrı alt maddeler halinde mi yazılmış?
+10C. Sistem unsurunu salt `fonksiyon` diye havada bırakma. Kaynakta standartlaştırılmış ağ fonksiyonu değilse yazılımsal bileşeni uygun `birim/modül` türüyle somutlaştır; `bir fonksiyon olmasıdır` kullanma.
 11. Kullanıcıya sunulan metinde “BBF” veya “buluş bildirim formu” gibi kaynak atfı kalmış mı? Kalmışsa doğrudan buluş anlatımına dönüştür.
 12. “Buluşun bir gerçekleştirilmesinde” veya “Mevcut buluş” kalıbı var mı? Varsa “Buluşun bir yapılanmasında” / “Buluş” diline dönüştür.
 13. REFERANS NUMARALARI unsur adları yalnızca ilk kelime büyük olacak biçimde mi? Cümle içindeki unsur adları küçük harfle mi başlıyor?
 14. Önceki teknik kaynakta verilen bütün müşteri teknik arka planını ve eksikliklerini içeriyor mu?
 15. Teknik alan seçilen dilde iki kademeli mi? Türkçede ilk paragraf yalnız “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile; İngilizcede ilk paragraf yalnız “The invention relates to ... .”, ikinci paragraf “In particular, the invention relates to ... .” ile başlamalıdır. İstem modu Sistem ve yöntem ise Türkçe ilk paragraf mutlaka “... sistemi ve yöntemi ile ilgilidir.” şeklinde bitmelidir; yalnız sistem/yöntem modlarında buna uygun tek tür adı kullanılmalıdır.
-16. ÖNCEKİ TEKNİK'te “Özellikle...”, “Bununla birlikte...”, “Bu nedenle...” gibi aynı anlatımın devamları gereksiz yere ayrı paragraf yapılmış mı? Yapılmışsa birleştir.
+16. ÖNCEKİ TEKNİK ilk genel paragrafı `Günümüzde ...` ile başlayıp müşterinin özel doküman/protokol örneklerine geçmeden önce mevcut teknolojinin genel işleyişini anlatıyor mu? Bodoslama 3GPP/A2A/MCP/patent dokümanıyla başlanmışsa genel güncel teknik paragrafını öne ekle. Aynı anlatımın devamı olan “Özellikle...”, “Bununla birlikte...”, “Bu nedenle...” gibi cümleler gereksiz yere ayrı paragraf yapılmışsa birleştir.
 17. Patent literatürü başlıkları seçilen dile uygun mu? Türkçe çıktıda İngilizce özgün başlık + Türkçe karşılığı kullanılmalı ve paragraf “Literatürde yapılan araştırmalar sonucu ... rastlanmıştır. Söz konusu başvuru/doküman ... ile ilgilidir. Ancak bahsedilen başvuruda/dokümanda ... ile ilgili bir emareye rastlanmamıştır.” taslak kalıbını izlemelidir. “Buluşta ise ...” dili kullanılmamalıdır. İngilizce çıktıda özgün İngilizce başlık kullanılmalı.
 18. BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı unsurlar gereksiz yere ayrı ayrı paragraflara bölünmüş mü? Bölündüyse tek sürekli unsur paragrafında birleştir.
 19. Detaylı açıklamadaki yöntem madde listesinde ara maddeler virgül, son madde nokta ile bitiyor mu? Kaynakta yöntem referansları verilmişse aynen korunmuş mu; kaynakta hiç referans yoksa 1001, 1002... varsayılan sırası kullanılmış mı? Bağımsız yöntem istemindeki son işlem adımı noktalamasız mı?
@@ -2960,6 +2964,12 @@ def _validate_dependent_system_claim_type_closure(claims: list[str], draft: dict
         claim = str(raw or "").strip()
         if re.search(r"\bbir\s+yapıda\s+olmasıdır\.?$", claim, re.IGNORECASE):
             raise ValueError(f"Bağımlı sistem istemi {idx}: `bir yapıda olmasıdır` kullanılamaz; daraltılan unsurun teknik türü (bir modül/birim/eleman vb.) yazılmalıdır.")
+        if re.search(r"\bbir\s+fonksiyon\s+olmasıdır\.?$", claim, re.IGNORECASE):
+            raise ValueError(
+                f"Bağımlı sistem istemi {idx}: `bir fonksiyon olmasıdır` teknik unsur türünü belirsiz bırakır. "
+                "Kaynakta standartlaştırılmış bir ağ fonksiyonu özel adı söz konusu değilse yazılımsal bileşeni `birim`/`modül` gibi somut teknik türle adlandırın; "
+                "standart ağ fonksiyonuysa da ek sınırlamayı salt `fonksiyon olmasıdır` biçiminde bırakmayın."
+            )
         if not re.search(r"olmasıdır\.?$", claim, re.IGNORECASE):
             continue
         refs = re.findall(r"\(\s*([^()]+?)\s*\)", claim)
@@ -3282,8 +3292,18 @@ def apply_tarifname_house_style(
             ("Mevcut buluş", "Buluş"),
             ("mevcut buluş", "buluş"),
             ("Buluş özellikle", "Buluş, özellikle"),
+            ("ajanlar-arası", "ajanlar arası"),
+            ("Ajanlar-Arası", "Ajanlar Arası"),
+            ("Ajanlar-arası", "Ajanlar arası"),
         ]:
             draft = _replace_in_nested(draft, old, new)
+        # Türkçe bağımlı istem yönelme eki sayı okunuşuna göre deterministik düzeltilir: 1’e, 2’ye, 9’a, 10’a...
+        if isinstance(draft.get("dependent_system_claims"), list):
+            draft["dependent_system_claims"] = [_normalize_dependent_claim_dative(str(x or "")) for x in draft["dependent_system_claims"]]
+        if isinstance(draft.get("dependent_method_claims"), list):
+            draft["dependent_method_claims"] = [_normalize_dependent_claim_dative(str(x or "")) for x in draft["dependent_method_claims"]]
+        for _g in _additional_method_claim_groups(draft):
+            _g["dependent_claims"] = [_normalize_dependent_claim_dative(str(x or "")) for x in (_g.get("dependent_claims") or [])]
         # Kullanıcı formatı: unsur adları referans listesinde sentence-case, metin/istemlerde normal cümle-içi yazımdır.
         draft = _normalize_turkish_element_case_in_draft(draft)
         # `alternatives` aynı kullanım kategorisinin tek alanıdır; Word'de ayrı kısa paragraflara bölünmesi yasaktır.
@@ -3490,14 +3510,249 @@ def _strip_known_element_reference_marks(text: str, element_numbers: list[str]) 
     return re.sub(r"\s{2,}", " ", result).strip()
 
 
-def _normalize_claim_semantics(text: str) -> set[str]:
-    """Bağımlı istem tekrarını kaba fakat deterministik biçimde yakalamak için içerik sözcükleri."""
-    txt = str(text or "").casefold()
-    txt = re.sub(r"^\s*istem\s+\d+(?:\s*(?:veya|ve|,)\s*\d+)*['’]?e\s+uygun\s+[^;]+;", " ", txt)
-    txt = re.sub(r"\(\s*[a-z0-9_\-]+\s*\)", " ", txt)
-    txt = re.sub(r"[^a-zçğıöşü0-9]+", " ", txt)
-    stop = {"istem", "uygun", "olup", "özelliği", "bir", "ve", "veya", "ile", "olan", "olarak", "söz", "konusu", "şekilde", "şeklinde"}
-    return {w for w in txt.split() if len(w) > 2 and w not in stop}
+_DEP_CLAIM_HEADER_RE = re.compile(
+    r"^\s*İstem\s+(\d+)\s*[’']\s*(a|e|ya|ye)\s+uygun\s+(sistem|yöntem)\s+olup,\s*özelliği;[ \t]*",
+    re.IGNORECASE,
+)
+
+
+def _tr_number_last_word(number: int) -> str:
+    """İstem numarasının Türkçe okunuşundaki son sözcüğü döndürür (dative uyumu için)."""
+    n = abs(int(number))
+    units = {0:"sıfır",1:"bir",2:"iki",3:"üç",4:"dört",5:"beş",6:"altı",7:"yedi",8:"sekiz",9:"dokuz"}
+    tens = {1:"on",2:"yirmi",3:"otuz",4:"kırk",5:"elli",6:"altmış",7:"yetmiş",8:"seksen",9:"doksan"}
+    if n == 0:
+        return units[0]
+    if n % 10:
+        return units[n % 10]
+    if n % 100:
+        return tens[(n % 100) // 10]
+    if n % 1000:
+        return "yüz"
+    if n % 1_000_000:
+        return "bin"
+    return "milyon"
+
+
+def _expected_claim_dative_suffix(number: int) -> str:
+    """1’e, 2’ye, 6’ya, 9’a, 10’a ... biçimindeki doğru Türkçe yönelme ekini üretir."""
+    word = _tr_number_last_word(number)
+    vowels = [c for c in word if c in "aeıioöuü"]
+    back = bool(vowels and vowels[-1] in "aıou")
+    suffix = "a" if back else "e"
+    if word[-1:] in "aeıioöuü":
+        suffix = "y" + suffix
+    return suffix
+
+
+def _normalize_dependent_claim_dative(text: str) -> str:
+    raw = str(text or "")
+    m = _DEP_CLAIM_HEADER_RE.match(raw)
+    if not m:
+        return raw
+    parent = int(m.group(1))
+    expected = _expected_claim_dative_suffix(parent)
+    header = f"İstem {parent}’{expected} uygun {m.group(3).lower()} olup, özelliği;"
+    rest = raw[m.end():]
+    return header + ("" if rest.startswith("\n") else " ") + rest.lstrip(" \t")
+
+
+def _dependent_claim_body(text: str) -> str:
+    raw = str(text or "").replace("\u00a0", " ").strip()
+    m = _DEP_CLAIM_HEADER_RE.match(raw)
+    if m:
+        raw = raw[m.end():]
+    raw = re.sub(r"\s+(?:işlem\s+adım(?:ını|larını)\s+içermesidir|olmasıdır|içermesidir)\.?\s*$", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"(?m)^\s*[•\-–]\s*", "", raw)
+    return re.sub(r"\s+", " ", raw).strip(" ,.;:")
+
+
+def _dependent_has_bullet_structure(text: str) -> bool:
+    return bool(re.search(r"(?m)^\s*[•]\s+\S", str(text or "")))
+
+
+def _split_dependent_claim_for_render(text: str) -> tuple[str, list[str], str] | None:
+    """Çok özellikli bağımlı istemi gerçek Word bullet'larına ayırır; tek satır istemde None döner."""
+    raw = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not _dependent_has_bullet_structure(raw):
+        return None
+    lines = [x.strip() for x in raw.split("\n") if x.strip()]
+    if not lines or not _DEP_CLAIM_HEADER_RE.match(lines[0]):
+        return None
+    header = lines[0]
+    bullets: list[str] = []
+    closure = ""
+    for line in lines[1:]:
+        if line.startswith("•"):
+            bullets.append(line[1:].strip())
+        elif re.fullmatch(r"(?:olmasıdır|içermesidir|işlem\s+adım(?:ını|larını)\s+içermesidir)\.?", line, flags=re.IGNORECASE):
+            closure = line
+        else:
+            return None
+    if len(bullets) < 2 or not closure:
+        return None
+    return header, bullets, closure
+
+
+def _simple_tr_claim_stem(word: str) -> str:
+    w = _tr_lower(str(word or "")).strip()
+    # Yalnız çekim eklerini kırp; teknik kökü/eylemi yeniden yorumlama.
+    suffixes = (
+        "lerindeki","larındaki","lerinden","larından","lerinin","larının","lerini","larını",
+        "sindeki","sındaki","sinden","sından","sinin","sının","sunun","sünün","sine","sına",
+        "ındaki","indeki","undan","ünden","ından","inden","larının","lerinin","ları","leri",
+        "nın","nin","nun","nün","dan","den","tan","ten","yla","yle","ya","ye","yı","yi","yu","yü",
+        "ın","in","un","ün","da","de","ta","te","lar","ler","sı","si","su","sü",
+    )
+    for suffix in suffixes:
+        if w.endswith(suffix) and len(w) - len(suffix) >= 4:
+            w = w[:-len(suffix)]
+            break
+    return w
+
+
+_CLAIM_SEMANTIC_FAMILIES: tuple[tuple[str, re.Pattern], ...] = (
+    ("receive", re.compile(r"\b(?:alan|alınan|alınması|gelen|iletilen|aktarılan|edinilen|elde\s+edilen)\b", re.I)),
+    ("send", re.compile(r"\b(?:ileten|iletilmesi|aktaran|aktarılması|gönderen|gönderilmesi|paylaşan|paylaşılması)\b", re.I)),
+    ("store", re.compile(r"\b(?:kaydeden|kaydedilmesi|saklayan|saklanması|depolayan|depolanması)\b", re.I)),
+    ("evaluate", re.compile(r"\b(?:değerlendiren|değerlendirilmesi|analiz\s+eden|analiz\s+edilmesi|karşılaştıran|karşılaştırılması)\b", re.I)),
+    ("determine", re.compile(r"\b(?:belirleyen|belirlenmesi|tespit\s+eden|tespit\s+edilmesi|saptayan|saptanması)\b", re.I)),
+    ("update", re.compile(r"\b(?:güncelleyen|güncellenmesi|yenileyen|yenilenmesi|yineleyen|yinelenmesi)\b", re.I)),
+    ("connect", re.compile(r"\b(?:bağlanan|bağlanması|bağlayan|bağlantı\s+kuran|eşleşen|eşleştiren|eşleştirilmesi)\b", re.I)),
+    ("predict", re.compile(r"\b(?:tahmin\s+eden|tahminleyen|tahmin\s+edilmesi|kestiren|kestirilmesi|öngören|öngörülmesi)\b", re.I)),
+)
+
+_CLAIM_SCAFFOLD_WORDS = {
+    "istem","uygun","sistem","yöntem","olup","özellik","bir","ve","veya","ile","olan","olarak","söz","konu",
+    "şekil","ilgili","ilişkin","kapsam","yan","taraf","vasıta","üzeri","durum","hal","en","az","sahip",
+    "olacak","olduğu","olma","içerme","içeren","sağlayan","sağlama","fonksiyon","birim","birimi","modül","modülü","özelliği",
+}
+_CLAIM_ACTION_WORDS = {
+    "alan","alınan","alınması","gelen","iletilen","aktarılan","edinilen","ileten","aktaran","gönderen","paylaşan",
+    "kaydeden","saklayan","depolayan","değerlendiren","analiz","karşılaştıran","belirleyen","tespit","saptayan",
+    "güncelleyen","yenileyen","yineleyen","bağlanan","bağlayan","eşleşen","eşleştiren","tahmin","tahminleyen","kestiren","öngören",
+}
+
+
+def _claim_feature_signatures(text: str) -> set[str]:
+    """Yüzde-benzerlik kullanmadan teknik özellik imzaları çıkarır: ref + sayı + terim + eylem ailesi."""
+    raw = str(text or "")
+    low = _tr_lower(raw)
+    sig: set[str] = {f"ref:{r}" for r in _claim_refs(raw)}
+    for family, pattern in _CLAIM_SEMANTIC_FAMILIES:
+        if pattern.search(low):
+            sig.add("act:" + family)
+    # Parantezli referansları terim hesabından çıkar; sayısal teknik sınırlar yine tutulur.
+    no_refs = re.sub(r"\(\s*[A-Za-zÇĞİÖŞÜçğıöşü0-9_\-]+\s*\)", " ", low)
+    for num in re.findall(r"(?<![A-Za-zÇĞİÖŞÜçğıöşü])\d+(?:[.,]\d+)?(?![A-Za-zÇĞİÖŞÜçğıöşü])", no_refs):
+        sig.add("num:" + num.replace(",", "."))
+    for token in re.findall(r"[a-zçğıöşü]{3,}", no_refs):
+        stem = _simple_tr_claim_stem(token)
+        if len(stem) < 3 or stem in _CLAIM_SCAFFOLD_WORDS or token in _CLAIM_ACTION_WORDS:
+            continue
+        sig.add("term:" + stem)
+    return sig
+
+
+def _canonical_claim_phrase(text: str) -> str:
+    return " ".join(sorted(_claim_feature_signatures(text)))
+
+
+def _parse_dependent_header(text: str, expected_kind: str | None = None) -> tuple[int, str, str]:
+    m = _DEP_CLAIM_HEADER_RE.match(str(text or "").replace("\u00a0", " "))
+    if not m:
+        raise ValueError("Bağımlı istem kısa giriş kalıbı çözümlenemedi.")
+    parent = int(m.group(1))
+    suffix = _tr_lower(m.group(2))
+    kind = _tr_lower(m.group(3))
+    if expected_kind and kind != expected_kind:
+        raise ValueError(f"Bağımlı istem türü `{kind}` beklenen `{expected_kind}` ile uyuşmuyor.")
+    expected_suffix = _expected_claim_dative_suffix(parent)
+    if suffix != expected_suffix:
+        raise ValueError(
+            f"Türkçe istem dilbilgisi kapısı: `İstem {parent}’{suffix}` yanlış; sayı okunuşuna göre `İstem {parent}’{expected_suffix}` kullanılmalıdır."
+        )
+    return parent, suffix, kind
+
+
+def _ancestor_claim_numbers(parent: int, parent_map: dict[int, int], lower_bound: int = 1) -> list[int]:
+    chain: list[int] = []
+    seen: set[int] = set()
+    cur = parent
+    while cur >= lower_bound and cur not in seen:
+        chain.append(cur)
+        seen.add(cur)
+        if cur not in parent_map:
+            break
+        cur = parent_map[cur]
+    return chain
+
+
+def _assert_dependent_adds_new_limitation(
+    claim_no: int,
+    claim: str,
+    ancestor_text: str,
+    *,
+    label: str,
+) -> None:
+    body = _dependent_claim_body(claim)
+    if not body:
+        raise ValueError(f"{label} istem {claim_no} boş teknik gövde içeriyor.")
+    body_sig = _claim_feature_signatures(body)
+    ancestor_sig = _claim_feature_signatures(ancestor_text)
+    new_sig = body_sig - ancestor_sig
+    # Yüzde/kelime-benzerliği yoktur: alt istem, miras alınan kapsamda bulunmayan en az bir teknik imza getirmelidir.
+    if not new_sig:
+        raise ValueError(
+            f"{label} istem {claim_no} üst istem(ler)den miras alınan teknik kapsam üzerine yeni bir teknik sınırlama eklemiyor. "
+            "Aynı özellik farklı cümleyle tekrar edilemez; gerçek geri çekilme konumu ekleyin veya istemi kaldırın."
+        )
+    new_refs = {x for x in new_sig if x.startswith("ref:")}
+    if len(new_refs) >= 2 and not _dependent_has_bullet_structure(claim):
+        raise ValueError(
+            f"{label} istem {claim_no} birden fazla yeni referanslı teknik unsur tanımlıyor ({', '.join(sorted(new_refs))}). "
+            "Bu unsurlar tek uzun cümleye gömülemez; `İstem X’e uygun ... olup, özelliği;` satırından sonra gerçek madde işaretleriyle ayrı yazılmalıdır."
+        )
+
+
+def _validate_dependent_claim_semantic_repetition(system_claim: dict[str, Any], dependents: list[str]) -> None:
+    """Bağımlı sistem istemlerini yüzde eşiği olmadan tam miras kapsamına karşı feature-by-feature denetler."""
+    if not system_claim:
+        return
+    claim_texts: dict[int, str] = {1: " ".join([str(system_claim.get("preamble", "")), *_system_claim_all_texts(system_claim)])}
+    parent_map: dict[int, int] = {}
+    for claim_no, claim in enumerate(dependents, start=2):
+        parent, _suffix, _kind = _parse_dependent_header(claim, "sistem")
+        if parent < 1 or parent >= claim_no or parent not in claim_texts:
+            raise ValueError(f"İstem {claim_no} geçersiz bağımlılık içeriyor: İstem {parent} henüz mevcut/önceki bir sistem istemi değildir.")
+        chain = _ancestor_claim_numbers(parent, parent_map, 1)
+        ancestor_text = " ".join(claim_texts[n] for n in chain if n in claim_texts)
+        _assert_dependent_adds_new_limitation(claim_no, claim, ancestor_text, label="Bağımlı sistem")
+        claim_texts[claim_no] = _dependent_claim_body(claim)
+        parent_map[claim_no] = parent
+
+
+def _validate_dependent_method_claim_semantic_repetition(
+    method_claim: dict[str, Any],
+    dependents: list[str],
+    base_claim_number: int = 1,
+) -> None:
+    """Yöntem alt isteminde ana/üst adımın aynen veya parafrazla tekrarını, yüzde hesabı olmadan engeller."""
+    if not method_claim:
+        return
+    base_no = int(base_claim_number)
+    claim_texts: dict[int, str] = {base_no: " ".join([str(method_claim.get("preamble", "")), *map(str, method_claim.get("steps") or [])])}
+    parent_map: dict[int, int] = {}
+    for offset, claim in enumerate(dependents, start=1):
+        claim_no = base_no + offset
+        parent, _suffix, _kind = _parse_dependent_header(claim, "yöntem")
+        if parent < base_no or parent >= claim_no or parent not in claim_texts:
+            raise ValueError(f"İstem {claim_no} geçersiz yöntem bağımlılığı içeriyor: İstem {parent} ilgili yöntem istem zincirinde değildir.")
+        chain = _ancestor_claim_numbers(parent, parent_map, base_no)
+        ancestor_text = " ".join(claim_texts[n] for n in chain if n in claim_texts)
+        _assert_dependent_adds_new_limitation(claim_no, claim, ancestor_text, label="Bağımlı yöntem")
+        claim_texts[claim_no] = _dependent_claim_body(claim)
+        parent_map[claim_no] = parent
 
 
 def _validate_system_claim_reference_order(system_claim: dict[str, Any], element_numbers: list[str]) -> None:
@@ -3537,45 +3792,6 @@ def _validate_system_claim_reference_order(system_claim: dict[str, Any], element
         else:
             check_leaf(str(entry), f"{idx}. unsur maddesi")
 
-
-def _validate_dependent_claim_semantic_repetition(system_claim: dict[str, Any], dependents: list[str]) -> None:
-    """Birebir/çok yakın teknik tekrarları yerel kalite kapısında yakalar; nihai semantik kontrol AI kalite turunda da yapılır."""
-    base = _normalize_claim_semantics(" ".join([str(system_claim.get("preamble", "")), *_system_claim_all_texts(system_claim)]))
-    previous_sets: list[set[str]] = [base]
-    for idx, claim in enumerate(dependents, start=2):
-        words = _normalize_claim_semantics(claim)
-        if not words:
-            continue
-        for prior in previous_sets:
-            if len(words) >= 4:
-                overlap = len(words & prior) / max(1, len(words))
-                if overlap >= 0.92:
-                    raise ValueError(
-                        f"İstem {idx} üst istemde zaten bulunan teknik özelliği anlam olarak tekrar ediyor. "
-                        "Bağımlı istem gerçek bir ek teknik sınırlama getirmelidir."
-                    )
-        previous_sets.append(words)
-
-
-def _validate_dependent_method_claim_semantic_repetition(method_claim: dict[str, Any], dependents: list[str]) -> None:
-    """Yöntem alt istemlerinde de ana/üst isteme karşı semantik tekrar kalite kapısı uygular."""
-    if not method_claim:
-        return
-    base = _normalize_claim_semantics(" ".join([str(method_claim.get("preamble", "")), *map(str, method_claim.get("steps") or [])]))
-    previous_sets: list[set[str]] = [base]
-    for idx, claim in enumerate(dependents, start=1):
-        words = _normalize_claim_semantics(claim)
-        if not words:
-            continue
-        for prior in previous_sets:
-            if len(words) >= 4:
-                overlap = len(words & prior) / max(1, len(words))
-                if overlap >= 0.92:
-                    raise ValueError(
-                        f"Bağımlı yöntem istemi {idx} ana/üst istemde zaten bulunan teknik özelliği anlam olarak tekrar ediyor. "
-                        "Yöntem alt istemi gerçek bir ek teknik sınırlama getirmelidir."
-                    )
-        previous_sets.append(words)
 
 
 def _validate_abstract_shape(abstract: str, language: str) -> None:
@@ -3958,7 +4174,7 @@ def _validate_dependent_system_claim_product_language(claims: list[str], languag
     """Dependent product/system claims must be element-centred, not action-noun centred."""
     if _english_spec(language):
         return
-    start_re = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*e\s+uygun\s+sistem\s+olup,\s*özelliği;", re.IGNORECASE)
+    start_re = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*(?:a|e|ya|ye)\s+uygun\s+sistem\s+olup,\s*özelliği;", re.IGNORECASE)
     for idx, raw in enumerate(claims, start=1):
         claim = str(raw or "").strip()
         if not claim or not start_re.match(claim):
@@ -3984,7 +4200,7 @@ def _validate_dependent_system_claim_possessive_grammar(claims: list[str], langu
     """Referanslı unsur + `olmasıdır/içermesidir` yapısında Türkçe tamlayan uyumunu zorunlu tutar."""
     if _english_spec(language):
         return
-    start_re = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*e\s+uygun\s+sistem\s+olup,\s*özelliği;", re.IGNORECASE)
+    start_re = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*(?:a|e|ya|ye)\s+uygun\s+sistem\s+olup,\s*özelliği;", re.IGNORECASE)
     genitive_re = re.compile(r"(?:nın|nin|nun|nün|ın|in|un|ün)$", re.IGNORECASE)
     ref_tail_re = re.compile(r"\(\s*[^()]+\s*\)\s*$")
     word_re = re.compile(r"[A-Za-zÇĞİÖŞÜçğıöşüÂâÎîÛû]+")
@@ -4158,6 +4374,24 @@ def _validate_figure_description_style(draft: dict[str, Any], language: str = "T
             raise ValueError(f"Şekil {idx} kısa açıklamasında unsur/adım numarası veya numara aralığı tekrarlanamaz; yalnız şeklin gösterdiği veri/kontrol/işlem ilişkisi açıklanmalıdır.")
 
 
+
+def _validate_prior_art_general_intro(draft: dict[str, Any], language: str = "Türkçe") -> None:
+    """ÖNCEKİ TEKNİK müşterinin özel örneklerine bodoslama başlamaz; önce güncel genel teknik bağlamı kurar."""
+    if _english_spec(language):
+        return
+    paras = [str(x or "").strip() for x in (draft.get("prior_art_general_paragraphs") or []) if str(x or "").strip()]
+    if not paras:
+        raise ValueError("ÖNCEKİ TEKNİK genel gövdesi boş olamaz.")
+    first = paras[0]
+    if not re.match(r"^Günümüzde\b", first, flags=re.IGNORECASE):
+        raise ValueError(
+            "ÖNCEKİ TEKNİK ilk genel paragrafı `Günümüzde ...` ile başlamalı ve müşterinin belirttiği özel doküman/protokollere geçmeden önce mevcut teknolojinin genel işleyişini açıklamalıdır."
+        )
+    if len(first) < 180:
+        raise ValueError("ÖNCEKİ TEKNİK `Günümüzde ...` giriş paragrafı mevcut tekniğin genel işleyişini açıklamak için fazla kısa.")
+    if re.search(r"https?://|\b(?:US|EP|WO|CN|JP|KR)\s*[-/]?\s*\d{4,}\b", first, flags=re.IGNORECASE):
+        raise ValueError("ÖNCEKİ TEKNİK ilk `Günümüzde ...` paragrafı belirli patent/URL ile başlamamalı; özel kaynaklar sonraki paragraflarda ele alınmalıdır.")
+
 def _validate_prior_art_bridge_and_depth(draft: dict[str, Any], extracted: dict[str, Any] | None, language: str = "Türkçe") -> None:
     if _english_spec(language):
         return
@@ -4278,6 +4512,7 @@ def validate_tarifname_draft(
         validate_required_exact_technical_phrases(extracted, _visible_draft_text_for_audit(draft))
     _validate_related_alternative_paragraphs(draft, language)
     _validate_prior_art_source_placement(draft, extracted, language)
+    _validate_prior_art_general_intro(draft, language)
     _validate_prior_art_bridge_and_depth(draft, extracted, language)
     _validate_unumbered_claim_mirror(draft, claim_mode, language)
     _validate_detailed_element_cohesion(draft, language)
@@ -4493,7 +4728,7 @@ def validate_tarifname_draft(
             _validate_claim_formula_markers(draft, language)
 
         dependents = [str(x or "").strip() for x in (draft.get("dependent_system_claims") or []) if str(x or "").strip()]
-        dependent_system_start_re = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*e\s+uygun\s+sistem\s+olup,\s*özelliği;", re.IGNORECASE)
+        dependent_system_start_re = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*(?:a|e|ya|ye)\s+uygun\s+sistem\s+olup,\s*özelliği;", re.IGNORECASE)
         for idx, claim in enumerate(dependents, start=2):
             if not dependent_system_start_re.match(claim):
                 raise ValueError(
@@ -4514,7 +4749,7 @@ def validate_tarifname_draft(
         _validate_dependent_system_claim_type_closure(dependents, draft, language)
         _validate_reference_role_rules(draft, language)
         method_dependents = _all_method_dependent_claims(draft)
-        dependent_method_start_re = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*e\s+uygun\s+yöntem\s+olup,\s*özelliği;", re.IGNORECASE)
+        dependent_method_start_re = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*(?:a|e|ya|ye)\s+uygun\s+yöntem\s+olup,\s*özelliği;", re.IGNORECASE)
         for dep_index, claim in enumerate(method_dependents, start=1):
             if not dependent_method_start_re.match(claim):
                 raise ValueError(
@@ -4524,12 +4759,14 @@ def validate_tarifname_draft(
             if not re.search(r"işlem adım(?:ını|larını)\s+içermesidir\.?$", claim, re.IGNORECASE):
                 raise ValueError(f"Bağımlı yöntem istemi {dep_index}, `işlem adımını içermesidir.` veya `işlem adımlarını içermesidir.` ile bitmelidir.")
         _validate_dependent_claim_semantic_repetition(system_claim, dependents)
-        _validate_dependent_method_claim_semantic_repetition(
-            draft.get("method_claim") or {},
-            [str(x or "").strip() for x in (draft.get("dependent_method_claims") or []) if str(x or "").strip()],
-        )
+        _method_base_no = (1 + len(dependents) if system_claim else 0) + 1
+        _method_deps = [str(x or "").strip() for x in (draft.get("dependent_method_claims") or []) if str(x or "").strip()]
+        _validate_dependent_method_claim_semantic_repetition(draft.get("method_claim") or {}, _method_deps, _method_base_no)
+        _next_method_base = _method_base_no + (1 if draft.get("method_claim") else 0) + len(_method_deps)
         for group in _additional_method_claim_groups(draft):
-            _validate_dependent_method_claim_semantic_repetition(group.get("claim") or {}, [str(x or "").strip() for x in (group.get("dependent_claims") or []) if str(x or "").strip()])
+            _group_deps = [str(x or "").strip() for x in (group.get("dependent_claims") or []) if str(x or "").strip()]
+            _validate_dependent_method_claim_semantic_repetition(group.get("claim") or {}, _group_deps, _next_method_base)
+            _next_method_base += 1 + len(_group_deps)
         _validate_no_generic_unsur_in_claims(draft, language)
         _validate_method_step_action_language(draft, language)
         _validate_method_claim_how_test(draft, language)
@@ -4680,7 +4917,7 @@ def _validate_dependent_claim_short_starts_texts(numbered_claim_texts: list[str]
     if len(dependent_texts) != len(expected_dep_kinds):
         raise ValueError("Word istem kalite kapısı: bağımlı istem başlangıçları beklenen sayıda/biçimde bulunamadı.")
     for text, kind in zip(dependent_texts, expected_dep_kinds):
-        start_re = re.compile(rf"^İstem\s+\d+\s*[’']\s*e\s+uygun\s+{kind}\s+olup,\s*özelliği;", re.IGNORECASE)
+        start_re = re.compile(rf"^İstem\s+\d+\s*[’']\s*(?:a|e|ya|ye)\s+uygun\s+{kind}\s+olup,\s*özelliği;", re.IGNORECASE)
         if not start_re.match(text):
             raise ValueError(
                 "Word istem kalite kapısı: bağımlı istem girişinde buluş adı/tür adı tekrar edilmiş veya kısa giriş kalıbı bozulmuş. "
@@ -5599,7 +5836,16 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
             tpl_text(93, system_claim.get("closing", "içermesidir."))
         tpl_blank(94)
         for dependent in draft.get("dependent_system_claims") or []:
-            add_numbered_claim(doc, template, str(dependent))
+            _parts = _split_dependent_claim_for_render(str(dependent))
+            if _parts:
+                _header, _bullets, _closure = _parts
+                add_numbered_claim(doc, template, _header)
+                for _i, _bullet in enumerate(_bullets):
+                    _txt = _bullet.rstrip(".,;:") + ("," if _i < len(_bullets) - 1 else "")
+                    add_template_list_item(doc, template, 86, _txt)
+                tpl_text(93, _closure)
+            else:
+                add_numbered_claim(doc, template, str(dependent))
             tpl_blank(96)
 
     method_claim = draft.get("method_claim")
@@ -5620,7 +5866,16 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
             tpl_text(93, method_claim.get("closing", "işlem adımlarını içermesidir."))
         tpl_blank(94)
         for dependent in draft.get("dependent_method_claims") or []:
-            add_numbered_claim(doc, template, str(dependent))
+            _parts = _split_dependent_claim_for_render(str(dependent))
+            if _parts:
+                _header, _bullets, _closure = _parts
+                add_numbered_claim(doc, template, _header)
+                for _i, _bullet in enumerate(_bullets):
+                    _txt = _bullet.rstrip(".,;:") + ("," if _i < len(_bullets) - 1 else "")
+                    add_template_list_item(doc, template, 86, _txt)
+                tpl_text(93, _closure)
+            else:
+                add_numbered_claim(doc, template, str(dependent))
             # 98 numaralı şablon paragrafı ÖZET öncesindeki manuel sayfa sonunu içerir;
             # istemler arasında kullanılması her bağımlı yöntem istemini yeni sayfaya atar.
             # İstemler arasındaki normal boşluk arketipi 96 kullanılır.
@@ -5926,7 +6181,7 @@ def validate_gorus_analysis(analysis: dict[str, Any], spec_text: str, customer_t
     amendments = analysis.get("amendments") or []
     if required and not amendments:
         raise ValueError("Analiz istem revizyonu gerekli dedi ancak revizyon önerisi üretmedi.")
-    # v5.4.77: model redline beyanına güvenilmez; old_text→new_text farkı deterministik
+    # v5.4.78: model redline beyanına güvenilmez; old_text→new_text farkı deterministik
     # atomik plana çevrilir ve insertion-first / itiraz-eşleme kapılarından geçirilir.
     enrich_analysis_atomic_plans(analysis)
     objection_ids = [str(x.get("id", "")).strip() for x in (analysis.get("examiner_objections") or []) if str(x.get("id", "")).strip()]
@@ -6516,7 +6771,7 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
     _clone_paragraph_with_text(doc, template.paragraphs[4], opinion.get("intro", ""), bold=False)
     _clone_blank(doc, template.paragraphs[5])
 
-    # v5.4.77 visible order: intro -> cited D rows -> approved amendments/basis -> D defences.
+    # v5.4.78 visible order: intro -> cited D rows -> approved amendments/basis -> D defences.
     # The intro announces the cited documents, so the bibliographic rows must immediately follow it.
     docs = opinion.get("cited_documents") or []
     for i, d in enumerate(docs):
@@ -6936,7 +7191,7 @@ def build_claim_revision_docx(source_docx: bytes, amendments: list[dict[str, Any
 def build_claim_revision_pair(source_docx: bytes, amendments: list[dict[str, Any]], description_updates: list[dict[str, Any]] | None = None) -> tuple[bytes, bytes]:
     markup = build_claim_revision_docx(source_docx, amendments, track_changes=True, description_updates=description_updates)
     clean = build_claim_revision_docx(source_docx, amendments, track_changes=False, description_updates=description_updates)
-    # v5.4.77: deterministic redline integrity. AI never receives authority over OOXML.
+    # v5.4.78: deterministic redline integrity. AI never receives authority over OOXML.
     validate_minimal_tracked_changes(markup)
     validate_tracked_changes_against_plan(source_docx, markup, clean, amendments, description_updates or [])
     return markup, clean

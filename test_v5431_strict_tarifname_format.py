@@ -21,7 +21,7 @@ def base_draft():
     return {
         'title':'Adaptif Hücre Optimizasyon Sistemi ve Yöntemi',
         'technical_field':'Buluş, adaptif hücre optimizasyon sistemi ve yöntemi ile ilgilidir.\n\nBuluş, özellikle LTE ağında kullanılmaktadır.',
-        'prior_art_general_paragraphs':['Mevcut sistemlerde statik öncelikler kullanılır ve değişken ağ yükü dikkate alınamaz. '*7,'Hareketlilik aynı parametrelerle ele alınır ve gereksiz yeniden seçimler oluşur. '*7,'Bağlam bilgileri ve enerji durumu birlikte değerlendirilemez. '*7,'Yük dengesizliği küçük hücrelerin etkin kullanılmasını engeller. '*7,'Ping-pong etkisi sinyalizasyon ve pil tüketimini artırır. '*7,'Kullanıcı servis gereksinimleri seçim kararına yeterince yansıtılamaz. '*7,'Yukarıda belirtilen eksiklikler, adaptif ve kullanıcıya özgü bir teknik çözüm ihtiyacı doğurmaktadır. '*7],
+        'prior_art_general_paragraphs':['Günümüzde mobil haberleşme ağlarında hücre seçimi, hareketlilik yönetimi ve kaynak tahsisi çoğunlukla ölçülen radyo koşulları, ağ yükü ve hizmet gereksinimleri üzerinden yürütülmekte, kullanıcı ekipmanlarının değişen koşullara göre uygun hücrelere yönlendirilmesi ağ sürekliliği ve kaynak verimliliği açısından önem taşımaktadır. Mevcut yaklaşımlar bu kararları belirli parametre ve önceliklerle gerçekleştirmektedir. ','Hareketlilik aynı parametrelerle ele alınır ve gereksiz yeniden seçimler oluşur. '*7,'Bağlam bilgileri ve enerji durumu birlikte değerlendirilemez. '*7,'Yük dengesizliği küçük hücrelerin etkin kullanılmasını engeller. '*7,'Ping-pong etkisi sinyalizasyon ve pil tüketimini artırır. '*7,'Kullanıcı servis gereksinimleri seçim kararına yeterince yansıtılamaz. '*7,'Yukarıda belirtilen eksiklikler, adaptif ve kullanıcıya özgü bir teknik çözüm ihtiyacı doğurmaktadır. '*7],
         'literature_paragraphs':['Literatürde yapılan araştırmalar sonucu US1 numaralı “Adaptive cell selection (Adaptif hücre seçimi)” başlıklı patent dokümanına rastlanmıştır. Söz konusu doküman hücre seçimi ile ilgilidir. Ancak bahsedilen dokümanda kullanıcı bağlamıyla kapalı döngü eniyileme ile ilgili bir emareye rastlanmamıştır.'],
         'short_description_intro':'Buluş, teknik çözüm sağlar.',
         'objectives':['bir teknik amaç sağlamaktır.'],
@@ -48,8 +48,8 @@ def extracted():
 
 
 def test_versions():
-    assert APP_VERSION == 'v5.4.77'
-    assert RULESET_VERSION == '2026-09-25.v69'
+    assert APP_VERSION == 'v5.4.78'
+    assert RULESET_VERSION == '2026-09-25.v70'
 
 
 def test_title_case_normalization():

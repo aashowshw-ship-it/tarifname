@@ -5,8 +5,8 @@ ROOT = Path(__file__).parent
 
 def test_version_bumped():
     rules = (ROOT / "rules.py").read_text(encoding="utf-8")
-    assert 'APP_VERSION = "v5.4.77"' in rules
-    assert 'RULESET_VERSION = "2026-09-25.v69"' in rules
+    assert 'APP_VERSION = "v5.4.78"' in rules
+    assert 'RULESET_VERSION = "2026-09-25.v70"' in rules
 
 
 def test_chat_revision_ui_and_direct_editor_exist():

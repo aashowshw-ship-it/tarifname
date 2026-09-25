@@ -72,7 +72,7 @@
 - İngilizce çıktı Word kapısı Türkçe şablon kalıntılarını deterministik olarak reddeder.
 - İngilizce görüş varsayılan dosya adı `Response Letter_XXXXXX.docx` olur.
 
-Kural sürümü: **2026-09-25.v69**
+Kural sürümü: **2026-09-25.v70**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -872,3 +872,13 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Ek talimat kaynakta bulunmayan teknik bilgi, yeni özellik veya sonuç uydurmak için kullanılamaz.
 - Tarifname BBF analizi ayrıca buluş alanını otomatik olarak `Elektrik-Elektronik / Yazılım`, `Kimya / Biyoloji` veya `Mekanik` sınıflarından birine atar ve arayüzde bilgi olarak gösterir.
 
+## v5.4.78 / 2026-09-25.v70 — Bağımlı istem feature-delta + Türkçe dilbilgisi + önceki teknik genel giriş
+
+- `%92` veya başka bir kelime-benzerlik eşiği bağımlı istem geçerliliği için kullanılmaz. Her alt istem bağlandığı istem ve tüm ata istemlerin miras kapsamına karşı **feature-by-feature** incelenir; yeni teknik sınırlama yoksa fail-closed reddedilir.
+- Ana/üst yöntem istemindeki 1001+ işlem adımını aynen veya yalnız parafraz ederek bağımlı yönteme tekrar taşımak yasaktır.
+- Türkçe bağımlı istem yönelme eki sayı okunuşuna göre deterministik doğrulanır ve house-style aşamasında normalize edilir: `1’e`, `2’ye`, `6’ya`, `7’ye`, `9’a`, `10’a`, `11’e` vb.
+- Bir bağımlı istem iki veya daha fazla ayrı yeni referanslı unsur getiriyorsa tek uzun cümle kabul edilmez; gerçek Word madde işaretleriyle ayrı alt maddeler oluşturulur. Renderer bu çok satırlı alt istem biçimini gerçek bullet paragraflarına dönüştürür.
+- `bir fonksiyon olmasıdır.` soyut kapanışı reddedilir. Standartlaştırılmış ağ fonksiyonlarının adı korunabilir; bunun dışındaki yürütülebilir yazılımsal bileşenler kaynak anlamı korunarak `birim/modül` gibi somut teknik türle kanonikleştirilebilir.
+- `ajanlar-arası` yazımı house-style katmanında `ajanlar arası` olarak normalize edilir.
+- Türkçe ÖNCEKİ TEKNİK ilk genel paragrafı zorunlu olarak `Günümüzde ...` ile başlar ve müşterinin özel standart/protokol/patent örneklerinden önce mevcut tekniğin genel işleyişini anlatır. Özel örnekler ve literatür sonraki paragraflara geçer.
+- Bu kontroller taslak kalite kapısında, otomatik repair geri bildiriminde ve nihai Word akışında fail-closed çalışır.

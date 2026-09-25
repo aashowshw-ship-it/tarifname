@@ -227,19 +227,24 @@ def _generic_claim_term_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
     return out
 
 
-def _semantic_repeat_findings(base_text: str, dependents: list[str], label: str) -> list[dict[str, str]]:
-    out: list[dict[str, str]] = []
-    previous = [_normalize_semantics(base_text)]
-    for idx, claim in enumerate(dependents, start=1):
-        words = _normalize_semantics(claim)
-        if len(words) >= 4:
-            for prior in previous:
-                if len(words & prior) / max(1, len(words)) >= 0.92:
-                    out.append({"level": "Hata", "message": f"{label} bağımlı istem {idx} ana/üst istemdeki teknik özelliği semantik olarak tekrar ediyor; gerçek ek sınırlama gerekir."})
-                    break
-        previous.append(words)
-    return out
+def _dep_body_for_generic_validator(text: str) -> str:
+    raw = str(text or "").casefold()
+    raw = re.sub(r"^\s*istem\s+\d+\s*[’']\s*(?:a|e|ya|ye)\s+uygun\s+(?:sistem|yöntem)\s+olup,\s*özelliği;", " ", raw, flags=re.I)
+    raw = re.sub(r"\s+(?:işlem\s+adım(?:ını|larını)\s+içermesidir|olmasıdır|içermesidir)\.?\s*$", "", raw, flags=re.I)
+    return re.sub(r"\s+", " ", raw).strip()
 
+
+def _semantic_repeat_findings(base_text: str, dependents: list[str], label: str) -> list[dict[str, str]]:
+    """Secondary validator: no percentage thresholds; dependent must expose at least one new normalized technical token/ref."""
+    out: list[dict[str, str]] = []
+    inherited = _normalize_semantics(base_text)
+    for idx, claim in enumerate(dependents, start=1):
+        body = _dep_body_for_generic_validator(claim)
+        words = _normalize_semantics(body)
+        if words and not (words - inherited):
+            out.append({"level":"Hata","message":f"{label} bağımlı istem {idx} miras alınan teknik kapsam üzerine yeni bir teknik sınırlama eklemiyor; aynı özelliğin parafrazı ayrı alt istem olamaz."})
+        inherited |= words
+    return out
 
 
 EQ_MARKER_RE = re.compile(r"\[\[(?:EQ|FORMULA)\s*:\s*(.+?)\]\]", re.I | re.S)
@@ -424,14 +429,26 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
         if re.search(r"önceki\s+istemlerden\s+herhangi\s+birine", str(claim), re.I):
             findings.append({"level": "Hata", "message": "Bağımlı istemde ‘Önceki istemlerden herhangi birine’ kullanılmış; ek özelliğin dayandığı doğrudan istem numarası seçilmeli."})
 
-    dep_system_start = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*e\s+uygun\s+sistem\s+olup,\s*özelliği;", re.I)
+    dep_system_start = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*(?:a|e|ya|ye)\s+uygun\s+sistem\s+olup,\s*özelliği;", re.I)
     for claim in draft.get("dependent_system_claims") or []:
         if not dep_system_start.match(str(claim or "")):
             findings.append({"level": "Hata", "message": "Bağımlı sistem istemi `İstem X’e uygun sistem olup, özelliği;` kısa giriş kalıbıyla başlamalı; buluş adı/tür adı tekrar edilmemeli."})
-    dep_method_start = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*e\s+uygun\s+yöntem\s+olup,\s*özelliği;", re.I)
+    dep_method_start = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*(?:a|e|ya|ye)\s+uygun\s+yöntem\s+olup,\s*özelliği;", re.I)
     for claim in draft.get("dependent_method_claims") or []:
         if not dep_method_start.match(str(claim or "")):
             findings.append({"level": "Hata", "message": "Bağımlı yöntem istemi `İstem X’e uygun yöntem olup, özelliği;` kısa giriş kalıbıyla başlamalı; yöntem adı tekrar edilmemeli."})
+
+    # Sayı okunuşuna göre Türkçe dative ve soyut `bir fonksiyon olmasıdır` kontrolü.
+    _unit = {1:"e",2:"ye",3:"e",4:"e",5:"e",6:"ya",7:"ye",8:"e",9:"a",0:"a"}
+    for claim in [*(draft.get("dependent_system_claims") or []), *(draft.get("dependent_method_claims") or [])]:
+        m = re.match(r"^\s*İstem\s+(\d+)\s*[’']\s*(a|e|ya|ye)\s+uygun", str(claim or ""), re.I)
+        if m:
+            n=int(m.group(1)); last=n%10
+            expected = _unit[last] if last else ({20:"ye",30:"a",40:"a",50:"ye",60:"a",70:"e",80:"e",90:"a"}.get(n%100,"e"))
+            if m.group(2).casefold()!=expected:
+                findings.append({"level":"Hata","message":f"Türkçe istem yönelme eki yanlış: İstem {n}’{m.group(2)} yerine İstem {n}’{expected} kullanılmalı."})
+        if re.search(r"\bbir\s+fonksiyon\s+olmasıdır\.?$", str(claim or ""), re.I):
+            findings.append({"level":"Hata","message":"Bağımlı sistem istemi `bir fonksiyon olmasıdır` diye bitmemeli; standart olmayan yazılımsal bileşen birim/modül gibi somut teknik türle yazılmalı."})
 
     findings.extend(_reference_identity_findings(draft))
     findings.extend(_reference_presence_findings(draft))

@@ -36,8 +36,8 @@ def _report(warning):
 
 
 def test_version_and_rules():
-    assert APP_VERSION == "v5.4.77"
-    assert RULESET_VERSION == "2026-09-25.v69"
+    assert APP_VERSION == "v5.4.78"
+    assert RULESET_VERSION == "2026-09-25.v70"
     assert "yalnız sabit girişle boş bırakılamaz" in ARASTIRMA_RULES
     assert "dış okuyucuya sunulan bağımsız bir uzman raporu" in ARASTIRMA_RULES
 

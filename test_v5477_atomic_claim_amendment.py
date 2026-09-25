@@ -60,8 +60,8 @@ def _revision_texts(docx_bytes: bytes):
 
 
 def test_v5477_versions_and_hard_rules():
-    assert APP_VERSION == "v5.4.77"
-    assert RULESET_VERSION == "2026-09-25.v69"
+    assert APP_VERSION == "v5.4.78"
+    assert RULESET_VERSION == "2026-09-25.v70"
     low = GORUS_RULES.casefold()
     assert "95. ATOMİK İSTEM REVİZYONU" in GORUS_RULES
     assert "insertion-first" in low

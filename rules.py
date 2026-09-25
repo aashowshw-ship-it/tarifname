@@ -5,8 +5,15 @@ import re
 import zipfile
 from urllib.parse import unquote
 
-APP_VERSION = "v5.4.77"
-RULESET_VERSION = "2026-09-25.v69"
+APP_VERSION = "v5.4.78"
+RULESET_VERSION = "2026-09-25.v70"
+
+# v5.4.78 — Bağımlı istem feature-delta / Türkçe dative / çok-unsurlu bullet / önceki teknik genel giriş kapısı.
+# Yüzde-benzerlik tabanlı tekrar kontrolü kaldırılmıştır. Her bağımlı istem bağlandığı istem ve atalarının
+# teknik kapsamına karşı feature-by-feature denetlenir; yeni teknik sınırlama yoksa FAIL olur. Türkçe
+# yönelme eki sayı okunuşuna göre zorunludur (2’ye, 9’a, 10’a). Çok yeni referanslı alt istem gerçek
+# bullet yapısına ayrılır. ÖNCEKİ TEKNİK ilk genel paragrafı `Günümüzde ...` ile genel mevcut tekniği
+# kurmadan müşteri özel örneklerine geçemez. `bir fonksiyon olmasıdır` soyut kapanışı reddedilir.
 
 # v5.4.77 — Atomik istem revizyonu / insertion-first / bağımsız amendment auditor.
 # Teknik istem revizyonunda varsayılan işlem INSERT'tir. Mevcut istem dili korunabiliyorsa
@@ -182,6 +189,7 @@ A. KAYNAK SADAKATİ VE İÇERİK TAMLIĞI
 3. Yeni tarifname oluşturma ekranında “Mevcut/revize tarifname” kaynağı kullanılmaz. Mevcut bir tarifnamenin değiştirilmesi ayrı bir “Tarifname düzenleme” iş akışıdır; bu işlev yeni tarifname oluşturma akışına karıştırılmaz.
 4. Kaynakta bulunmayan unsur, bağlantı, değer, algoritma, formül, teknik etki, kullanım biçimi veya avantaj ekleme. Bir husus açık değilse belirsizlik olarak belirt; uydurma yapma.
 5. Önceki teknik bölümü BBF'de uzun ve ayrıntılı verilmişse aynı kapsam korunmalıdır. Patent literatürü paragrafları BBF'deki önceki teknik anlatımının yerine geçmez; yalnızca seçilmiş patent dokümanları için ayrı paragraflar olarak eklenir.
+5A. Türkçe ÖNCEKİ TEKNİK bölümü müşterinin belirttiği özel sistem, standart, protokol veya patent dokümanına doğrudan dalarak başlamaz. İlk genel paragraf mutlaka `Günümüzde ...` ile başlar ve ilgili teknik alandaki mevcut teknolojinin genel işleyişini/yerleşik yaklaşımını nötr biçimde açıklar. Müşterinin verdiği 3GPP/A2A/MCP benzeri somut örnekler ve bunların eksiklikleri sonraki paragraflarda ele alınır; doğrulanmış patent literatürü bunlardan sonra ayrı paragraflardır.
 6. Formüller ve tablolar kaynakta bulunduğu biçim, değişken anlamları ve bağlamlarıyla korunmalıdır. Formülün zorunlu çekirdek mi yoksa tercihli gerçekleştirme mi olduğu ayrıca değerlendirilmelidir.
 6A. “BBF'deki bütün teknik bilgiler eksiksiz kullanılmalıdır” kuralı tarifname oluşturma akışının BİRİNCİ VE EN ÜST kalite kapısıdır. BBF ve ek teknik kaynaklar atomik teknik bilgi maddelerine ayrılır; her teknik bilgi maddesi için nihai tarifnamede en az bir açık karşılık bulunmadan Word çıktısı oluşturulamaz. Bir bilgi isteme girmesi gerekmiyorsa uygun şekilde TEKNİK ALAN, ÖNCEKİ TEKNİK, BULUŞUN KISA AÇIKLAMASI, BULUŞUN DETAYLI AÇIKLAMASI, çalışma prensibi, alternatif yapılanma veya ÖZET bölümlerinden birinde korunur. Aynı bilginin farklı cümlelerle tekrarlanması zorunlu değildir; fakat teknik anlamı, işlevi, koşulu ve sonucu kaybolamaz.
 6B. BBF tamlık kontrolü yalnız modelin “tam” beyanına dayanamaz. Önce kaynaklardan `technical_facts` adıyla atomik bir teknik bilgi envanteri oluşturulur; ardından nihai taslakta her madde `source_coverage_map` içinde kaynak bilgi kimliği, karşılık bulunduğu bölüm ve kısa kanıt metni ile eşleştirilir. `technical_facts` içindeki zorunlu bir madde karşılıksızsa, `covered=false` ise veya karşılık bölümü/kanıtı boşsa kalite kapısı başarısız sayılır ve taslak otomatik düzeltme turuna gönderilir.
@@ -242,6 +250,11 @@ D. İSTEM KURGUSU
 26. Ana istemde unsurlar bağımsız bir liste olarak kalmamalı; aralarında veri, sinyal, kontrol, işlem veya fiziksel bağlantı ilişkisi kurulmalıdır. Teknik olarak ilişkili sonraki unsur, mümkün olduğunda kendisinden önce tanımlanan unsurun çıktısını/girdisini veya o unsurla bağlantısını açıkça belirtmelidir. Ancak kaynakta ilişki bulunmayan unsurlar sırf biçim için yapay biçimde birbirine bağlanmamalıdır.
 27. Ana yöntem istemi zorunlu işlem sırasını ve teknik taşıyıcıyı açıkça göstermelidir. İnsan eylemleri yerine elektronik işlem birimi, cihaz, sunucu, bulut veya teknik modül gibi taşıyıcılar kullanılmalıdır.
 28. Bağımlı istemler ana istemi tekrar etmemeli; yalnızca kaynakta dayanağı bulunan ve kapsamı gerçek anlamda daraltan teknik ayrıntıları eklemelidir.
+28A. Bağımlı istem tekrarı yüzde/kelime benzerliği ile ölçülmez. Her bağımlı istem, doğrudan bağlandığı istem ile o istemin tüm atalarından miras aldığı TAM teknik kapsam karşısında özellik bazında incelenir. Alt istemde miras kapsamda bulunmayan en az bir yeni teknik sınırlama yoksa istem geçersizdir; aynı özellik farklı sözcüklerle veya farklı cümle dizimiyle tekrar edilerek bağımlı istem oluşturulamaz.
+28B. Bağımlı yöntem istemi, ana/üst yöntem isteminde zaten bulunan 1001, 1002... numaralı işlem adımını aynen veya yalnız dil değişikliğiyle tekrar edemez. Alt yöntem istemi mevcut adıma kaynak-destekli yeni teknik koşul, parametre, ilişki veya alt işlem eklemiyorsa oluşturulmaz.
+28C. Türkçe bağımlı istemlerde `İstem X’e/a/ye/ya` yönelme eki sayı okunuşuna göre dilbilgisel olarak doğru olmalıdır: 1’e, 2’ye, 3’e, 6’ya, 7’ye, 9’a, 10’a, 11’e gibi. Sabit `X’e` kalıbı körlemesine kullanılamaz; taslak ve nihai Word kapıları yanlış eki fail-closed reddeder.
+28D. Bir bağımlı istem iki veya daha fazla ayrı yeni referanslı teknik unsur getiriyorsa bunlar tek uzun cümlede yığılmaz. `İstem X’... uygun sistem olup, özelliği;` kısa girişinden sonra her yeni unsur gerçek madde işaretiyle ayrı satırda tanımlanır ve kapanış ayrı satırda `içermesidir.`/uygun ürün kapanışı olarak yazılır.
+28E. Sistem istemlerinde `fonksiyon` sözcüğü salt teknik unsur türü yerine kullanılmamalıdır. Kaynaktaki `... Fonksiyonu` ifadesi standartlaştırılmış ağ fonksiyonu özel adı değil, çalışan bir yazılım bileşenini anlatıyorsa referans numarası korunarak `... birimi` veya `... modülü` gibi somut teknik türle kanonikleştirilebilir. Standart ağ fonksiyonu adları keyfi değiştirilmez. Her durumda bağımlı istemin `bir fonksiyon olmasıdır.` diye havada bitmesi yasaktır.
 29. Aynı alt teknik akışın analiz ve çıktı adımları, teknik bütünlük bozulmayacaksa tek bağımlı istemde toplanabilir.
 30. Formüller kaynakta dayanaklıysa detaylı açıklamada korunmalı; zorunlu çekirdek değilse ana istemi gereksiz daraltmamak için uygun bağımlı istemlerde kullanılmalıdır.
 31. Sistem, cihaz, ürün, tertibat, düzenek ve yapılanma istemlerinin tamamı aynı ürün/aygıt istem dil ailesindedir. Yöntem dışındaki bağımlı istemleri “... bir ... olmasıdır.” veya “... içermesidir.” biçiminde bitir. “yapmasıdır/etmesidir/belirlemesidir/oluşturulmasıdır/bağlanmasıdır/sağlanmasıdır/gerçekleştirilmesidir” gibi işlem veya eylem sonucu bildiren sonlandırmalar kullanma.

@@ -4,8 +4,8 @@ from rules import APP_VERSION, RULESET_VERSION, GORUS_RULES
 ROOT = Path(__file__).resolve().parent
 
 def test_v551_versions_and_rules():
-    assert APP_VERSION == "v5.4.77"
-    assert RULESET_VERSION == "2026-09-25.v69"
+    assert APP_VERSION == "v5.4.78"
+    assert RULESET_VERSION == "2026-09-25.v70"
     low = GORUS_RULES.casefold()
     assert "başvuru sahibi yazılır" in low
     assert "kategori işaretleri yalnız iç savunma" in low
@@ -23,8 +23,8 @@ def test_category_suffix_not_rendered_and_figures_are_mandatory_when_usable():
 
 # ---- merged verbatim test logic from test_v5470_opinion_delivery_ratio_cost.py ----
 def test_v5470_versions_and_binding_rules():
-    assert APP_VERSION == "v5.4.77"
-    assert RULESET_VERSION == "2026-09-25.v69"
+    assert APP_VERSION == "v5.4.78"
+    assert RULESET_VERSION == "2026-09-25.v70"
     assert "persuasion_probability" in GORUS_RULES
     assert "Tahmini AI kullanım maliyeti" in GORUS_RULES
     assert "Word Response Letter/Görüş Metni içine yazılmaz" in GORUS_RULES
