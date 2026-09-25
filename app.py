@@ -67,6 +67,14 @@ from source_guards import (
     validate_invention_domain,
 )
 from word_math import EQ_MARKER_RE, append_text_with_equations as _append_text_with_equations, add_display_equation
+from claim_amendment import (
+    enrich_analysis_atomic_plans,
+    validate_atomic_amendment,
+    validate_amendment_candidates,
+    validate_selected_candidate_is_structurally_best,
+    validate_amendment_audit,
+    amendment_ui_rows,
+)
 from tarifname_update import (
     derive_markup_output_name,
     extract_docx_review_context,
@@ -94,6 +102,10 @@ from gorus_audit import (
     build_page_line_index,
     annotate_quote_locations,
     validate_quote_locations_against_spec,
+    validate_mandatory_spec_basis_coverage,
+    validate_line_reference_authority,
+    prepare_line_reference_source,
+    validate_opinion_reference_binding,
     extract_cited_original_figure_pages,
     has_usable_non_chinese_figure,
     detect_examiner_reasoned_documents,
@@ -110,6 +122,7 @@ from gorus_audit import (
     validate_opinion_against_raw_sources,
     validate_gorus_docx_content_flow,
     validate_minimal_tracked_changes,
+    validate_tracked_changes_against_plan,
     validate_ep_prior_art_markup_text,
     validate_ai_quality_audit,
     validate_examiner_persuasion_assessment,
@@ -5687,12 +5700,13 @@ Ana dosya referansı: {reference}
 
 Önce rapordaki itirazları, mevcut istemleri, tarifname dayanaklarını, varsa önceki görüşü ve müşteri bilgisini birlikte değerlendir. Türkiye araştırma raporuysa veya EP dosyası araştırma raporuysa savunma kapsamını yalnız X/Y kategorisi dokümanlarla sınırla. A kategorisini savunma dokümanı yapma. İnceleme/ofis aksiyonlarında yalnız uzmanın gerekçede fiilen kullandığı dokümanları esas al.
 Türkiye araştırma raporunda kategori `Y1`, `Y2`, `Y1,Y2`, `X1` gibi numaralı yazılmışsa temel kategori X/Y olarak normalize edilir ancak numaralı işaretler kaybedilmez. `Y1/Y2` gerçek kombinasyon gruplarıdır; örneğin D1=Y1,Y2, D2=Y1, D3=Y2 ise D1 ile D2 ve D1 ile D3 ayrı kombinasyonlardır, üç doküman tek kombinasyon sayılmaz.
-İstem değişikliği sırf daha iyi yazılabilir diye önerilmez. Yalnızca itirazı gidermek için gerçekten zorunluysa amendment_required=true yap.
+İstem değişikliği sırf daha iyi yazılabilir diye önerilmez. Yalnızca uzmanın somut itirazını gidermek için gerçekten zorunluysa amendment_required=true yap. Önce her maddi uzman itirazını `examiner_objections` içinde OBJ-1, OBJ-2... kimliğiyle çıkar; itirazın hangi istemleri etkilediğini ve uzmanın asıl teknik/açıklık sorununu kısa ve somut yaz. Teknik revizyon bu itiraz kimliklerinden en az birine bağlanmadan önerilemez.
 Ayrıca tarifname ve istemleri ayrı bir TEKNİK KATKI taramasından geçir. İstemde gerçekten bulunan ve savunmayı güçlendirebilecek teknik katkıları `technical_contributions` alanında çıkar. Salt amaç, estetik, prestij veya genel avantajı teknik katkı sayma. Unsurların özel işlevsel ilişkisi, ayrı sensör/veri işleme ilişkisi, ölçüm kararlılığı/sinyal kalitesi sağlayan fiziksel düzenleme, teknik girdi→işlem→çıktı zinciri ve bağımlı istemlerdeki gerçek fallback teknik özelliklerini özellikle tara. Her katkının teknik etkisi ve savunma önceliği doğrudan kaynakla desteklenmeli. Kaynaksız performans sonucu uydurma.
 Müşteri bilgisi boş değilse MÜŞTERİ SAVUNMA ENVANTERİ çıkar. Müşteri kaynağının tamamını ikinci kez tara. Her teknik savunma maddesini `customer_defence_points` içinde ayrı kimlikle sınıflandır. `source_quote` müşteri kaynağında birebir bulunmalı. `basis_quote` istem/tarifnamede birebir bulunmalı. Mevcut itiraza cevap veren ve kaynakla destekli madde `use_required=true` olmalıdır. Yalnız dayanak yokluğu, itirazla ilgisizlik veya gerçek tekrar halinde `use_required=false` yap ve `omission_reason` yaz. Kullanılabilir güçlü müşteri maddesini sessizce atlama.
-Revizyon gerekiyorsa EN AZ DEĞİŞİKLİK ilkesini uygula. Her old_text, TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olsun; tüm istemi old_text olarak verme. Değişmeyen kelimeyi old_text/new_text içine alma: artikel değişiyorsa yalnız artikel, unsur adı değişiyorsa yalnız değişen unsur adı, eksik harf varsa yalnız gerekli karakter farkı öner.
+Revizyon gerekiyorsa ATOMİK + INSERTION-FIRST ilkesini uygula. Teknik revizyonda varsayılan işlem yalnız EKLEMEdir. Mevcut istemdeki kelime/ibare korunabiliyorsa onu silme, eşanlamlıyla yeniden yazma veya tüm cümleyi yeniden kurma. Mevcut ifade yanlış/belirsiz/çelişkili olduğu için gerçekten değiştirilmek zorundaysa `deletion_required=true` yap, somut `deletion_reason` yaz ve değişikliği ilgili OBJ kimliğine bağla. `Daha iyi/akıcı patent dili` silme gerekçesi değildir. Her old_text TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa hedef ifade olsun; tüm istemi old_text olarak verme. old_text/new_text yalnız uygulanacak lokal parçayı temsil etsin. Değişmeyen ön/son kelimeleri gereksiz yere bu parçaya alma. Her revizyon için `clarity_effect`, `scope_effect`, `prior_art_effect` ve `remaining_risk` alanlarını somut doldur.
+Tek bir güvenli çözüm bariz değilse 2-3 `amendment_candidates` üret. Her aday aynı uzman itiraz(lar)ını farklı, doğrudan-dayanaklı yollarla çözmeye çalışsın. `selected_candidate_id` seçimini şu sırayla yap: uzman itirazını tam karşılama > doğrudan dayanak > en az metinsel müdahale > gereksiz daraltmadan kaçınma > açıklık. Top-level `amendments`, seçtiğin adayın amendments listesiyle birebir aynı olmalıdır.
 EP raporunda Rule 42(1)(b) gereği önceki teknik dokümanlarının tarifnameye eklenmesi isteniyorsa description_prior_art_updates üret. Bu alanda D1/D2 etiketi kullanma. Mevcut `As a result of the research on the subject...` formatını izle. objective_summary yalnız ilgili X/Y kaynağın gerçek içeriği olsun. however_difference yalnız as-filed tarifnamede/istemlerde açıkça bulunan teknik farkı kullansın, yeni özellik veya yeni teknik etki eklemesin.
-Her basis_quote tarifnamede birebir bulunan dayanak pasajı olsun. İstem revizyonunda DOLAYLI/ÇIKARIMSAL dayanak kullanma. Yeni eklenen HER teknik özellik için `direct_support` içinde ayrı bir kayıt üret; `added_feature` önerilen new_text içinde açıkça yer alsın ve `basis_quote` TARİFNAME içinde birebir bulunsun ve o teknik özelliği doğrudan söylesin. Aynı paragrafta bulunma zorunluluğu yoktur; farklı doğrudan pasajlar ayrı support kayıtlarıyla kullanılabilir. Yalnız amaç/sonuç/avantajdan çıkarılan veya farklı pasajların yorumla birleştirilmesiyle elde edilen özellik doğrudan dayanak değildir ve isteme eklenemez. Sadece article/dilbilgisi düzeltmesi teknik kapsam eklemiyorsa `change_type="language"` kullan. Kapsam aşımı/yeni konu yaratma.
+Her basis_quote tarifnamede birebir bulunan dayanak pasajı olsun. İstem revizyonunda DOLAYLI/ÇIKARIMSAL dayanak kullanma. Yeni eklenen HER teknik özellik için `direct_support` içinde ayrı bir kayıt üret; `added_feature` önerilen new_text içinde açıkça yer alsın ve `basis_quote` TARİFNAME içinde birebir bulunsun ve o teknik özelliği doğrudan söylesin. Aynı paragrafta bulunma zorunluluğu yoktur; farklı doğrudan pasajlar ayrı support kayıtlarıyla kullanılabilir. Yalnız amaç/sonuç/avantajdan çıkarılan veya farklı pasajların yorumla birleştirilmesiyle elde edilen özellik doğrudan dayanak değildir ve isteme eklenemez. Müşteri görüş formu ve D1/D2 istem değişikliğinin as-filed dayanağı DEĞİLDİR; yalnız itirazı/savunmayı anlamak için kullanılabilir. Sadece article/dilbilgisi düzeltmesi teknik kapsam eklemiyorsa `change_type="language"` kullan. Kapsam aşımı/yeni konu yaratma. `atomic_operations` alanını istersen tahmini doldurabilirsin ancak gerçek atomik fark ve OOXML Track Changes uygulama tarafından deterministik yeniden hesaplanacaktır.
 
 JSON dışında yazma.
 ŞEMA:
@@ -5700,6 +5714,9 @@ JSON dışında yazma.
   "analysis_summary":"",
   "examiner_issues":[""],
   "defense_direction":[""],
+  "examiner_objections":[
+    {"id":"OBJ-1","claim_numbers":["1"],"issue":"","examiner_quote":""}
+  ],
   "amendment_required":false,
   "amendment_reason":"",
   "no_amendment_reason":"",
@@ -5725,15 +5742,51 @@ JSON dışında yazma.
       "omission_reason":""
     }}
   ],
+  "amendment_candidates":[
+    {{
+      "candidate_id":"A1",
+      "summary":"",
+      "addresses_objection_ids":["OBJ-1"],
+      "amendments":[{{
+        "claim_number":"1",
+        "reason":"",
+        "basis_quote":"",
+        "change_type":"technical|language",
+        "edit_mode":"insert_only|replace_minimal|delete_minimal",
+        "deletion_required":false,
+        "deletion_reason":"",
+        "addresses_objection_ids":["OBJ-1"],
+        "clarity_effect":"",
+        "scope_effect":"narrows|neutral|broadens + kısa açıklama",
+        "prior_art_effect":"",
+        "remaining_risk":"",
+        "direct_support":[{"added_feature":"","basis_quote":""}],
+        "old_text":"",
+        "new_text":"",
+        "atomic_operations":[]
+      }}]
+    }}
+  ],
+  "selected_candidate_id":"A1",
+  "selection_reason":"",
   "amendments":[
     {{
       "claim_number":"1",
       "reason":"",
       "basis_quote":"",
       "change_type":"technical|language",
+      "edit_mode":"insert_only|replace_minimal|delete_minimal",
+      "deletion_required":false,
+      "deletion_reason":"",
+      "addresses_objection_ids":["OBJ-1"],
+      "clarity_effect":"",
+      "scope_effect":"narrows|neutral|broadens + kısa açıklama",
+      "prior_art_effect":"",
+      "remaining_risk":"",
       "direct_support":[{"added_feature":"","basis_quote":""}],
       "old_text":"",
-      "new_text":""
+      "new_text":"",
+      "atomic_operations":[]
     }}
   ],
   "description_prior_art_updates":[
@@ -5767,9 +5820,9 @@ def gorus_revision_refine_prompt(
 ) -> str:
     return f"""{GORUS_RULES}
 Aşağıdaki mevcut istem-revizyon analizini kullanıcının talimatına göre yeniden değerlendir.
-Yalnızca gerçekten zorunlu değişiklikleri bırak. En az değişiklik, DOĞRUDAN tarifname dayanağı ve kapsam aşımı yapmama kuralları bağlayıcıdır. Teknik bir özellik yalnızca tarifnamede doğrudan ve açık biçimde bulunuyorsa eklenebilir; dolaylı/çıkarımsal destek yasaktır. Aynı paragraf zorunlu değildir; her ek teknik özellik ayrı `direct_support` kaydıyla kendi birebir dayanak pasajına bağlanmalıdır.
-old_text, kaynak TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa ifade olmalıdır. Değişmeyen ön/son kelimeleri old_text/new_text içine alma. Artikel değişimini yalnız artikel, unsur adı değişimini yalnız değişen unsur adı, eksik harf düzeltmesini yalnız karakter bazında öner.
-Tüm istemi silip yeniden yazma. Kullanıcının talimatı teknik kaynaklarla çelişiyorsa uydurma yapma; güvenli olan minimum revizyonu seç.
+Yalnızca gerçekten zorunlu değişiklikleri bırak. En az değişiklik, DOĞRUDAN tarifname dayanağı, uzman-itiraz eşlemesi ve kapsam aşımı yapmama kuralları bağlayıcıdır. Teknik bir özellik yalnızca tarifnamede doğrudan ve açık biçimde bulunuyorsa eklenebilir; dolaylı/çıkarımsal destek yasaktır. Müşteri görüş formu veya D dokümanı istem değişikliğinin as-filed dayanağı değildir. Aynı paragraf zorunlu değildir; her ek teknik özellik ayrı `direct_support` kaydıyla kendi birebir dayanak pasajına bağlanmalıdır.
+INSERTION-FIRST uygula: mevcut istem kelimeleri korunabiliyorsa onları silme veya yeniden formüle etme; yalnız gerekli kelime/ibareyi ekle. Silme/replace gerçekten zorunluysa `deletion_required=true`, somut `deletion_reason` ve ilgili `OBJ-*` kimliği zorunludur. old_text, kaynak TARİFNAME içindeki tek bir paragrafta birebir bulunabilen mümkün olan en kısa lokal hedef ifade olmalıdır. Tüm istemi veya tüm cümleyi silip yeniden yazma. `clarity_effect`, `scope_effect`, `prior_art_effect`, `remaining_risk` alanlarını yeniden değerlendir.
+Birden fazla güvenli aday varsa adayları yeniden karşılaştır ve `selected_candidate_id` + top-level `amendments` senkronunu koru. Kullanıcının talimatı teknik kaynaklarla çelişiyorsa uydurma yapma; güvenli olan minimum ve doğrudan-dayanaklı revizyonu seç.
 
 JSON dışında yazma ve ilk analizle AYNI şemayı kullan.
 Görüş türü: {report_type}
@@ -5782,11 +5835,106 @@ BENZER DOKÜMANLAR:\n{similar_text}\n
 MÜŞTERİ BİLGİLERİ:\n{customer_text}\n"""
 
 
+
+def gorus_amendment_audit_prompt(
+    report_text: str,
+    spec_text: str,
+    similar_text: str,
+    customer_text: str,
+    analysis: dict[str, Any],
+) -> str:
+    return f"""{GORUS_RULES}
+BAĞIMSIZ AMENDMENT AUDITOR olarak çalış. Revizyonu öneren ilk analizden bağımsız değerlendir.
+Amaç revizyonu savunmak değil, hatalı/eksik/gereksiz revizyonu BLOKE etmektir.
+
+Her top-level amendment için şu soruların tamamını cevapla:
+1. Eklenen/değiştirilen HER teknik özellik as-filed tarifname/istemlerde doğrudan ve açık mı? Müşteri formu veya D dokümanı as-filed dayanak sayılamaz.
+2. Revizyon, `addresses_objection_ids` ile bağlandığı uzman itirazını GERÇEKTEN çözüyor mu? Yalnız genel iyileştirme veya D1/D2'den uzaklaşma yeterli değildir.
+3. Mevcut istem kelimeleri korunabiliyorken gereksiz DELETE/REPLACE/rewrite yapılmış mı? Teknik revizyonda insertion-first zorunludur.
+4. Yeni ifade yeni bir açıklık/belirsizlik/antecedent sorunu yaratıyor mu?
+5. Kapsam genişliyor mu? Yeni konu veya unsupported generalization var mı?
+6. İlgili D dokümanı karşısında eklenen özelliğin gerçek teknik savunma değeri nedir? Özellik D dokümanında zaten açıkça varsa bunu belirt.
+7. Revizyon sonunda hangi risk devam ediyor?
+8. Birden fazla amendment_candidates varsa TÜM adayları birbirleriyle şu sırada karşılaştır: uzman itirazını tam karşılama → doğrudan as-filed dayanak → en az metinsel müdahale/insertion-first → gereksiz daraltmadan kaçınma → açıklık. İlk analizin seçimini otomatik onaylama. Başka aday daha güvenliyse `selected_candidate_confirmed=false` yap ve blocking_reasons içine açıkça yaz.
+
+`addresses_examiner_issue` yalnız tam ve somut karşılık varsa `yes` olsun. `partial` veya `no` overall_pass için FAIL'dir.
+`scope_effect` yalnız `narrows`, `neutral`, `broadens` değerlerinden biri olsun. `broadens` FAIL'dir.
+JSON dışında yazma.
+ŞEMA:
+{{
+  "overall_pass":true,
+  "overall_assessment":"",
+  "selected_candidate_confirmed":true,
+  "selection_basis":"",
+  "candidate_comparison":[{{
+    "candidate_id":"A1",
+    "addresses_examiner_issue":"yes|partial|no",
+    "direct_basis_pass":true,
+    "insertion_first_pass":true,
+    "scope_effect":"narrows|neutral|broadens",
+    "clarity_assessment":"",
+    "comparison_note":""
+  }}],
+  "items":[{{
+    "claim_number":"1",
+    "direct_basis_pass":true,
+    "addresses_examiner_issue":"yes|partial|no",
+    "minimal_edit_pass":true,
+    "unnecessary_deletion":false,
+    "clarity_effect":"",
+    "scope_effect":"narrows|neutral|broadens",
+    "prior_art_effect":"",
+    "new_ambiguity":false,
+    "remaining_risk":""
+  }}],
+  "blocking_reasons":[]
+}}
+
+RAPOR:\n{report_text}\n
+AS-FILED TARİFNAME/İSTEMLER:\n{spec_text}\n
+SAVUNMA DOKÜMANLARI:\n{similar_text}\n
+MÜŞTERİ BİLGİLERİ (yalnız savunma bağlamı; as-filed dayanak değildir):\n{customer_text}\n
+REVİZYON ANALİZİ:\n{json.dumps(analysis, ensure_ascii=False, indent=2)}\n"""
+
+
+def gorus_amendment_repair_prompt(
+    report_text: str,
+    spec_text: str,
+    similar_text: str,
+    customer_text: str,
+    analysis: dict[str, Any],
+    audit: dict[str, Any],
+) -> str:
+    return f"""{GORUS_RULES}
+İlk istem-revizyon analizini aşağıdaki BAĞIMSIZ AUDITOR bulgularına göre BİR KEZ düzelt.
+Yalnız kaynakların açıkça izin verdiği değişiklikleri yap. Uzman itirazını gerçekten karşılamayan sınırlamayı çıkar veya doğrudan dayanaklı ve daha uygun teknik özellik seç.
+INSERTION-FIRST bağlayıcıdır: mevcut istem dili korunabiliyorsa hiçbir kelimeyi silme veya yeniden formüle etme; yalnız gerekli kelime/ibareyi ekle.
+Silme/replace zorunluysa deletion_required=true, somut deletion_reason ve OBJ kimliği ver.
+Müşteri formu/D dokümanı as-filed istem dayanağı değildir. Her added_feature ayrı direct_support almalıdır.
+2-3 güvenli aday gerekiyorsa üret, selected_candidate_id seç ve top-level amendments ile seçilen aday amendments listesini birebir senkron tut.
+JSON dışında yazma ve gorus_analysis_prompt ile AYNI şemayı kullan.
+
+AUDITOR BULGULARI:\n{json.dumps(audit, ensure_ascii=False, indent=2)}\n
+MEVCUT ANALİZ:\n{json.dumps(analysis, ensure_ascii=False, indent=2)}\n
+RAPOR:\n{report_text}\n
+TARİFNAME:\n{spec_text}\n
+SAVUNMA DOKÜMANLARI:\n{similar_text}\n
+MÜŞTERİ BİLGİLERİ:\n{customer_text}\n"""
+
 def validate_gorus_analysis(analysis: dict[str, Any], spec_text: str, customer_text: str = "") -> None:
     required = bool(analysis.get("amendment_required"))
     amendments = analysis.get("amendments") or []
     if required and not amendments:
         raise ValueError("Analiz istem revizyonu gerekli dedi ancak revizyon önerisi üretmedi.")
+    # v5.4.77: model redline beyanına güvenilmez; old_text→new_text farkı deterministik
+    # atomik plana çevrilir ve insertion-first / itiraz-eşleme kapılarından geçirilir.
+    enrich_analysis_atomic_plans(analysis)
+    objection_ids = [str(x.get("id", "")).strip() for x in (analysis.get("examiner_objections") or []) if str(x.get("id", "")).strip()]
+    new_atomic_schema = bool(analysis.get("examiner_objections") or analysis.get("amendment_candidates"))
+    if required and new_atomic_schema:
+        if not objection_ids:
+            raise ValueError("İstem revizyonu itiraz-eşleme kapısı: amendment_required=true iken examiner_objections boş bırakılamaz.")
+        validate_amendment_candidates(analysis, spec_text)
     normalized_spec = re.sub(r"\s+", " ", spec_text).strip()
     for item in amendments:
         old_text = re.sub(r"\s+", " ", str(item.get("old_text", ""))).strip()
@@ -5817,6 +5965,15 @@ def validate_gorus_analysis(analysis: dict[str, Any], spec_text: str, customer_t
                 raise ValueError("direct_support içindeki added_feature önerilen new_text içinde açıkça yer almalıdır.")
             if direct_basis not in normalized_spec:
                 raise ValueError(f"Doğrudan revizyon dayanağı tarifnamede birebir doğrulanamadı: {direct_basis[:120]}...")
+        validate_atomic_amendment(
+            item,
+            spec_text,
+            known_objection_ids=objection_ids,
+            require_receipts=new_atomic_schema and change_type == "technical",
+        )
+
+    if required and new_atomic_schema:
+        validate_selected_candidate_is_structurally_best(analysis, spec_text)
 
     for contribution in analysis.get("technical_contributions") or []:
         feature = re.sub(r"\s+", " ", str(contribution.get("feature", ""))).strip()
@@ -5948,7 +6105,7 @@ JSON dışında yazma.
      "inventive_step_paragraphs":[""]
    }}
  ],
- "combined_assessment":{{"heading":"","paragraphs":[],"groups":[{{"group":"Y1","labels":["D1","D2"],"heading":"D1 ve D2 Dokümanları Birlikte Değerlendirildiğinde","paragraphs":["",""]}}]}},
+ "combined_assessment":{{"heading":"","paragraphs":[],"groups":[{{"group":"Y1","labels":["D1","D2"],"heading":"D1 ve D2 Dokümanları Birlikte Değerlendirildiğinde","paragraphs":[],"blocks":[{{"type":"paragraph","text":""}},{{"type":"quote","text":"","attach_to_previous":true}},{{"type":"paragraph","text":""}}]}}]}},
  "customer_point_ids_used":["C1"],
  "conclusion":[""], "signoff":"{signoff_example}"
 }}
@@ -5971,6 +6128,7 @@ JSON dışında yazma.
 - GÖRÜŞÜ KISA TUTMA. Kelime sayısını D-dokümanı sayısına lineer bağlama. Yenilik/buluş basamağı savunmasının model tarafından yazılan esas gövdesi toplam en az 2200 kelime olsun. Her X bölümü en az 700 kelime ve en az dört dolu teknik savunma paragrafı, her gerçek Y kombinasyon grubu en az 900 kelime ve en az dört dolu teknik savunma paragrafı içersin. Bireysel Y objektif tanıtımları, intro, bibliyografi, şekil başlıkları, birebir quote ve imza bu savunma kelime hedefini doldurmak için kullanılmaz. Tekrarla şişirme yapma; her paragraf yeni ve kaynak destekli teknik fark/etki/işlevsel ilişki/problem/motivasyon/ilave değişiklik/dayanak katkısı taşısın.
 - ÖN ANALİZ içindeki `technical_contributions` listesini savunma önceliği olarak kullan. `defence_priority=high` olan ve istemde gerçekten bulunan katkıları nihai görüşte görünür biçimde öne çıkar. Teknik katkının hangi somut unsur/işlev ilişkisine dayandığını, teknik etkisini ve ilgili D dokümanının neden aynı katkıyı vermediğini açıkla. Bağımlı istemde yüksek öncelikli teknik katkı varsa o istemi topluca geçiştirme.
 - Tarifname quote bloğunu hemen önceki teknik savunmanın doğal devamı yap ve `attach_to_previous=true` döndür. `Tarifname sayfa...` ayrı paragraf olmayacak.
+- TARİFNAME DAYANAĞI ZORUNLUDUR: esas teknik savunmayı dayanak olmadan bırakma. Her X dokümanı esas savunmasında en az bir birebir `quote` bloğu bulunmalıdır. Gerçek Y/kombinasyon itirazında her `combined_assessment.groups[]` savunması `blocks` alanında en az bir birebir tarifname `quote` bloğu içermelidir. Bireysel Y bölümü objektif tanıtım olarak kalır. Dayanak bulunamıyorsa savunma uydurma ve Word üretimini fail-closed bırak.
 - `Bu farklardan...`, `Bu farkların...`, `Bu teknik farkın...`, `Bu teknik etki...`, `Bu yapının teknik etkisi...`, `Buna göre objektif teknik problem...` gibi bir önceki argümanın doğal devamını yeni paragrafa bölme, önceki ilgili paragrafın devamında yaz.
 - Model tarafından yazılan görüş metninde noktalı virgül (`;`) kullanma. Virgül veya nokta kullan. Birebir kaynak alıntısı noktalı virgül içeriyorsa alıntıyı değiştirme.
 - Model anlatımında `→`, `->`, `⇒` veya `+` kullanarak teknik unsur/işlem zinciri yazma. Teknik temas veya işlem ilişkisini tam cümlelerle anlat. `D1+D2` yerine `D1 ve D2` yaz.
@@ -5981,7 +6139,7 @@ JSON dışında yazma.
 - Müşteri bilgisinin tarifname dayanağı yoksa kullanma. ÖN ANALİZ içindeki `customer_defence_points` listesini bağlayıcı kapsama envanteri olarak kullan. `use_required=true` olan HER müşteri maddesinin teknik içeriğini nihai görüşte görünür biçimde işle ve kullanılan tüm kimlikleri `customer_point_ids_used` alanına yaz. Zorunlu bir müşteri maddesini yalnız başka bir cümlede gerçekten aynı teknik içerik açıkça karşılanıyorsa konsolide et; yine de id'yi `customer_point_ids_used` içinde tut. `use_required=false` maddesini nihai görüşe taşımak zorunda değilsin. Müşteri kaynaklarının TAMAMINI ikinci kez tara ve uzman itirazına cevap veren, tarifname/istem/D-dokümanı ile doğrulanabilen güçlü teknik bilgileri atlama. Test sonucu veya performans avantajı yalnız kaynakta gerçek veri varsa olgu olarak yazılabilir.
 - Nihai görüşte `BBF`, `buluş bildirim formu`, `müşteri görüş formu`, `müşteri bilgisi`, `müşteriden gelen bilgi`, `client form`, `customer form`, `client information`, `customer information` gibi iç süreç/kaynak ifadeleri kullanma. Kaynaktan doğrulanan teknik bilgiyi doğrudan Applicant savunması olarak yaz.
 - Onaylı istem setine yeni değişiklik ekleme.
-- `revision_status` kullanıcı tarafından onaylanmış revize istem setini gösteriyorsa `amendment_assessment` ZORUNLUDUR ve önceki teknik savunmasından ayrı tutulur. Başlığı Türkçe çıktıda `İstemlerde Yapılan Değişiklikler ve Dayanakları`, İngilizce çıktıda `Amendments and Basis in the Application as Filed` mantığında kur. Her esas değişikliği önce kısa teknik gerekçeyle açıkla, hemen ardından final onaylı tarifnamede birebir bulunan bir `quote` bloğunu `attach_to_previous=true` ile ekle. Bu bölümde D1/D2/X/Y dokümanlarına karşı yenilik veya buluş basamağı savunması yapma.
+- `revision_status` kullanıcı tarafından onaylanmış revize istem setini gösteriyorsa `amendment_assessment` ZORUNLUDUR ve önceki teknik savunmasından ayrı tutulur. Başlığı Türkçe çıktıda `İstemlerde Yapılan Değişiklikler ve Dayanakları`, İngilizce çıktıda `Amendments and Basis in the Application as Filed` mantığında kur. GÖRÜNÜR SIRA bağlayıcıdır: intro önce raporda gösterilen D1/D2/... dokümanlarını haber verir, `cited_documents` bibliyografik satırları introdan hemen sonra gelir, `amendment_assessment` bu satırlardan SONRA ve ilk esas D savunmasından ÖNCE gelir. Her esas değişikliği yalnız somut teknik değişiklik + uzmanın ilgili itirazı + as-filed dayanak ilişkisiyle açıkla, hemen ardından final onaylı tarifnamede birebir bulunan bir `quote` bloğunu `attach_to_previous=true` ile ekle. `minimum ölçüde değiştirilmiştir`, `sistemimizce uygun görülmüştür`, `stratejik olarak`, `revizyon yaklaşımı` gibi vekil-içi süreç/meta ifadeleri kullanma. Bu bölümde D1/D2/X/Y dokümanlarına karşı yenilik veya buluş basamağı savunması yapma.
 - Revizyon yapılmamışsa `amendment_assessment` alanını boş heading ve boş blocks ile döndür.
 - Fonksiyonel taşıyıcı terimler sırf uzman eleştirdi diye silinmiş gibi gerekçe kurma. Kullanıcının onaylı nihai istem setindeki minimum değişiklikleri esas al ve yalnız kaynakla doğrulanabilen değişiklikleri açıkla.
 - Türkiye araştırma raporunda ve EP araştırma raporunda cited_documents ve sections alanlarında yalnız X/Y kategori dokümanları yer alsın. A kategorisi görüş bölümü değildir. İnceleme/ofis aksiyonunda yalnız uzmanın gerekçede fiilen kullandığı dokümanlara bölüm aç.
@@ -6010,7 +6168,7 @@ def gorus_quality_audit_prompt(
     utility_model_instruction = _gorus_utility_model_instruction(report_text)
     return f"""{GORUS_RULES}
 {utility_model_instruction}
-Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül veya hindsight/geriye-dönük kalıp bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını, önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını, faydalı modelde X dokümanında yalnız yenilik savunmasının ayrıntılı kurulup buluş basamağı dilinin hiç kullanılmadığını; faydalı model dışındaki X dokümanında yenilik+buluş basamağı savunmasının ayrıntılı kurulup kurulmadığını, Y dokümanının bireysel bölümünün yalnız kısa objektif tanıtım + şekil olarak kalıp ayrı yenilik/buluş basamağı savunması içerip içermediğini, bireysel D bölümlerinde ayrıca yenilik/buluş basamağı ara başlığı açılmadığını, `devral.../inherit...` ve `mimari/architectur...` gibi yasak model dilinin bulunmadığını, `Bu farklardan...` gibi doğal devam cümlelerinin gereksiz yeni paragrafa bölünmediğini, `Considered Together/Birlikte Değerlendirildiğinde` bölümünün yalnız gerçek Y/kombinasyon itirazında bulunup bulunmadığını, yalnız X dokümanları varsa birleşik bölümün boş bırakılıp bırakılmadığını, gerçek kombinasyon varsa bu bölümün yeterince güçlü olup olmadığını, ÖN ANALİZDE high öncelikli olarak belirlenen doğrudan destekli teknik katkıların görüşte görünür biçimde öne çıkarılıp çıkarılmadığını ve müşteri kaynağındaki doğrudan destekli güçlü teknik bilgilerin sessizce atlanıp atlanmadığını, savunmaya alınan her D dokümanında yüklenen özgün kaynakta kullanılabilir ve Çince/Han yazı içermeyen teknik şekil bulunuyorsa şeklin zorunlu olarak seçilip seçilmediğini, Çince/Han yazı içeren şeklin yanlışlıkla kullanılmadığını ve seçilen alt şeklin teknik içeriğinin tamamının korunup korunmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu ve görüşte önce geldiğini de kontrol et.
+Aşağıdaki oluşturulmuş GÖRÜŞ TASLAĞINI, ham kaynakların tamamına karşı bağımsız ikinci okuyucu olarak denetle. Metni yeniden yazma. Her kontrol için pass ve kısa note döndür. En küçük şüphede pass=false yap. Özellikle raporda sadece listelenen fakat gerekçede kullanılmayan dokümanın görüşe sızıp sızmadığını, uzmanın dayandığı her paragraf/istem gerekçesine cevap verilip verilmediğini, teknik katkının tarifnameye dayalı kurulup kurulmadığını, noktalı virgül veya hindsight/geriye-dönük kalıp bulunup bulunmadığını, tarifname dayanağının savunmanın aynı paragrafına bağlanıp bağlanmadığını, önceki teknik referans numaralarının gereksiz kullanılıp kullanılmadığını, faydalı modelde X dokümanında yalnız yenilik savunmasının ayrıntılı kurulup buluş basamağı dilinin hiç kullanılmadığını; faydalı model dışındaki X dokümanında yenilik+buluş basamağı savunmasının ayrıntılı kurulup kurulmadığını, Y dokümanının bireysel bölümünün yalnız kısa objektif tanıtım + şekil olarak kalıp ayrı yenilik/buluş basamağı savunması içerip içermediğini, bireysel D bölümlerinde ayrıca yenilik/buluş basamağı ara başlığı açılmadığını, `devral.../inherit...` ve `mimari/architectur...` gibi yasak model dilinin bulunmadığını, `Bu farklardan...` gibi doğal devam cümlelerinin gereksiz yeni paragrafa bölünmediğini, `Considered Together/Birlikte Değerlendirildiğinde` bölümünün yalnız gerçek Y/kombinasyon itirazında bulunup bulunmadığını, yalnız X dokümanları varsa birleşik bölümün boş bırakılıp bırakılmadığını, gerçek kombinasyon varsa bu bölümün yeterince güçlü olup olmadığını, ÖN ANALİZDE high öncelikli olarak belirlenen doğrudan destekli teknik katkıların görüşte görünür biçimde öne çıkarılıp çıkarılmadığını ve müşteri kaynağındaki doğrudan destekli güçlü teknik bilgilerin sessizce atlanıp atlanmadığını, savunmaya alınan her D dokümanında yüklenen özgün kaynakta kullanılabilir ve Çince/Han yazı içermeyen teknik şekil bulunuyorsa şeklin zorunlu olarak seçilip seçilmediğini, Çince/Han yazı içeren şeklin yanlışlıkla kullanılmadığını ve seçilen alt şeklin teknik içeriğinin tamamının korunup korunmadığını kontrol et. `amendment_assessment` mevcutsa değişiklik gerekçesi ve birebir dayanak içerdiğini, D1/D2/X/Y savunmasından ayrı olduğunu, introdan hemen sonra gelen D1/D2/... bibliyografik satırlardan SONRA ve ilk esas D savunmasından ÖNCE yer aldığını, ayrıca `minimum ölçüde değiştirilmiştir` / `sistemimizce uygun görülmüştür` gibi iç süreç/meta dil taşımadığını da kontrol et.
 
 JSON dışında yazma.
 ŞEMA:
@@ -6063,7 +6221,7 @@ def gorus_repair_prompt(
     utility_model_instruction = _gorus_utility_model_instruction(report_text)
     return f"""{GORUS_RULES}
 {utility_model_instruction}
-Aşağıdaki görüş JSON'u ikinci kalite kontrolünde başarısız oldu. Yalnız belirtilen sorunları düzelt ve AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu yeniden döndür. Metadata, onaylı istem seti, rapor sonucu ve kaynak dayanakları korunmalı. Yeni doküman veya yeni teknik özellik ekleme. Tarifname alıntıları birebir kalmalı. Model anlatımında noktalı virgül kullanma. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp kullanma. İç süreçteki BBF/müşteri formu ifadelerini nihai görüşe taşıma. X/Y savunma ayrımını koru: faydalı modelde X bireysel olarak yalnız ayrıntılı yenilik savunması alır ve buluş basamağı metni yazılmaz; faydalı model dışındaki araştırma görüşünde X yenilik+buluş basamağı savunması alır. Y bireysel bölümü yalnız objektif teknik tanıtımdır ve savunma içermez. Yalnız X kategorisi dokümanlar varsa `combined_assessment` alanını boş bırak. `Considered Together/Birlikte Değerlendirildiğinde` bölümünü yalnız gerçek Y/kombinasyon itirazı varsa koru. Bireysel D bölümlerinde yenilik/buluş basamağı ara başlığı kullanma. `devral.../inherit...` ve `mimari/architectur...` dilini temizle. `Bu farklardan...` gibi önceki düşüncenin doğal devamını yeni paragrafa bölme. Doğrudan tarifname dayanağını önceki savunma paragrafına `attach_to_previous=true` ile bağla.
+Aşağıdaki görüş JSON'u ikinci kalite kontrolünde başarısız oldu. Yalnız belirtilen sorunları düzelt ve AYNI JSON ŞEMASIYLA eksiksiz görüş JSON'unu yeniden döndür. Metadata, onaylı istem seti, rapor sonucu ve kaynak dayanakları korunmalı. Yeni doküman veya yeni teknik özellik ekleme. Tarifname alıntıları birebir kalmalı. Model anlatımında noktalı virgül kullanma. `hindsight`, `geriye dönük değerlendirme`, `working backwards` veya eşdeğer kalıp kullanma. İç süreçteki BBF/müşteri formu ifadelerini nihai görüşe taşıma. X/Y savunma ayrımını koru: faydalı modelde X bireysel olarak yalnız ayrıntılı yenilik savunması alır ve buluş basamağı metni yazılmaz; faydalı model dışındaki araştırma görüşünde X yenilik+buluş basamağı savunması alır. Y bireysel bölümü yalnız objektif teknik tanıtımdır ve savunma içermez. Yalnız X kategorisi dokümanlar varsa `combined_assessment` alanını boş bırak. `Considered Together/Birlikte Değerlendirildiğinde` bölümünü yalnız gerçek Y/kombinasyon itirazı varsa koru. Bireysel D bölümlerinde yenilik/buluş basamağı ara başlığı kullanma. `devral.../inherit...` ve `mimari/architectur...` dilini temizle. `Bu farklardan...` gibi önceki düşüncenin doğal devamını yeni paragrafa bölme. Doğrudan tarifname dayanağını önceki savunma paragrafına `attach_to_previous=true` ile bağla. Onaylı istem revizyonu varsa görünür sırayı `intro → D1/D2/... bibliyografik satırlar → İstemlerde Yapılan Değişiklikler ve Dayanakları → esas D savunmaları` olarak koru. Amendment bölümünde `minimum ölçüde değiştirilmiştir`, `sistemimizce uygun görülmüştür`, `stratejik olarak`, `revizyon yaklaşımı` gibi iç süreç/meta ifadeleri kullanma.
 Raporda numaralı Y grupları (`Y1`, `Y2`, `Y1,Y2`) varsa bunları koru. Numarasız birden fazla Y varsa ve alt grup yoksa yalnız Y dokümanlarını tek grup yap; X'i otomatik ekleme. Her gerçek kombinasyon grubunu `combined_assessment.groups` içinde ayrı görünür başlık ve en az iki kapsamlı paragrafla değerlendir; farklı grupları tek bir toplu kombinasyona dönüştürme.
 
 JSON dışında yazma.
@@ -6358,9 +6516,19 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
     _clone_paragraph_with_text(doc, template.paragraphs[4], opinion.get("intro", ""), bold=False)
     _clone_blank(doc, template.paragraphs[5])
 
-    # If claims were amended, explain the approved changes and their as-filed basis
-    # BEFORE any X/Y/D prior-art defence. Existing template paragraph archetypes are
-    # reused so the binding font/spacing geometry remains unchanged.
+    # v5.4.77 visible order: intro -> cited D rows -> approved amendments/basis -> D defences.
+    # The intro announces the cited documents, so the bibliographic rows must immediately follow it.
+    docs = opinion.get("cited_documents") or []
+    for i, d in enumerate(docs):
+        label = str(d.get("label", "")).strip()
+        number = str(d.get("number", "")).strip()
+        txt = f"{label}: {number}"
+        archetype = template.paragraphs[6 if i == 0 else 7]
+        _clone_paragraph_with_text(doc, archetype, txt, bold=True)
+    _clone_blank(doc, template.paragraphs[8])
+
+    # If claims were amended, explain only the concrete approved changes and as-filed basis
+    # after the D1/D2/... list and before the substantive prior-art defence sections.
     amendment = opinion.get("amendment_assessment") or {}
     amendment_heading = str(amendment.get("heading", "")).strip()
     amendment_blocks = amendment.get("blocks") or []
@@ -6376,15 +6544,6 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
             else:
                 _clone_paragraph_with_text(doc, template.paragraphs[10], block.get("text", ""), bold=False)
         _clone_blank(doc, template.paragraphs[8])
-
-    docs = opinion.get("cited_documents") or []
-    for i, d in enumerate(docs):
-        label = str(d.get("label", "")).strip()
-        number = str(d.get("number", "")).strip()
-        txt = f"{label}: {number}"
-        archetype = template.paragraphs[6 if i == 0 else 7]
-        _clone_paragraph_with_text(doc, archetype, txt, bold=True)
-    _clone_blank(doc, template.paragraphs[8])
 
     figure_images = figure_images or {}
     sections = opinion.get("sections") or []
@@ -6433,8 +6592,20 @@ def build_gorus_docx(opinion: dict[str, Any], figure_images: dict[str, bytes] | 
     if combination_groups:
         for group in combination_groups:
             _clone_paragraph_with_text(doc, template.paragraphs[33], group.get("heading", "Documents Considered Together" if english_output else "Dokümanlar Birlikte Değerlendirildiğinde"), bold=True)
-            for par in group.get("paragraphs") or []:
-                _clone_paragraph_with_text(doc, template.paragraphs[34], par, bold=False)
+            group_blocks = group.get("blocks") or []
+            if group_blocks:
+                for block in group_blocks:
+                    typ = str(block.get("type", "paragraph")).lower()
+                    if typ == "quote":
+                        if bool(block.get("attach_to_previous", True)) and doc.paragraphs:
+                            _append_quote_with_location(doc.paragraphs[-1], block)
+                        else:
+                            _add_quote_with_location(doc, template.paragraphs[34], block)
+                    elif str(block.get("text", "")).strip():
+                        _clone_paragraph_with_text(doc, template.paragraphs[34], block.get("text", ""), bold=False)
+            else:
+                for par in group.get("paragraphs") or []:
+                    _clone_paragraph_with_text(doc, template.paragraphs[34], par, bold=False)
             _clone_blank(doc, template.paragraphs[35])
     elif str(combined.get("heading", "")).strip() or (combined.get("paragraphs") or []):
         # Backward-compatible rendering for old checkpoints only. New generation uses `groups`.
@@ -6765,6 +6936,9 @@ def build_claim_revision_docx(source_docx: bytes, amendments: list[dict[str, Any
 def build_claim_revision_pair(source_docx: bytes, amendments: list[dict[str, Any]], description_updates: list[dict[str, Any]] | None = None) -> tuple[bytes, bytes]:
     markup = build_claim_revision_docx(source_docx, amendments, track_changes=True, description_updates=description_updates)
     clean = build_claim_revision_docx(source_docx, amendments, track_changes=False, description_updates=description_updates)
+    # v5.4.77: deterministic redline integrity. AI never receives authority over OOXML.
+    validate_minimal_tracked_changes(markup)
+    validate_tracked_changes_against_plan(source_docx, markup, clean, amendments, description_updates or [])
     return markup, clean
 
 
@@ -7956,6 +8130,8 @@ def build_and_gate_gorus_opinion(
     final_spec_name: str,
     final_spec_bytes: bytes,
     source_state: dict[str, Any],
+    line_spec_name: str | None = None,
+    line_spec_bytes: bytes | None = None,
 ) -> bytes:
     """Re-annotate, rebuild and run all deterministic Word gates for an opinion.
 
@@ -7964,18 +8140,27 @@ def build_and_gate_gorus_opinion(
     # v5.4.54: render the FINAL specification once, then use the exact same
     # SHA-256-bound physical page/line index for annotation and the hard gate.
     # No quality rule is skipped; only redundant LibreOffice conversions are removed.
-    page_line_index = build_page_line_index(final_spec_name, final_spec_bytes)
+    validate_opinion_reference_binding(current_opinion, source_state.get("reference") or "")
+    validate_mandatory_spec_basis_coverage(current_opinion)
+    if line_spec_name and line_spec_bytes:
+        authority_name, authority_bytes = str(line_spec_name), bytes(line_spec_bytes)
+    else:
+        authority_name, authority_bytes = prepare_line_reference_source(final_spec_name, final_spec_bytes)
+    validate_line_reference_authority(final_spec_name, authority_name)
+    # The quote text is grounded in the final specification text, while page/line geometry
+    # is grounded only in the authoritative PDF exported from that same Word version.
+    page_line_index = build_page_line_index(authority_name, authority_bytes)
     annotate_quote_locations(
         current_opinion,
-        final_spec_name,
-        final_spec_bytes,
+        authority_name,
+        authority_bytes,
         source_state.get("language") or "Türkçe",
         page_line_index=page_line_index,
     )
     validate_quote_locations_against_spec(
         current_opinion,
-        final_spec_name,
-        final_spec_bytes,
+        authority_name,
+        authority_bytes,
         source_state.get("language") or "Türkçe",
         page_line_index=page_line_index,
     )
@@ -9089,10 +9274,14 @@ elif work_type == "Görüş hazırlama":
         )
 
     spec_file = st.file_uploader("Tarifname", type=["pdf", "docx", "doc", "txt"], key="gor_spec")
-    reference = st.text_input("Ana dosya referansı nedir?", value="")
+    # Kullanıcıdan ayrıca sayfa/satır doğrulama PDF'si istenmez.
+    # PDF doğrudan kullanılır; Word/DOC/DOCX/TXT aynı dosyadan arka planda PDF'ye çevrilir.
+    reference = st.text_input("Ana dosya referansı nedir?", value="", help="Word içindeki Referans alanına yalnız bu ana dosya referansı yazılır.")
+    opinion_reference = st.text_input("Görüş referansı (çıktı dosyası için)", value="", key="gor_opinion_reference", help="Bu değer yalnız görüş Word dosyasının adında kullanılır; Word içindeki Referans metadata alanını değiştirmez.")
     applicant_override = st.text_input("Başvuru sahibi (raporda yoksa girin)", value="", key="gor_applicant")
-    default_opinion_output_name = "Response Letter_XXXXXX.docx" if _english_spec(opinion_language) else "Görüş Metni_XXXXXX.docx"
-    output_name = st.text_input("Çıktı dosyasının adı", value=default_opinion_output_name)
+    _opinion_name_ref = opinion_reference.strip() or reference.strip() or "XXXXXX"
+    output_name = (f"Response Letter_{_opinion_name_ref}.docx" if _english_spec(opinion_language) else f"Görüş Metni_{_opinion_name_ref}.docx")
+    st.caption(f"Metadata Referans = ana dosya referansı. Görüş referansı yalnız çıktı dosya adını belirler. Çıktı: {output_name}")
     opinion_extra_instruction = st.text_area(
         "Ek Talimat (varsa)",
         max_chars=MAX_EXTRA_INSTRUCTION_CHARS,
@@ -9118,6 +9307,8 @@ elif work_type == "Görüş hazırlama":
         "gorus_revision_history": [],
         "gorus_edit_revision": 0,
         "gorus_analysis_upload_signature": None,
+        "gorus_amendment_decision": None,
+        "gorus_amendment_refine_revision": 0,
     }.items():
         if key not in st.session_state:
             st.session_state[key] = default
@@ -9165,6 +9356,8 @@ elif work_type == "Görüş hazırlama":
                 st.session_state.gorus_revision_history = []
                 st.session_state.gorus_edit_revision = 0
                 st.session_state.gorus_analysis_upload_signature = None
+                st.session_state.gorus_amendment_decision = None
+                st.session_state.gorus_amendment_refine_revision = 0
             except Exception as exc:
                 st.exception(exc)
 
@@ -9192,6 +9385,7 @@ elif work_type == "Görüş hazırlama":
                 "report_type": report_type,
                 "language": opinion_language,
                 "reference": reference,
+                "opinion_reference": opinion_reference.strip(),
                 "applicant_override": applicant_override.strip(),
                 "required_docs": required_docs,
                 "extra_instruction": _normalize_extra_instruction(opinion_extra_instruction),
@@ -9213,11 +9407,15 @@ elif work_type == "Görüş hazırlama":
                 analysis = cached_analysis["analysis"]
                 source_state_cached = cached_analysis["source_state"]
                 validate_gorus_analysis(analysis, source_state_cached["spec_text"], source_state_cached.get("cust_text", ""))
+                if bool(analysis.get("amendment_required")):
+                    cached_amendment_audit = analysis.get("amendment_audit") or {}
+                    validate_amendment_audit(cached_amendment_audit, analysis)
                 st.session_state.gorus_analysis = analysis
                 st.session_state.gorus_source = source_state_cached
             else:
                 metric_context = ("gorus", str(analysis_upload_signature))
                 spec_bytes = spec_file.getvalue()
+                line_spec_name, line_spec_bytes = prepare_line_reference_source(spec_file.name, spec_bytes)
                 core_assets = [
                     UploadedAsset(report_file.name, report_file.getvalue(), report_file.type),
                     UploadedAsset(spec_file.name, spec_bytes, spec_file.type),
@@ -9253,12 +9451,46 @@ elif work_type == "Görüş hazırlama":
                     metric_stage="Görüş teknik analiz",
                     metric_context=metric_context,
                 )
-                validate_gorus_analysis(analysis, spec_text, customer_text)
+                validate_gorus_analysis(analysis, spec_text, cust_text)
+                if bool(analysis.get("amendment_required")):
+                    progress.progress(52, text="Önerilen istem revizyonu bağımsız denetimden geçiriliyor...")
+                    amendment_audit = ask_json(
+                        _with_extra_instruction(gorus_amendment_audit_prompt(
+                            report_text, spec_text, sim_text, cust_text, analysis
+                        ), opinion_extra_instruction),
+                        images=model_images,
+                        metric_stage="İstem revizyonu bağımsız denetimi",
+                        metric_context=metric_context,
+                    )
+                    try:
+                        validate_amendment_audit(amendment_audit, analysis)
+                    except Exception:
+                        progress.progress(63, text="Revizyon denetimi bulgularına göre öneri bir kez düzeltiliyor...")
+                        analysis = ask_json(
+                            _with_extra_instruction(gorus_amendment_repair_prompt(
+                                report_text, spec_text, sim_text, cust_text, analysis, amendment_audit
+                            ), opinion_extra_instruction),
+                            images=model_images,
+                            metric_stage="İstem revizyonu düzeltme turu",
+                            metric_context=metric_context,
+                        )
+                        validate_gorus_analysis(analysis, spec_text, cust_text)
+                        amendment_audit = ask_json(
+                            _with_extra_instruction(gorus_amendment_audit_prompt(
+                                report_text, spec_text, sim_text, cust_text, analysis
+                            ), opinion_extra_instruction),
+                            images=model_images,
+                            metric_stage="İstem revizyonu tekrar denetimi",
+                            metric_context=metric_context,
+                        )
+                        validate_amendment_audit(amendment_audit, analysis)
+                    analysis["amendment_audit"] = amendment_audit
                 source_state_cached = {
                     "report_type": report_type,
                     "opinion_case_mode": opinion_case_mode,
                     "language": opinion_language,
                     "reference": reference,
+                    "opinion_reference": opinion_reference.strip(),
                     "applicant_override": applicant_override.strip(),
                     "output_name": output_name,
                     "required_docs": required_docs,
@@ -9267,6 +9499,8 @@ elif work_type == "Görüş hazırlama":
                     "spec_text": spec_text,
                     "spec_name": spec_file.name,
                     "spec_bytes": spec_bytes,
+                    "line_spec_name": line_spec_name,
+                    "line_spec_bytes": line_spec_bytes,
                     "prior_text": prior_text,
                     "sim_text": sim_text,
                     "sim_assets": sim_assets,
@@ -9282,6 +9516,8 @@ elif work_type == "Görüş hazırlama":
                 st.session_state.gorus_source = source_state_cached
             st.session_state.gorus_markup_data = None
             st.session_state.gorus_clean_data = None
+            st.session_state.gorus_amendment_decision = None
+            st.session_state.gorus_amendment_refine_revision = 0
             st.session_state.gorus_final_spec_text = None
             st.session_state.gorus_opinion_data = None
             st.session_state.gorus_opinion_status = None
@@ -9321,28 +9557,185 @@ elif work_type == "Görüş hazırlama":
                 st.markdown(f"- {item}")
 
         amendment_required = bool(analysis.get("amendment_required"))
-        # v5.4.71: Normal görüş akışı mevcut istemlerle otomatik ilerler.
-        # Analizin revizyon önermesi görüş üretimini durdurmaz; istem revizyonu yalnız kullanıcının ayrıca açık talebiyle başlatılır.
         if amendment_required:
-            with st.expander("İsteğe bağlı istem revizyonu analizi", expanded=False):
-                st.caption("Bu öneri görüş üretimini durdurmaz. Mevcut istemlerle görüş otomatik hazırlanır. İstem revizyonu ancak ayrıca açıkça talep edilirse uygulanır.")
-                if analysis.get("amendment_reason"):
-                    st.write(analysis.get("amendment_reason"))
-                for idx, amendment in enumerate(analysis.get("amendments") or [], 1):
-                    claim_no = amendment.get("claim_number", "")
-                    st.markdown(f"**Revizyon {idx} – İstem {claim_no} (uygulanmadı)**")
-                    if amendment.get("basis_quote"):
-                        st.markdown("**Doğrudan tarifname dayanağı:**")
-                        st.code(amendment.get("basis_quote", ""), language=None)
-                    st.markdown("**Önerilen ifade:**")
-                    st.code(amendment.get("new_text", ""), language=None)
+            st.warning("İlk analizde istem revizyonu gerekli görülüyor. Görüşe geçmeden önce bağımsız revizyon denetimi ve kullanıcı karar kapısı zorunludur.")
+            audit = analysis.get("amendment_audit") or {}
+            validate_amendment_audit(audit, analysis)
+
+            objections = analysis.get("examiner_objections") or []
+            if objections:
+                st.markdown("### Uzman itirazları")
+                for obj in objections:
+                    claims = ", ".join(str(x) for x in (obj.get("claim_numbers") or []))
+                    st.markdown(f"**{obj.get('id','')} — İstem(ler) {claims}:** {obj.get('issue','')}")
+
+            st.markdown("### Önerilen istem revizyonu")
+            if analysis.get("selection_reason"):
+                st.caption(str(analysis.get("selection_reason")))
+            for idx, row in enumerate(amendment_ui_rows(analysis), 1):
+                st.markdown(f"**Revizyon {idx} — İstem {row['claim_number']}**")
+                st.write(row.get("reason") or "")
+                st.markdown("**Uzman itirazı bağlantısı:** " + (", ".join(row.get("addresses") or []) or "—"))
+                st.markdown("**Mevcut lokal ifade:**")
+                st.code(row.get("old_text") or "", language=None)
+                st.markdown("**Önerilen lokal ifade:**")
+                st.code(row.get("new_text") or "", language=None)
+                st.markdown(f"**Edit modu:** `{row.get('edit_mode') or ''}`")
+                if row.get("direct_support"):
+                    st.markdown("**Doğrudan as-filed dayanak(lar):**")
+                    for ds in row.get("direct_support") or []:
+                        st.write(f"• Ek teknik özellik: {ds.get('added_feature','')}")
+                        st.code(str(ds.get("basis_quote", "")), language=None)
+                st.write(f"**Açıklık etkisi:** {row.get('clarity_effect') or '—'}")
+                st.write(f"**Kapsam etkisi:** {row.get('scope_effect') or '—'}")
+                st.write(f"**D-doküman / önceki teknik etkisi:** {row.get('prior_art_effect') or '—'}")
+                st.write(f"**Kalan risk:** {row.get('remaining_risk') or '—'}")
+                atomic = row.get("atomic_operations") or []
+                if atomic:
+                    with st.expander(f"Revizyon {idx} atomik farkı", expanded=False):
+                        for op in atomic:
+                            kind = str(op.get("op", "")).upper()
+                            old_piece = str(op.get("old_text", ""))
+                            new_piece = str(op.get("new_text", ""))
+                            st.code(f"{kind}: -{old_piece!r} +{new_piece!r}", language=None)
+
+            st.success("Bağımsız Amendment Auditor: PASS")
+            if audit.get("overall_assessment"):
+                st.caption(str(audit.get("overall_assessment")))
+
+            refine_rev = int(st.session_state.get("gorus_amendment_refine_revision") or 0)
+            with st.expander("Revizyon önerisine müdahale et", expanded=False):
+                with st.form(f"gorus_amendment_refine_form_{refine_rev}", clear_on_submit=True):
+                    refine_instruction = st.text_area(
+                        "Revizyon talimatı",
+                        placeholder="Örn. Mevcut istem kelimelerini silme; yalnız şu dayanaklı özelliği uygun yere ekle.",
+                        height=100,
+                    )
+                    refine_submit = st.form_submit_button("Revizyon önerisini yeniden değerlendir", use_container_width=True)
+                if refine_submit:
+                    if not refine_instruction.strip():
+                        st.error("Revizyon talimatını yazın.")
+                    else:
+                        try:
+                            refine_progress = st.progress(0, text="Revizyon önerisi yeniden değerlendiriliyor...")
+                            revised_analysis = ask_json(
+                                _with_extra_instruction(gorus_revision_refine_prompt(
+                                    source_state["report_type"],
+                                    source_state["report_text"],
+                                    source_state["spec_text"],
+                                    source_state["prior_text"],
+                                    source_state["sim_text"],
+                                    source_state["cust_text"],
+                                    deepcopy(analysis),
+                                    refine_instruction.strip(),
+                                ), source_state.get("extra_instruction", "")),
+                                images=source_state.get("model_images") or [],
+                                metric_stage="İstem revizyonu kullanıcı düzeltmesi",
+                                metric_context=gorus_metric_context,
+                            )
+                            validate_gorus_analysis(revised_analysis, source_state["spec_text"], source_state.get("cust_text", ""))
+                            refine_progress.progress(55, text="Revize öneri bağımsız denetimden geçiriliyor...")
+                            revised_audit = ask_json(
+                                _with_extra_instruction(gorus_amendment_audit_prompt(
+                                    source_state["report_text"], source_state["spec_text"],
+                                    source_state["sim_text"], source_state["cust_text"], revised_analysis
+                                ), source_state.get("extra_instruction", "")),
+                                images=source_state.get("model_images") or [],
+                                metric_stage="İstem revizyonu kullanıcı düzeltmesi denetimi",
+                                metric_context=gorus_metric_context,
+                            )
+                            validate_amendment_audit(revised_audit, revised_analysis)
+                            revised_analysis["amendment_audit"] = revised_audit
+                            st.session_state.gorus_analysis = revised_analysis
+                            st.session_state.gorus_amendment_decision = None
+                            st.session_state.gorus_markup_data = None
+                            st.session_state.gorus_clean_data = None
+                            st.session_state.gorus_final_spec_text = None
+                            st.session_state.gorus_opinion_data = None
+                            st.session_state.gorus_opinion_status = None
+                            st.session_state.gorus_amendment_refine_revision = refine_rev + 1
+                            refine_progress.progress(100, text="Yeni revizyon önerisi hazır")
+                            st.rerun()
+                        except Exception as exc:
+                            st.exception(exc)
+
+            decision = st.session_state.get("gorus_amendment_decision")
+            c1, c2 = st.columns(2)
+            if c1.button("Önerilen istem revizyonunu uygula", type="primary", use_container_width=True, key="gor_apply_amendment"):
+                try:
+                    spec_name = str(source_state.get("spec_name") or "")
+                    raw = bytes(source_state.get("spec_bytes") or b"")
+                    suffix = Path(spec_name).suffix.lower()
+                    if suffix == ".doc":
+                        baseline_docx = legacy_doc_to_docx_bytes(raw, spec_name)
+                    elif suffix == ".docx":
+                        baseline_docx = raw
+                    else:
+                        raise ValueError("İstem revizyonu için kaynak tarifname Word (.doc/.docx) olmalıdır. PDF/TXT kaynak savunmada kullanılabilir ancak Track Changes üretilemez.")
+                    baseline_docx = prepare_review_baseline_docx(baseline_docx)
+                    validate_gorus_analysis(analysis, source_state["spec_text"], source_state.get("cust_text", ""))
+                    validate_amendment_audit(analysis.get("amendment_audit") or {}, analysis)
+                    markup, clean = build_claim_revision_pair(
+                        baseline_docx,
+                        analysis.get("amendments") or [],
+                        analysis.get("description_prior_art_updates") or [],
+                    )
+                    st.session_state.gorus_markup_data = markup
+                    st.session_state.gorus_clean_data = clean
+                    st.session_state.gorus_final_spec_text = docx_text(clean)
+                    st.session_state.gorus_amendment_decision = "apply"
+                    st.session_state.gorus_opinion_data = None
+                    st.session_state.gorus_opinion_status = None
+                    st.session_state.gorus_quality_report = None
+                    st.session_state.gorus_examiner_assessment = None
+                    st.session_state.gorus_opinion_json = None
+                    st.rerun()
+                except Exception as exc:
+                    st.exception(exc)
+            if c2.button("Mevcut istemlerle devam et", use_container_width=True, key="gor_keep_current_claims"):
+                st.session_state.gorus_amendment_decision = "current"
+                st.session_state.gorus_markup_data = None
+                st.session_state.gorus_clean_data = None
+                st.session_state.gorus_final_spec_text = source_state["spec_text"]
+                st.session_state.gorus_opinion_data = None
+                st.session_state.gorus_opinion_status = None
+                st.rerun()
+
+            decision = st.session_state.get("gorus_amendment_decision")
+            if decision == "apply" and st.session_state.gorus_markup_data and st.session_state.gorus_clean_data:
+                st.markdown("### Onaylanan istem revizyonu dosyaları")
+                compliant_download_button(
+                    "Track Changes tarifnameyi indir",
+                    data=st.session_state.gorus_markup_data,
+                    output_name=f"Düzenlenen_tarifname_track_changes_{source_state.get('reference') or 'XXXXXX'}.docx",
+                    default_name="Düzenlenen_tarifname_track_changes.docx",
+                    artifact_type="claim_amendment", checks={"atomic_plan": True, "amendment_integrity": True},
+                )
+                compliant_download_button(
+                    "Temiz tarifnameyi indir",
+                    data=st.session_state.gorus_clean_data,
+                    output_name=f"Düzenlenen_tarifname_temiz_{source_state.get('reference') or 'XXXXXX'}.docx",
+                    default_name="Düzenlenen_tarifname_temiz.docx",
+                    artifact_type="claim_amendment", checks={"atomic_plan": True, "amendment_integrity": True},
+                )
+                ready_to_generate = True
+                final_spec_text = st.session_state.gorus_final_spec_text or docx_text(st.session_state.gorus_clean_data)
+                revision_status = "Kullanıcı tarafından onaylanmış revize istem seti"
+                opinion_step = 3
+            elif decision == "current":
+                ready_to_generate = True
+                final_spec_text = source_state["spec_text"]
+                revision_status = "Kullanıcı revizyon önerisini görerek mevcut istem setiyle devam etti"
+                opinion_step = 3
+            else:
+                ready_to_generate = False
+                st.info("Görüş oluşturulmadan önce istem revizyonu kararını verin.")
         else:
             st.info(analysis.get("no_amendment_reason") or "İlk analizde istem revizyonu gerekli görülmedi. Mevcut istemlerle görüş hazırlanacaktır.")
-
-        ready_to_generate = True
-        final_spec_text = source_state["spec_text"]
-        revision_status = "Mevcut istem seti üzerinden otomatik revizyonsuz görüş"
-        opinion_step = 3
+            ready_to_generate = True
+            final_spec_text = source_state["spec_text"]
+            revision_status = "Mevcut istem seti üzerinden otomatik revizyonsuz görüş"
+            opinion_step = 3
 
         if ready_to_generate and final_spec_text:
             if not (st.session_state.gorus_opinion_data and st.session_state.gorus_opinion_status == revision_status):
@@ -9400,6 +9793,7 @@ elif work_type == "Görüş hazırlama":
                         )
                         if source_state.get("applicant_override"):
                             opinion["applicant"] = source_state["applicant_override"]
+                        opinion["reference"] = source_state.get("reference") or ""
                         validate_revision_amendment_section(
                             opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
                         )
@@ -9435,6 +9829,7 @@ elif work_type == "Görüş hazırlama":
                             )
                             if source_state.get("applicant_override"):
                                 opinion["applicant"] = source_state["applicant_override"]
+                            opinion["reference"] = source_state.get("reference") or ""
                             validate_revision_amendment_section(
                                 opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
                             )
@@ -9504,6 +9899,7 @@ elif work_type == "Görüş hazırlama":
                         )
                         if source_state.get("applicant_override"):
                             opinion["applicant"] = source_state["applicant_override"]
+                        opinion["reference"] = source_state.get("reference") or ""
                         validate_revision_amendment_section(
                             opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
                         )
@@ -9634,6 +10030,7 @@ elif work_type == "Görüş hazırlama":
                             )
                             if source_state.get("applicant_override"):
                                 revised_opinion["applicant"] = source_state["applicant_override"]
+                            revised_opinion["reference"] = source_state.get("reference") or ""
                             validate_revision_amendment_section(
                                 revised_opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
                             )
@@ -9771,6 +10168,7 @@ elif work_type == "Görüş hazırlama":
                             edited_opinion["conclusion"] = split_manual_opinion_paragraphs(manual_conclusion)
                             if source_state.get("applicant_override"):
                                 edited_opinion["applicant"] = source_state["applicant_override"]
+                            edited_opinion["reference"] = source_state.get("reference") or ""
                             validate_revision_amendment_section(
                                 edited_opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
                             )
@@ -9836,6 +10234,25 @@ elif work_type == "Görüş hazırlama":
             # v5.4.75: indirme anında bütün bağlayıcı görüş kapıları SON KEZ yeniden çalışır.
             _delivery_opinion = deepcopy(st.session_state.gorus_opinion_json or {})
             _delivery_spec_text = final_spec_text or source_state.get("spec_text") or ""
+            validate_opinion_reference_binding(_delivery_opinion, source_state.get("reference") or "")
+            validate_mandatory_spec_basis_coverage(_delivery_opinion)
+            if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
+                _delivery_final_spec_name = "son_markup_tarifname.docx"
+                _delivery_final_spec_bytes = bytes(st.session_state.gorus_markup_data)
+                _delivery_authority_name, _delivery_authority_bytes = prepare_line_reference_source(
+                    _delivery_final_spec_name, _delivery_final_spec_bytes
+                )
+                validate_line_reference_authority(_delivery_final_spec_name, _delivery_authority_name)
+            else:
+                _delivery_final_spec_name = str(source_state.get("spec_name") or "")
+                _delivery_authority_name = str(source_state.get("line_spec_name") or _delivery_final_spec_name)
+                _delivery_authority_bytes = source_state.get("line_spec_bytes") or source_state.get("spec_bytes") or b""
+                validate_line_reference_authority(_delivery_final_spec_name, _delivery_authority_name)
+            _delivery_line_index = build_page_line_index(_delivery_authority_name, _delivery_authority_bytes)
+            validate_quote_locations_against_spec(
+                _delivery_opinion, _delivery_authority_name, _delivery_authority_bytes,
+                source_state.get("language") or "Türkçe", page_line_index=_delivery_line_index,
+            )
             validate_revision_amendment_section(_delivery_opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize"))
             validate_quotes(_delivery_opinion, _delivery_spec_text)
             validate_opinion_against_raw_sources(
@@ -9857,7 +10274,7 @@ elif work_type == "Görüş hazırlama":
                 output_name=source_state.get("output_name") or output_name,
                 default_name="Response Letter.docx" if _english_spec(source_state.get("language") or opinion_language) else "Görüş Metni.docx",
                 artifact_type="gorus",
-                checks={"raw_sources": True, "quotes": True, "template": True, "content_flow": True, "render": True, "examiner": True},
+                checks={"raw_sources": True, "quotes": True, "exact_physical_lines": True, "reference_binding": True, "spec_basis_coverage": True, "template": True, "content_flow": True, "render": True, "examiner": True},
                 type="primary", use_container_width=True,
             )
 

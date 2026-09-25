@@ -25,9 +25,9 @@ def _response(*, input_tokens=100_000, cached=20_000, cache_write=10_000, output
 
 
 def test_release_version_and_manifest_include_cache_helper():
-    assert APP_VERSION == "v5.4.75"
-    assert RULESET_VERSION == "2026-09-22.v67"
-    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.75")
+    assert APP_VERSION == "v5.4.77"
+    assert RULESET_VERSION == "2026-09-25.v69"
+    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.77")
     manifest = (ROOT / "REPO_FILE_MANIFEST.txt").read_text(encoding="utf-8").splitlines()
     assert "ai_cache.py" in manifest
     assert "test_v5456_tarifname_prompt_cache.py" in manifest

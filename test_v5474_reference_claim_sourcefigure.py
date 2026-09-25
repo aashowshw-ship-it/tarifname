@@ -237,7 +237,7 @@ def test_epo_pct_clarity_prompt_says_do_not_block_delivery_and_comment_at_issue(
     assert "Yeni teknik bilgi" in prompt
 
 
-# v5.4.75 — central final compliance gate regressions
+# v5.4.77 — central final compliance gate regressions
 
 def _tiny_docx_bytes(text="x"):
     import io
@@ -247,7 +247,7 @@ def _tiny_docx_bytes(text="x"):
 
 def test_final_compliance_gate_decodes_url_name_and_preserves_gorus_spaces():
     from rules import final_compliance_gate
-    checks={"raw_sources":True,"quotes":True,"template":True,"content_flow":True,"render":True,"examiner":True}
+    checks={"raw_sources":True,"quotes":True,"spec_basis_coverage":True,"reference_binding":True,"exact_physical_lines":True,"template":True,"content_flow":True,"render":True,"examiner":True}
     name=final_compliance_gate("gorus", data=_tiny_docx_bytes(), output_name="G%C3%B6r%C3%BC%C5%9F%20Metni_700286.docx", default_name="Görüş Metni.docx", checks=checks)
     assert name == "Görüş Metni_700286.docx"
     assert "%" not in name
@@ -256,7 +256,7 @@ def test_final_compliance_gate_decodes_url_name_and_preserves_gorus_spaces():
 def test_final_compliance_gate_missing_single_receipt_is_fail_closed():
     from rules import final_compliance_gate
     import pytest
-    checks={"raw_sources":True,"quotes":True,"template":True,"content_flow":True,"render":True,"examiner":False}
+    checks={"raw_sources":True,"quotes":True,"spec_basis_coverage":True,"reference_binding":True,"exact_physical_lines":True,"template":True,"content_flow":True,"render":True,"examiner":False}
     with pytest.raises(ValueError, match="examiner"):
         final_compliance_gate("gorus", data=_tiny_docx_bytes(), output_name="Görüş Metni_1.docx", default_name="x.docx", checks=checks)
 

@@ -48,8 +48,8 @@ def extracted():
 
 
 def test_versions():
-    assert APP_VERSION == 'v5.4.75'
-    assert RULESET_VERSION == '2026-09-22.v67'
+    assert APP_VERSION == 'v5.4.77'
+    assert RULESET_VERSION == '2026-09-25.v69'
 
 
 def test_title_case_normalization():

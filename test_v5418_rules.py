@@ -39,3 +39,59 @@ def test_reference_alias_is_rejected():
     d["detailed_paragraphs"]=["İHA (1) ile ilişki kurulmaktadır."]
     findings=validate_draft(d)
     assert any(x.get("level")=="Hata" and "Referans (1)" in x.get("message","") for x in findings)
+
+# ---- merged verbatim test logic from test_v5419_three_gates.py ----
+def errors(d):
+    return [x.get('message','') for x in validate_draft(d) if x.get('level') == 'Hata']
+
+
+def test_passive_database_rejected_from_common_software_carrier():
+    d = base_draft()
+    d['elements'].append({'number':'4','name':'TCP profil veritabanı','description':'Her slice için TCP profillerini tutar.'})
+    d['system_claim']['elements'][1]['subelements'].append('TCP profillerini tutan TCP profil veritabanı (4),')
+    assert any('pasif/veri taşıyan' in m for m in errors(d))
+
+
+def test_dependent_system_claim_bulunmasidir_rejected():
+    d = base_draft()
+    d['dependent_system_claims'] = ["İstem 1’e uygun sistem olup, özelliği; TCP profilinin veritabanında bulunmasıdır."]
+    assert any('yanlış eylem/işlem sonuyla' in m or 'olmasıdır' in m for m in errors(d))
+
+
+def test_missing_reference_in_method_step_is_rejected():
+    d = base_draft()
+    d['method_steps'] = [{'number':'1001','text':'İnsansız hava aracından alınan verilerin toplanması'}]
+    d['method_claim'] = {'preamble':'Bir yöntem','steps':['İnsansız hava aracından alınan verilerin toplanması (1001)'], 'closing':'işlem adımlarını içermesidir.'}
+    assert any('referansını taşımıyor' in m for m in errors(d))
+
+
+def test_reference_present_in_method_step_is_allowed_for_presence_gate():
+    d = base_draft()
+    d['method_steps'] = [{'number':'1001','text':'İnsansız hava aracından (1) alınan verilerin toplanması'}]
+    d['method_claim'] = {'preamble':'Bir yöntem','steps':['İnsansız hava aracından (1) alınan verilerin toplanması (1001)'], 'closing':'işlem adımlarını içermesidir.'}
+    msgs = errors(d)
+    assert not any('referansını taşımıyor' in m for m in msgs)
+
+# ---- merged verbatim test logic from test_v5420_five_gates.py ----
+def errors(d):
+    return [x.get('message','') for x in validate_draft(d) if x.get('level') == 'Hata']
+
+
+def test_generic_unsur_in_claim_is_rejected():
+    d=base_draft()
+    d['dependent_system_claims']=["İstem 1’e uygun sistem olup, özelliği; antenlerin (1), bir unsur olmasıdır."]
+    assert any("belirsiz 'unsur'" in m for m in errors(d))
+
+
+def test_method_step_noun_ending_is_rejected():
+    d=base_draft()
+    d['method_steps']=[{'number':'1001','text':'İnsansız hava aracının (1) takibi'}]
+    d['method_claim']={'preamble':'Bir yöntem','steps':['İnsansız hava aracının (1) takibi (1001)'],'closing':'işlem adımlarını içermesidir.'}
+    assert any('gerçek bir işlem fiilimsisiyle bitmiyor' in m for m in errors(d))
+
+
+def test_method_step_action_ending_is_allowed():
+    d=base_draft()
+    d['method_steps']=[{'number':'1001','text':'İnsansız hava aracının (1) takibinin yapılması'}]
+    d['method_claim']={'preamble':'Bir yöntem','steps':['İnsansız hava aracının (1) takibinin yapılması (1001)'],'closing':'işlem adımlarını içermesidir.'}
+    assert not any('gerçek bir işlem fiilimsisiyle bitmiyor' in m for m in errors(d))

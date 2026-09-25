@@ -31,8 +31,8 @@ def _opinion():
 
 
 def test_version_bumped():
-    assert APP_VERSION == "v5.4.75"
-    assert RULESET_VERSION == "2026-09-22.v67"
+    assert APP_VERSION == "v5.4.77"
+    assert RULESET_VERSION == "2026-09-25.v69"
 
 
 def test_binding_title_paragraphs_are_centered_and_gate_enforces_it():
@@ -58,17 +58,18 @@ def test_internal_uppercase_how_label_is_rejected_but_natural_lowercase_is_allow
         validate_opinion_narrative_rules(op, "buluş basamağı", "teknik katkı teknik etki objektif teknik problem motivasyon")
 
 
-def test_normal_flow_is_automatic_and_pre_generation_claim_revision_decision_is_not_blocking():
+def test_normal_flow_is_automatic_only_when_no_claim_amendment_is_required():
     app = (ROOT / "app.py").read_text(encoding="utf-8")
     assert 'revision_status = "Mevcut istem seti üzerinden otomatik revizyonsuz görüş"' in app
     assert 'if not (st.session_state.gorus_opinion_data and st.session_state.gorus_opinion_status == revision_status):' in app
-    assert 'st.radio(\n                "İstem revizyonu kararı"' not in app
-    assert 'st.button(f"{opinion_step}. Görüş metnini oluştur"' not in app
+    assert '"Önerilen istem revizyonunu uygula"' in app
+    assert '"Mevcut istemlerle devam et"' in app
+    assert 'ready_to_generate = False' in app
     assert "### Görüşü revize et" in app
 
 
-def test_rules_require_auto_flow_and_internal_label_gate():
-    assert "GÖRÜŞ OTOMATİK AKIŞ KAPISI" in GORUS_RULES
+def test_rules_require_amendment_decision_gate_and_internal_label_gate():
+    assert "GÖRÜŞ AKIŞ / İSTEM REVİZYONU KARAR KAPISI" in GORUS_RULES
     assert "NİHAİ GÖRÜŞ İÇ-SÜREÇ ETİKETİ KAPISI" in GORUS_RULES
     assert "GÖRÜŞ KURUM BAŞLIĞI HİZALAMA KAPISI" in GORUS_RULES
 

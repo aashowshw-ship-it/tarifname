@@ -5,8 +5,8 @@ ROOT = Path(__file__).resolve().parent
 
 def test_version_and_rules():
     from rules import APP_VERSION, RULESET_VERSION, GORUS_RULES
-    assert APP_VERSION == "v5.4.75"
-    assert RULESET_VERSION == "2026-09-22.v67"
+    assert APP_VERSION == "v5.4.77"
+    assert RULESET_VERSION == "2026-09-25.v69"
     low = GORUS_RULES.casefold()
     assert "savunma dokümanları görülmeden" in low
     assert "yapılan değişiklikler ve dayanakları" in low
@@ -22,7 +22,7 @@ def test_prompt_and_builder_order_contract():
         assert 'wrapper.set(qn("w:author"), "Destek Patent")' in src
         build_pos = src.index('amendment = opinion.get("amendment_assessment") or {}', src.index('def build_gorus_docx'))
         docs_pos = src.index('docs = opinion.get("cited_documents") or []', src.index('def build_gorus_docx'))
-        assert build_pos < docs_pos
+        assert docs_pos < build_pos
 
 def test_revision_author_is_destek_patent():
     from app_core import _append_revision

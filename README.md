@@ -1,4 +1,25 @@
-# Patent Atölyesi v5.4.75
+# Patent Atölyesi v5.4.77
+
+
+## v5.4.77 / 2026-09-25 — Atomik istem revizyonu, insertion-first ve bağımsız revizyon denetimi
+
+- Teknik istem revizyonunda varsayılan işlem **INSERT**tir. Mevcut istem dili korunabiliyorsa cümle/ibare topluca silinip yeniden yazılamaz. DELETE/REPLACE yalnız gerçekten zorunluysa, somut gerekçe ve uzman-itiraz kimliği ile kullanılabilir.
+- İlk analiz her maddi uzman itirazını `OBJ-1`, `OBJ-2`... olarak envanterler. Her teknik revizyon hangi itirazı giderdiğini, açıklık etkisini, kapsam etkisini, önceki teknik karşısındaki etkisini ve kalan riski açıkça taşır.
+- İsteme eklenen her teknik özellik yalnız as-filed tarifname/istemden **doğrudan birebir dayanak** alır. Müşteri görüş formu ve D1/D2 savunmayı besler ancak istem değişikliğinin as-filed dayanağı değildir.
+- Birden fazla güvenli aday varsa arka planda karşılaştırılır; seçim önceliği `itirazı karşılama → doğrudan dayanak → en az metinsel müdahale → gereksiz daraltmadan kaçınma → açıklık` şeklindedir.
+- Revizyon önerisi bağımsız **Amendment Auditor** tarafından tekrar kontrol edilir. Doğrudan dayanak, itirazı gerçekten karşılama, minimum edit/insertion-first, yeni belirsizlik, kapsam etkisi ve kalan risk PASS değilse Markup/Temiz üretilemez.
+- Yapay zekâ OOXML Track Changes üretmez. Onaylı old_text/new_text farkı deterministik kodla atomik `INSERT/DELETE/REPLACE` işlemlerine ayrılır. Üçlü bütünlük kapısı `kaynak = Markup reddedilmiş görünüm`, `Temiz = Markup kabul edilmiş görünüm`, `redline = onaylı atomik plan` eşitliklerini zorunlu tutar.
+- Analiz revizyon gerektirmiyorsa görüş mevcut istemlerle otomatik ilerler. Analiz revizyon gerektiriyorsa kullanıcı **Önerilen istem revizyonunu uygula** veya **Mevcut istemlerle devam et** kararlarından birini vermeden görüş oluşturulmaz. Revizyon uygulanırsa eski görüş/cache geçersizleşir ve görüş son Markup üzerinden yeniden hazırlanır.
+- Görüş görünür sırası `giriş → D1/D2/... bibliyografik satırlar → İstemlerde Yapılan Değişiklikler ve Dayanakları → D savunmaları → sonuç` şeklindedir. Resmi görüşte `minimum ölçüde değiştirilmiştir` gibi iç süreç/meta ifadeleri kullanılmaz.
+
+
+## v5.4.76 / 2026-09-25 — Görüş referans/dayanak ve kesin fiziksel satır kapısı
+
+- Görüş metadata alanındaki **Referans** yalnız `Ana dosya referansı`ndan gelir. Ayrı `Görüş referansı` yalnız teslim edilen dosya adını belirler. JSON/Word metadata ana referansla birebir uyuşmazsa indirme fail-closed durur.
+- Esas teknik savunma tarifname dayanağı olmadan teslim edilemez. Her X esas savunmasında ve her gerçek Y/kombinasyon `Birlikte Değerlendirildiğinde` grubunda en az bir birebir tarifname alıntısı zorunludur; bu kapsama kapısı final indirmede yeniden çalışır.
+- Sayfa/satır atfı alıntının **ilk karakterinin bulunduğu ilk fiziksel satırdan** başlayıp **son karakterinin bulunduğu son fiziksel satırda** biter. Yaklaşık aralık, paragraf başlangıcı, varsayılan pitch veya en yakın satır tahmini yasaktır.
+- Kullanıcıdan ayrıca sayfa/satır doğrulama PDF'si istenmez. Tarifname PDF ise doğrudan kullanılır; DOC/DOCX/TXT ise aynı yüklenen dosya uygulama tarafından arka planda PDF'ye çevrilir. Sayfa/satır kapısı bu iç PDF üzerinden çalışır; fiziksel satır grid'i deterministik çözülemiyorsa görüş üretimi yine fail-closed durur.
+- İlk analiz istem revizyonu gerekli/gereksiz sonucunu açıkça gösterir. v5.4.77 ile revizyon gerekli ise bağımsız revizyon denetimi ve kullanıcı karar kapısı çalışır; revizyon gerekmiyorsa görüş mevcut istemlerle otomatik ilerler. Revize nihai Word/Markup için eski doğrulama PDF'si kullanılamaz.
 
 ## v5.4.75 / 2026-09-22 — Tek merkezi final compliance gate + gerçek dosya adı kapısı
 
@@ -40,7 +61,7 @@
 
 - Görüşün ilk iki kurum/belge başlığı artık şablondaki merkez hizasını dinamik içerikte de korur; Word teslim kapısı hizayı deterministik olarak tekrar doğrular.
 - `NASIL`, `uzman-NASIL`, `kalite kapısı`, `ikinci okuma`, `ham kaynaklara karşı` gibi iç QA/çalışma etiketlerinin nihai görüş metnine sızması hem JSON hem Word aşamasında fail-closed reddedilir. Normal cümle içindeki küçük harfli `nasıl` kullanımı yasak değildir.
-- Gerekli kaynaklar hazır olduğunda görüş mevcut istemlerle otomatik üretilir. Analizde istem revizyonu önerisi bulunması normal görüş akışını durdurmaz. İstem revizyonu yalnız kullanıcının ayrıca açık talebiyle yürütülür. Word üretiminden sonraki ilk revizyon etkileşimi `Görüşü revize et` alanıdır.
+- **Tarihsel davranış (v5.4.71):** gerekli kaynaklar hazır olduğunda istem revizyonu önerisi akışı durdurmuyordu. **v5.4.77 bu davranışı yürürlükten kaldırmıştır:** revizyon gerekli ise bağımsız Amendment Auditor + açık kullanıcı karar kapısı zorunludur; revizyon gerekmiyorsa görüş otomatik ilerler.
 - Promptlarda kullanıcıya sızabilecek `NASIL ilişkisi` iç etiketi doğal patent diliyle `teknik işlevsel ilişkinin nasıl kurulduğu` biçimine çevrildi.
 
 
@@ -146,17 +167,16 @@ Görüş hazırlama başlangıcında tam dört çalışma türü vardır ve sır
 
 Görüş bölümü artık doğrudan Word üretmez.
 
-1. Dosyalar yüklenir.
-2. **1. Raporu analiz et** çalıştırılır.
-3. Sistem rapordaki itirazları, önceki görüşü, tarifnameyi, X/Y dokümanlarını ve varsa müşteri bilgisini birlikte analiz eder.
-4. İstem revizyonu gerekmiyorsa mevcut istemlerle **Görüş metnini oluştur** düğmesi açılır.
-5. Revizyon gerekiyorsa önce istem bazında öneriler gösterilir: istem no, gerekçe, tarifname dayanağı, mevcut ifade, önerilen ifade.
-6. Kullanıcı isterse revizyon önerilerini ek talimatla yeniden analiz ettirir.
+1. Dosyalar yüklenir. Tarifname PDF veya Word/DOC/DOCX/TXT olarak tek dosya halinde yüklenir; Word türlerinde gerekli sayfa/satır PDF'si arka planda otomatik üretilir.
+2. **1. Raporu analiz et** çalıştırılır ve savunmada gerçekten gerekli X/Y veya gerekçede kullanılan dokümanlar belirlenir.
+3. Gerekli dokümanlar yüklenince sistem raporu, önceki görüşü, tarifnameyi, müşteri bilgisini ve savunma dokümanlarını birlikte analiz eder.
+4. İlk analiz **istem revizyonu gerekli / gerekli değil** sonucunu arayüzde açıkça gösterir.
+5. Bu sonuç normal görüş akışını durdurmaz. Gerekli kaynaklar hazır olduğunda görüş **mevcut istemlerle otomatik hazırlanır**. Kullanıcıdan ayrıca `revizyonsuz devam et` onayı veya ikinci bir oluşturma düğmesi beklenmez.
+6. İstem revizyonu yalnız kullanıcı açıkça isterse ayrı alt akışta ele alınır. O alt akışta istem no, gerekçe, tarifname dayanağı, mevcut ifade ve önerilen ifade gösterilir; kapsam aşımı yapılmaz.
 7. Kullanıcı revizyonu onaylarsa `.docx` kaynak tarifname üzerinde iki çıktı üretilir:
    - gerçek OOXML Track Changes içeren `Düzenlenen_tarifname_track_changes_<referans>.docx`
    - kabul edilmiş değişiklikleri içeren `Düzenlenen_tarifname_temiz_<referans>.docx`
-8. Kullanıcı revize istemleri son kez onayladıktan sonra görüş Word dosyası oluşturulur.
-9. Kullanıcı revizyon önerisini gördükten sonra açıkça revizyonsuz devam etmeyi de seçebilir.
+8. Revize istem/tarifname görüşte kullanılacaksa sayfa/satır PDF'si revize nihai Word/Markup dosyasından arka planda yeniden üretilir; eski PDF/indeks yeniden kullanılamaz.
 
 Track Changes, bütün istem paragrafını silip yeniden eklemek yerine mümkün olan en küçük ifade/kelime düzeyinde uygulanır.
 
@@ -240,7 +260,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-09-08.v46`
+Kural sürümü: `2026-09-25.v69`
 
 ## Yerel çalıştırma
 
@@ -432,7 +452,7 @@ Buluş basamağı itirazında ana ikna bölümü, uzmanın gerekçede fiilen kul
 ## v5.4.33 — Görüş revizyon sırası, dayanak bölümü ve Destek Patent markup yazarı (26.08.2026)
 
 - Görüşte istem değişikliği kararı artık bağlayıcı olarak rapor, tarifname/istemler, gerekli X/Y veya gerekçede kullanılan önceki teknik dokümanlar, varsa önceki görüş ve müşteri bilgisinin birlikte analizinden sonra verilir.
-- Kullanıcı revizyonu onayladıysa görüş metninde önce **İstemlerde Yapılan Değişiklikler ve Dayanakları** bölümü üretilir. Değişiklik gerekçeleri ve birebir tarifname dayanakları burada verilir, X/Y/D savunmaları daha sonra başlar.
+- Kullanıcı revizyonu onayladıysa girişin ardından önce **D1/D2/... bibliyografik satırlar**, sonra **İstemlerde Yapılan Değişiklikler ve Dayanakları** bölümü üretilir. Değişiklik gerekçeleri ve birebir tarifname dayanakları burada verilir, X/Y/D esas savunmaları daha sonra başlar.
 - Bu değişiklik dayanaklarının sayfa/satır numaraları da revizyonlu dosyada son Markup fiziksel render'ından alınır.
 - `bileşen/modül/mekanizma` gibi mevcut fonksiyonel taşıyıcılar sırf açıklık itirazı bulunduğu için otomatik silinmez. Açık dayanak varsa minimum değişiklikle korunur ve yalnız gerektiği kadar somutlaştırılır.
 - Yöntem bağımlı istemlerinde sonuç-odaklı kapanışlar, kaynak desteklediğinde `... işlem adımını/adımlarını içermesidir` yöntem diline dönüştürülür. Yeni teknik bilgi eklenmez.

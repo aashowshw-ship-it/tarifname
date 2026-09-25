@@ -6,7 +6,7 @@ import re
 import subprocess
 import tempfile
 import zipfile
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from pathlib import Path
 from threading import RLock
 from typing import Any, Iterable
@@ -219,8 +219,8 @@ def _to_pdf_bytes(filename: str, data: bytes) -> bytes:
     suffix = Path(filename).suffix.lower()
     if suffix == ".pdf":
         return data
-    if suffix not in {".doc", ".docx"}:
-        raise ValueError("Sayfa/satır doğrulaması için tarifname PDF, DOC veya DOCX olmalıdır.")
+    if suffix not in {".doc", ".docx", ".txt"}:
+        raise ValueError("Sayfa/satır doğrulaması için tarifname PDF, DOC, DOCX veya TXT olmalıdır.")
     with tempfile.TemporaryDirectory() as td:
         td_path = Path(td)
         src = td_path / Path(filename).name
@@ -262,20 +262,51 @@ def _page_lines(page: fitz.Page) -> list[dict[str, Any]]:
     return lines
 
 
-def build_page_line_index(filename: str, data: bytes) -> list[dict[str, Any]]:
-    """Build or reuse the deterministic physical page/line index for a specification.
+def prepare_line_reference_source(spec_filename: str, spec_bytes: bytes) -> tuple[str, bytes]:
+    """Return the physical page/line source without asking the user for a second file.
 
-    Patent specification templates commonly print every fifth line in the left
-    margin. We anchor to those numbers and interpolate the intervening rendered
-    text lines. The result is cached only by file type + SHA-256 of the exact source
-    bytes; any content change forces a fresh physical render.
+    PDF specifications are used directly. DOC/DOCX/TXT specifications are converted
+    server-side from the exact uploaded bytes and the generated PDF is then used by
+    the deterministic page/line gate.
     """
+    suffix = Path(str(spec_filename or "")).suffix.lower()
+    if suffix == ".pdf":
+        return str(spec_filename), bytes(spec_bytes)
+    pdf_bytes = _to_pdf_bytes(str(spec_filename), bytes(spec_bytes))
+    stem = Path(str(spec_filename or "Tarifname")).stem or "Tarifname"
+    return f"{stem}__internal_page_line.pdf", pdf_bytes
+
+
+def validate_line_reference_authority(spec_filename: str, line_source_filename: str) -> None:
+    """Validate the physical-page source used by opinion page/line citations.
+
+    The UI never asks the user for a separate verification PDF. If the specification
+    is Word/DOC/DOCX/TXT, the application converts the exact uploaded file to PDF in
+    the background. The downstream anchor/grid checks remain fail-closed.
+    """
+    if Path(str(line_source_filename or "")).suffix.lower() != ".pdf":
+        raise ValueError(
+            "Görüş fiziksel satır kapısı: sayfa/satır doğrulama kaynağı PDF olmalıdır; "
+            "Word kaynaklarda bu PDF uygulama tarafından arka planda otomatik üretilir."
+        )
+
+def build_page_line_index(filename: str, data: bytes) -> list[dict[str, Any]]:
+    """Build/reuse an exact physical page/line index from an authoritative PDF.
+
+    The printed 5/10/15... line-number anchors on the PDF are the only accepted
+    geometry authority.  No default pitch, paragraph approximation, nearest-page
+    estimate, or DOC/DOCX renderer correction is allowed.  Pages that cannot be
+    resolved from real printed anchors remain unnumbered and any quote touching
+    such a page fails closed in the downstream locator.
+    """
+    validate_line_reference_authority(filename, filename)
     cached = _cached_page_line_index(filename, data)
     if cached is not None:
         return cached
 
-    pdf = fitz.open(stream=_to_pdf_bytes(filename, data), filetype="pdf")
-    indexed: list[dict[str, Any]] = []
+    pdf = fitz.open(stream=data, filetype="pdf")
+    page_records: list[dict[str, Any]] = []
+    global_pitches: list[float] = []
     for page_no, page in enumerate(pdf, start=1):
         raw = _page_lines(page)
         width = float(page.rect.width)
@@ -287,39 +318,64 @@ def build_page_line_index(filename: str, data: bytes) -> list[dict[str, Any]]:
             if m and line["x0"] < width * 0.22 and int(m.group(1)) % 5 == 0:
                 anchors.append((int(m.group(1)), (line["y0"] + line["y1"]) / 2))
             else:
-                # Header page number at top center is not part of line-numbered body.
+                # Page numbers/header numerals are not body lines.
                 if re.fullmatch(r"\d+", t) and line["y0"] < 90:
                     continue
                 body.append(line)
-        if not anchors:
-            # No printed line numbers. Preserve page structure but mark line unknown.
-            for line in body:
-                indexed.append({"page": page_no, "line": None, "text": line["text"], "y": line["y0"]})
-            continue
-        # Word line numbering also counts blank rendered lines. Therefore an every-fifth
-        # printed number can sit on a blank baseline. Infer the vertical line grid from
-        # the printed anchors instead of snapping anchors only to text lines.
-        pitches: list[float] = []
+        local_pitches: list[float] = []
         a_sorted = sorted(anchors, key=lambda x: x[0])
         for (n1, y1), (n2, y2) in zip(a_sorted, a_sorted[1:]):
             if n2 > n1 and y2 > y1:
-                pitches.append((y2 - y1) / float(n2 - n1))
+                value = (y2 - y1) / float(n2 - n1)
+                if value > 0:
+                    local_pitches.append(value)
+                    global_pitches.append(value)
+        page_records.append({"page": page_no, "anchors": anchors, "body": body, "pitches": local_pitches})
+
+    if not global_pitches:
+        raise ValueError(
+            "Görüş fiziksel satır kapısı: PDF üzerinde gerçek basılı satır numarası grid'i doğrulanamadı. "
+            "Yaklaşık satır numarası üretilemez."
+        )
+    global_pitches.sort()
+    global_pitch = float(global_pitches[len(global_pitches) // 2])
+
+    indexed: list[dict[str, Any]] = []
+    for rec in page_records:
+        page_no = int(rec["page"])
+        anchors = list(rec["anchors"])
+        body = list(rec["body"])
+        if not anchors:
+            for line in body:
+                indexed.append({"page": page_no, "line": None, "text": line["text"], "y": line["y0"]})
+            continue
+
+        pitches = list(rec["pitches"])
         if pitches:
             pitches.sort()
-            pitch = pitches[len(pitches)//2]
+            pitch = float(pitches[len(pitches) // 2])
         else:
-            # Typical 11-pt / 1.5-spaced patent template fallback.
-            pitch = 17.5
+            # A page with one real anchor may reuse the median pitch proven by other
+            # pages of the same authoritative PDF.  This is geometry reuse, not a guess.
+            pitch = global_pitch
+
         for line in body:
             y = (line["y0"] + line["y1"]) / 2
             n0, y0 = min(anchors, key=lambda a: abs(a[1] - y))
-            line_no = int(n0 + round((y - y0) / max(1.0, pitch)))
-            if line_no < 1 or line_no > 80:
+            delta = (y - y0) / pitch
+            nearest = round(delta)
+            # Physical lines must sit on the proven line grid. If the centre is too far
+            # from a grid line, do not coerce it to a line number.
+            if abs(delta - nearest) > 0.28:
                 line_no = None
+            else:
+                line_no = int(n0 + nearest)
+                if line_no < 1 or line_no > 80:
+                    line_no = None
             indexed.append({"page": page_no, "line": line_no, "text": line["text"], "y": line["y0"]})
+
     _store_page_line_index(filename, data, indexed)
     return [dict(row) for row in indexed]
-
 
 def _iter_quote_objects_with_context(opinion: dict[str, Any]):
     """Yield (quote, immediately preceding narrative text) in document order."""
@@ -341,6 +397,24 @@ def _iter_quote_objects_with_context(opinion: dict[str, Any]):
                 prev_text = str(block.get("text", "") or "")
         for quote in section.get("quotes") or []:  # legacy schema compatibility
             yield quote, prev_text
+    combined = opinion.get("combined_assessment") or {}
+    for group in combined.get("groups") or []:
+        if not isinstance(group, dict):
+            continue
+        prev_text = ""
+        for block in group.get("blocks") or []:
+            typ = str(block.get("type", "")).lower()
+            if typ == "quote":
+                yield block, prev_text
+            elif typ == "paragraph":
+                prev_text = str(block.get("text", "") or "")
+    prev_text = ""
+    for block in combined.get("blocks") or []:  # legacy single combined-assessment compatibility
+        typ = str(block.get("type", "")).lower()
+        if typ == "quote":
+            yield block, prev_text
+        elif typ == "paragraph":
+            prev_text = str(block.get("text", "") or "")
 
 
 def _iter_quote_objects(opinion: dict[str, Any]):
@@ -407,6 +481,62 @@ def validate_quote_semantic_boundaries(
                 "Görüş tarifname alıntı başlangıç kapısı: birebir dayanak tam bir cümle veya kaynakta açık madde/list başlangıcından başlamıyor. "
                 f"Alıntı başlangıcı: {text[:90]}"
             )
+
+
+def validate_mandatory_spec_basis_coverage(opinion: dict[str, Any]) -> None:
+    """Fail closed when a substantive opinion defence lacks verbatim specification basis.
+
+    v5.4.76: A source quote being *allowed* is not enough. At least one exact quote is
+    mandatory in every substantive X defence and every real Y/combination defence.
+    For office-action modes without X/Y categories, at least one exact specification quote
+    is required whenever substantive defence text is present.
+    """
+    docs = opinion.get("cited_documents") or []
+    category_by_label: dict[str, str] = {}
+    for d in docs:
+        label = str(d.get("label", "")).strip().upper()
+        raw = str(d.get("category", "")).strip().upper()
+        parsed = _parse_xy_category_marker(raw) if raw else None
+        category_by_label[label] = parsed[0] if parsed else raw
+
+    total_quotes = sum(1 for q in _iter_quote_objects(opinion) if _norm(q.get("text", "")))
+    substantive = bool(_norm(_combined_assessment_text(opinion)))
+    substantive = substantive or any(_section_model_paragraphs(sec) for sec in (opinion.get("sections") or []))
+
+    for sec in opinion.get("sections") or []:
+        label = str(sec.get("label", "")).strip().upper()
+        if category_by_label.get(label) != "X":
+            continue
+        has_defence = bool(_section_model_paragraphs(sec))
+        has_quote = any(str(b.get("type", "")).lower() == "quote" and _norm(b.get("text", "")) for b in (sec.get("blocks") or []))
+        has_quote = has_quote or any(_norm(q.get("text", "")) for q in (sec.get("quotes") or []))
+        if has_defence and not has_quote:
+            raise ValueError(f"Görüş tarifname-dayanak kapısı: {label} esas savunmasında birebir tarifname dayanağı zorunludur.")
+
+    for group in _combined_assessment_groups(opinion):
+        if not (_norm(group.get("heading", "")) or group.get("paragraphs")):
+            continue
+        blocks = group.get("blocks") or []
+        has_quote = any(str(b.get("type", "")).lower() == "quote" and _norm(b.get("text", "")) for b in blocks)
+        if not has_quote:
+            raise ValueError(
+                "Görüş tarifname-dayanak kapısı: gerçek birlikte değerlendirme savunmasında "
+                "en az bir birebir tarifname dayanağı zorunludur."
+            )
+
+    if substantive and total_quotes == 0:
+        raise ValueError("Görüş tarifname-dayanak kapısı: esas teknik savunmada hiç birebir tarifname dayanağı yok; Word üretilemez.")
+
+
+def validate_opinion_reference_binding(opinion: dict[str, Any], main_reference: str) -> None:
+    expected = _norm(main_reference)
+    actual = _norm(opinion.get("reference", ""))
+    if not expected:
+        raise ValueError("Görüş metadata kapısı: ana dosya referansı boş olamaz.")
+    if actual != expected:
+        raise ValueError(
+            f"Görüş metadata kapısı: Word içindeki Referans ana dosya referansı olmalıdır. Beklenen `{expected}`, bulunan `{actual}`."
+        )
 
 
 def locate_quote_page_line_span(
@@ -615,27 +745,35 @@ def _combined_assessment_groups(opinion: dict[str, Any]) -> list[dict[str, Any]]
         if not isinstance(raw, dict):
             continue
         heading = _norm(raw.get("heading", ""))
+        blocks = [dict(b) for b in (raw.get("blocks") or []) if isinstance(b, dict) and _norm(b.get("text", ""))]
         paragraphs = [_norm(x) for x in raw.get("paragraphs") or [] if _norm(x)]
+        if blocks:
+            paragraphs = [_norm(b.get("text", "")) for b in blocks if str(b.get("type", "paragraph")).lower() == "paragraph" and _norm(b.get("text", ""))]
         labels = [str(x).strip().upper() for x in raw.get("labels") or [] if re.fullmatch(r"D\d+", str(x).strip(), flags=re.I)]
         if not labels and heading:
             labels = list(dict.fromkeys(re.findall(r"\bD\d+\b", heading.upper())))
-        if heading or paragraphs:
+        if heading or paragraphs or blocks:
             out.append({
                 "group": str(raw.get("group", "") or "").strip().upper(),
                 "labels": labels,
                 "heading": heading,
                 "paragraphs": paragraphs,
+                "blocks": blocks,
             })
     if out:
         return out
     heading = _norm(combined.get("heading", ""))
+    blocks = [dict(b) for b in (combined.get("blocks") or []) if isinstance(b, dict) and _norm(b.get("text", ""))]
     paragraphs = [_norm(x) for x in combined.get("paragraphs") or [] if _norm(x)]
-    if heading or paragraphs:
+    if blocks:
+        paragraphs = [_norm(b.get("text", "")) for b in blocks if str(b.get("type", "paragraph")).lower() == "paragraph" and _norm(b.get("text", ""))]
+    if heading or paragraphs or blocks:
         return [{
             "group": "",
             "labels": list(dict.fromkeys(re.findall(r"\bD\d+\b", heading.upper()))),
             "heading": heading,
             "paragraphs": paragraphs,
+            "blocks": blocks,
         }]
     return []
 
@@ -1559,6 +1697,47 @@ def validate_ep_prior_art_markup_text(paragraphs: Iterable[str], as_filed_spec_t
 
 def validate_gorus_docx_content_flow(docx_data: bytes) -> None:
     doc = Document(io.BytesIO(docx_data))
+    visible = [(idx, p.text.strip()) for idx, p in enumerate(doc.paragraphs) if p.text.strip()]
+
+    # v5.4.77 deterministic visible-order gate. The intro announces the cited documents,
+    # so D1/D2/... bibliography rows must precede the approved-amendment section, while
+    # substantive D defences must follow it. This is checked on the produced Word, not only
+    # in the model JSON/prompt.
+    amendment_positions = [
+        idx for idx, text in visible
+        if _norm(text).casefold() in {
+            _norm("İstemlerde Yapılan Değişiklikler ve Dayanakları").casefold(),
+            _norm("Amendments and Basis in the Application as Filed").casefold(),
+        }
+    ]
+    if amendment_positions:
+        amendment_pos = amendment_positions[0]
+        cited_rows = [idx for idx, text in visible if re.match(r"^D\d+\s*:\s*\S+", text, flags=re.I)]
+        if not cited_rows:
+            raise ValueError("Görüş sıra kapısı: istem revizyonu bölümü mevcutken D1/D2/... bibliyografik satırları bulunamadı.")
+        if max(cited_rows) >= amendment_pos:
+            raise ValueError("Görüş sıra kapısı: D1/D2/... bibliyografik satırları istem değişiklikleri bölümünden önce gelmelidir.")
+        substantive_d = [
+            idx for idx, text in visible
+            if idx > max(cited_rows)
+            and re.match(r"^D\d+\b", text, flags=re.I)
+            and not re.match(r"^D\d+\s*:\s*\S+", text, flags=re.I)
+        ]
+        if substantive_d and min(substantive_d) <= amendment_pos:
+            raise ValueError("Görüş sıra kapısı: İstemlerde Yapılan Değişiklikler ve Dayanakları bölümü esas D savunmalarından önce gelmelidir.")
+
+    forbidden_meta = (
+        "minimum ölçüde değiştirilmiştir",
+        "asgari ölçüde değiştirilmiştir",
+        "sistemimizce uygun görülmüştür",
+        "revizyon yaklaşımı",
+        "stratejik olarak revize",
+    )
+    all_visible_text = "\n".join(text for _, text in visible).casefold()
+    bad_meta = [x for x in forbidden_meta if x.casefold() in all_visible_text]
+    if bad_meta:
+        raise ValueError("Görüş resmi-dil kapısı: iç süreç/meta ifade bulundu: " + ", ".join(bad_meta))
+
     continuation_starters = (
         "bu farklardan", "bu farkların", "bu teknik farkın", "bu teknik etki",
         "bu yapının teknik etkisi", "bu sistemin teknik etkisi",
@@ -1629,7 +1808,7 @@ def build_gorus_quality_report() -> dict[str, Any]:
         "Tarifname birebir dayanak + SON MARKUP fiziksel sayfa/satır + ikinci doğrulama",
         "İstem kapsamı / new matter kontrolü",
         "Minimum Track Changes (karakter/kelime bazlı redline) + Destek Patent revizyon yazarı",
-        "Onaylı revizyon varsa değişiklikler + son Markup dayanakları D-savunmalarından önce",
+        "Onaylı revizyon varsa giriş → D-listesi → değişiklikler/dayanaklar → esas D-savunmaları sırası + meta-dil yasağı",
         "EP markup: D1/D2 etiketsiz prior-art + However teknik fark dayanağı",
         "Giriş sadeliği",
         "Paragraf devamlılığı + inline dayanak",
@@ -2052,3 +2231,177 @@ def render_gorus_docx_smoke_test(data: bytes) -> int:
         if pages < 1:
             raise ValueError("Görüş render kapısı: sıfır sayfa üretildi.")
         return pages
+
+# -----------------------------------------------------------------------------
+# v5.4.77 — deterministic amendment redline integrity
+# -----------------------------------------------------------------------------
+def _docx_revision_view_paragraphs(docx_data: bytes, *, accepted: bool) -> list[str]:
+    """Render paragraph text from OOXML with Track Changes accepted/rejected.
+
+    accepted=False: normal text + deleted text, inserted text omitted.
+    accepted=True: normal text + inserted text, deleted text omitted.
+    """
+    W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    ns = {"w": W}
+    with zipfile.ZipFile(io.BytesIO(docx_data), "r") as z:
+        root = etree.fromstring(z.read("word/document.xml"))
+    out: list[str] = []
+    for p in root.xpath(".//w:p", namespaces=ns):
+        pieces: list[str] = []
+        for node in p.iter():
+            tag = node.tag
+            if tag not in {f"{{{W}}}t", f"{{{W}}}delText", f"{{{W}}}tab", f"{{{W}}}br", f"{{{W}}}cr"}:
+                continue
+            ancestors = list(node.iterancestors())
+            in_ins = any(a.tag == f"{{{W}}}ins" for a in ancestors)
+            in_del = any(a.tag == f"{{{W}}}del" for a in ancestors)
+            if tag == f"{{{W}}}delText":
+                if not accepted and (node.text or ""):
+                    pieces.append(node.text or "")
+                continue
+            if tag == f"{{{W}}}t":
+                if accepted and in_del:
+                    continue
+                if (not accepted) and in_ins:
+                    continue
+                if node.text:
+                    pieces.append(node.text)
+                continue
+            if tag == f"{{{W}}}tab":
+                if (accepted and not in_del) or ((not accepted) and not in_ins):
+                    pieces.append("\t")
+            elif tag in {f"{{{W}}}br", f"{{{W}}}cr"}:
+                if (accepted and not in_del) or ((not accepted) and not in_ins):
+                    pieces.append("\n")
+        text = "".join(pieces)
+        # Keep paragraph positions meaningful without being sensitive to XML run splits.
+        out.append(re.sub(r"\s+", " ", text).strip())
+    return out
+
+
+def _plain_docx_paragraphs(docx_data: bytes) -> list[str]:
+    W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    ns = {"w": W}
+    with zipfile.ZipFile(io.BytesIO(docx_data), "r") as z:
+        root = etree.fromstring(z.read("word/document.xml"))
+    out: list[str] = []
+    for p in root.xpath(".//w:p", namespaces=ns):
+        pieces: list[str] = []
+        for node in p.iter():
+            if node.tag == f"{{{W}}}t" and node.text:
+                pieces.append(node.text)
+            elif node.tag == f"{{{W}}}tab":
+                pieces.append("\t")
+            elif node.tag in {f"{{{W}}}br", f"{{{W}}}cr"}:
+                pieces.append("\n")
+        out.append(re.sub(r"\s+", " ", "".join(pieces)).strip())
+    return out
+
+
+def _minimal_expected_redline(old_text: str, new_text: str) -> tuple[str, str]:
+    """Mirror the production minimum-prefix/suffix logic for plan verification."""
+    tok_re = re.compile(r"\s+|[^\s]+")
+    old_tokens = tok_re.findall(str(old_text or ""))
+    new_tokens = tok_re.findall(str(new_text or ""))
+    i = 0
+    while i < min(len(old_tokens), len(new_tokens)) and old_tokens[i] == new_tokens[i]:
+        i += 1
+    j = 0
+    while (
+        j < len(old_tokens) - i
+        and j < len(new_tokens) - i
+        and old_tokens[len(old_tokens)-1-j] == new_tokens[len(new_tokens)-1-j]
+    ):
+        j += 1
+    old_mid = "".join(old_tokens[i:len(old_tokens)-j if j else len(old_tokens)])
+    new_mid = "".join(new_tokens[i:len(new_tokens)-j if j else len(new_tokens)])
+    if old_mid and new_mid and not re.search(r"\s", old_mid) and not re.search(r"\s", new_mid):
+        cp = 0
+        while cp < min(len(old_mid), len(new_mid)) and old_mid[cp] == new_mid[cp]:
+            cp += 1
+        cs = 0
+        while (
+            cs < len(old_mid)-cp
+            and cs < len(new_mid)-cp
+            and old_mid[len(old_mid)-1-cs] == new_mid[len(new_mid)-1-cs]
+        ):
+            cs += 1
+        old_mid = old_mid[cp:len(old_mid)-cs if cs else len(old_mid)]
+        new_mid = new_mid[cp:len(new_mid)-cs if cs else len(new_mid)]
+    return old_mid, new_mid
+
+
+def _collect_track_change_texts(docx_data: bytes) -> tuple[list[str], list[str]]:
+    W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    ns = {"w": W}
+    with zipfile.ZipFile(io.BytesIO(docx_data), "r") as z:
+        root = etree.fromstring(z.read("word/document.xml"))
+    deletions: list[str] = []
+    insertions: list[str] = []
+    for node in root.xpath(".//w:del", namespaces=ns):
+        text = "".join(node.xpath(".//w:delText/text()", namespaces=ns))
+        if text:
+            deletions.append(text)
+    for node in root.xpath(".//w:ins", namespaces=ns):
+        text = "".join(node.xpath(".//w:t/text()", namespaces=ns))
+        if text:
+            insertions.append(text)
+    return deletions, insertions
+
+
+def validate_tracked_changes_against_plan(
+    source_docx: bytes,
+    markup_docx: bytes,
+    clean_docx: bytes,
+    amendments: list[dict[str, Any]],
+    description_updates: list[dict[str, Any]] | None = None,
+) -> None:
+    """Three-way integrity gate required by v5.4.77.
+
+    1) rejected Markup view equals source,
+    2) accepted Markup view equals Clean,
+    3) every redline is explained by the approved old_text→new_text plan.
+    """
+    source_pars = _plain_docx_paragraphs(source_docx)
+    rejected_pars = _docx_revision_view_paragraphs(markup_docx, accepted=False)
+    accepted_pars = _docx_revision_view_paragraphs(markup_docx, accepted=True)
+    clean_pars = _plain_docx_paragraphs(clean_docx)
+    if source_pars != rejected_pars:
+        raise ValueError("İstem revizyonu üçlü bütünlük kapısı: Markup değişiklikler reddedilmiş görünümü kaynak Word ile aynı değil.")
+    if accepted_pars != clean_pars:
+        raise ValueError("İstem revizyonu üçlü bütünlük kapısı: Markup değişiklikler kabul edilmiş görünümü Temiz Word ile aynı değil.")
+
+    expected_del: list[str] = []
+    expected_ins: list[str] = []
+    for item in amendments or []:
+        deleted, inserted = _minimal_expected_redline(str(item.get("old_text", "")), str(item.get("new_text", "")))
+        if deleted:
+            expected_del.append(deleted)
+        if inserted:
+            expected_ins.append(inserted)
+    # Description prior-art updates are whole-paragraph insertions by design.
+    for upd in description_updates or []:
+        # Avoid importing app_core (circular); construction is deterministic and mirrors it.
+        kind = str(upd.get("source_kind", "application")).strip().lower()
+        objective = re.sub(r"\s+", " ", str(upd.get("objective_summary", ""))).strip().rstrip(".")
+        difference = re.sub(r"\s+", " ", str(upd.get("however_difference", ""))).strip().rstrip(".")
+        if kind == "document":
+            title = str(upd.get("document_title", "")).strip()
+            text = f'As a result of the research on the subject, the document entitled "{title}" has been found. The document is related to {objective}. However, {difference}.'
+        else:
+            pub = str(upd.get("publication_number", "")).strip()
+            text = f'As a result of the research on the subject, application numbered {pub} has been found. The application is related to {objective}. However, {difference}.'
+        if text.strip():
+            expected_ins.append(text)
+
+    actual_del, actual_ins = _collect_track_change_texts(markup_docx)
+    if Counter(actual_del) != Counter(expected_del):
+        raise ValueError(
+            "İstem revizyonu üçlü bütünlük kapısı: Markup w:del kayıtları onaylı atomik planla uyuşmuyor. "
+            f"Beklenen={expected_del!r}, gerçek={actual_del!r}"
+        )
+    if Counter(actual_ins) != Counter(expected_ins):
+        raise ValueError(
+            "İstem revizyonu üçlü bütünlük kapısı: Markup w:ins kayıtları onaylı atomik planla uyuşmuyor. "
+            f"Beklenen={expected_ins!r}, gerçek={actual_ins!r}"
+        )
