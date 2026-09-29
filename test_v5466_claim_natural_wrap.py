@@ -9,8 +9,8 @@ from tarifname_figure_generation import protect_turkish_claim_transition
 ROOT = Path(__file__).resolve().parent
 
 def test_versions_and_natural_wrap_rule():
-    assert APP_VERSION == "v5.4.78"
-    assert RULESET_VERSION == "2026-09-25.v70"
+    assert APP_VERSION == "v5.4.80"
+    assert RULESET_VERSION == "2026-09-28.v72"
     low = TARIFNAME_RULES.casefold()
     assert "doğal satır kaydırması" in low
     assert "non-breaking" in low and "yasak" in low

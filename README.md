@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.78
+# Patent Atölyesi v5.4.80
 
 
 ## v5.4.77 / 2026-09-25 — Atomik istem revizyonu, insertion-first ve bağımsız revizyon denetimi
@@ -260,7 +260,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-09-25.v70`
+Kural sürümü: `2026-09-28.v72`
 
 ## Yerel çalıştırma
 
@@ -827,6 +827,14 @@ Bu sürüm Türkçe `i/İ` normalizasyon hatasını giderir, UTM/teknik kısaltm
 - Ek talimat kaynakta bulunmayan teknik bilgi, yeni özellik veya sonuç uydurmak için kullanılamaz.
 - Tarifname BBF analizi ayrıca buluş alanını otomatik olarak `Elektrik-Elektronik / Yazılım`, `Kimya / Biyoloji` veya `Mekanik` sınıflarından birine atar ve arayüzde bilgi olarak gösterir.
 
+## v5.4.79 / 2026-09-25.v71 — Unsur türü semantiği + bağımlı istem kapanış yerleşimi
+
+- Ham BBF unsur adı genel `... fonksiyonu` olsa bile açıklama bunun gerçekte bir `birim/modül/sunucu/cihaz` olduğunu söylüyorsa referans numarası korunarak tarifname boyunca teknik taşıyıcı adı kullanılır. Standart özel ağ fonksiyonları (ör. açıkça SMF/UPF gibi adlandırılmış standart fonksiyonlar) keyfi yeniden adlandırılmaz.
+- `Ajan keşif fonksiyonu` veya sıra sıfatlı `çekirdek şebeke fonksiyonu` gibi genel, standart özel ad olmayan referans unsurlarının yalın `fonksiyon` türünde kalması final kapısında reddedilir.
+- Bir ajanın `fonksiyon üzerinde konumlandırılması` gibi soyut barındırma ilişkisi reddedilir; kaynak destekliyorsa `birim bünyesinde yer alan/çalışan` gibi teknik ilişki kurulur.
+- Çok maddeli bağımlı istemde son madde ile `içermesidir.` kapanışı Word'de birlikte tutulur. Kapanış şablon girintisini kullanır ve sayfa başında tek başına kalamaz.
+- Ham BBF semantik kontrolü yalnız kelime eşlemesi değildir: unsur adı, referans numarası ve kaynakta açıklanan teknik rol birlikte değerlendirilir. Kanonikleştirme teknik anlamı değiştiremez ve yeni özellik ekleyemez.
+
 ## v5.4.78 / 2026-09-25.v70 — Bağımlı istem feature-delta + Türkçe dilbilgisi + önceki teknik genel giriş
 
 - `%92` veya başka bir kelime-benzerlik eşiği bağımlı istem geçerliliği için kullanılmaz. Her alt istem bağlandığı istem ve tüm ata istemlerin miras kapsamına karşı **feature-by-feature** incelenir; yeni teknik sınırlama yoksa fail-closed reddedilir.
@@ -837,3 +845,13 @@ Bu sürüm Türkçe `i/İ` normalizasyon hatasını giderir, UTM/teknik kısaltm
 - `ajanlar-arası` yazımı house-style katmanında `ajanlar arası` olarak normalize edilir.
 - Türkçe ÖNCEKİ TEKNİK ilk genel paragrafı zorunlu olarak `Günümüzde ...` ile başlar ve müşterinin özel standart/protokol/patent örneklerinden önce mevcut tekniğin genel işleyişini anlatır. Özel örnekler ve literatür sonraki paragraflara geçer.
 - Bu kontroller taslak kalite kapısında, otomatik repair geri bildiriminde ve nihai Word akışında fail-closed çalışır.
+
+## v5.4.80 / 2026-09-28 — Tip 3 ilk-10 çok turlu global araştırma
+
+- Tip 3'te kullanıcıya gösterilen ilk 10 artık tek web araştırması sonucundan seçilmez. Arka planda sırasıyla `GLOBAL_RECALL`, `GAP_SEARCH`, `FAMILY_NEIGHBOUR` ve `D1_CHALLENGE` turları zorunlu çalışır.
+- `GLOBAL_RECALL` teknik problem, yapı-işlev ilişkileri, özellik kümeleri, IPC/CPC ve eşanlamlı sorgularla geniş doğrulanmış aday havuzu oluşturur.
+- `GAP_SEARCH`, ilk havuzdaki en yakın belgelerin açıklamadığı ayırt edici teknik özellik/ilişkileri ayrı hedefli sorgularla yeniden araştırır.
+- `FAMILY_NEIGHBOUR`, en yakın adayların patent ailesi/priority zinciri, cited/citing belgeleri ve dar IPC/CPC komşuluğunu global olarak inceler. TR dahil hiçbir ülke için ayrıcalıklı özel tur yoktur.
+- `D1_CHALLENGE`, geçici D1'den daha yakın tek belgeyi ve geçici D1+D2'den daha güçlü kombinasyonu bağımsız son aramayla bulmaya çalışır. Daha güçlü belge bulunursa final ilk 10 ve önerilen D1/D2 buna göre güncellenir.
+- Kullanıcı arayüz sırası değişmemiştir: kullanıcı yalnız nihai 10 + `Totalpatent/Espaenet sorgusu` + önerilen D1/D2'yi görür. Bundan sonra yine `Sizin araştırdığınız benzer dokümanlar var mı?` sorusu gelir. Kullanıcı dokümanları `10+` hattında değerlendirilir ve dondurulmuş ilk 10 yeniden yazılmaz.
+- İlk-10 final kapısı tam 10 benzersiz yayın, D1/D2'nin final listede bulunması, sorgu satırının final 10 ile birebir eşleşmesi ve dört araştırma turunun tamamlanmasını zorunlu tutar.

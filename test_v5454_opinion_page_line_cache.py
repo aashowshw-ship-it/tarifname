@@ -29,9 +29,9 @@ def _sample_rendered_pdf() -> bytes:
 
 
 def test_v5454_version_and_ruleset():
-    assert APP_VERSION == "v5.4.78"
-    assert RULESET_VERSION == "2026-09-25.v70"
-    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.78")
+    assert APP_VERSION == "v5.4.80"
+    assert RULESET_VERSION == "2026-09-28.v72"
+    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.80")
 
 
 def test_page_line_index_cache_uses_exact_authoritative_pdf_hash(monkeypatch):

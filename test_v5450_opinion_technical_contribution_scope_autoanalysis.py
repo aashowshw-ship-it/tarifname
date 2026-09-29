@@ -8,8 +8,8 @@ ROOT = Path(__file__).resolve().parent
 
 
 def test_version_v5450_and_rules():
-    assert APP_VERSION == "v5.4.78"
-    assert RULESET_VERSION == "2026-09-25.v70"
+    assert APP_VERSION == "v5.4.80"
+    assert RULESET_VERSION == "2026-09-28.v72"
     low = GORUS_RULES.casefold()
     assert "teknik katkı" in low
     assert "yalnız x kategorisi" in low

@@ -72,7 +72,7 @@
 - İngilizce çıktı Word kapısı Türkçe şablon kalıntılarını deterministik olarak reddeder.
 - İngilizce görüş varsayılan dosya adı `Response Letter_XXXXXX.docx` olur.
 
-Kural sürümü: **2026-09-25.v70**
+Kural sürümü: **2026-09-28.v72**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -872,6 +872,14 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Ek talimat kaynakta bulunmayan teknik bilgi, yeni özellik veya sonuç uydurmak için kullanılamaz.
 - Tarifname BBF analizi ayrıca buluş alanını otomatik olarak `Elektrik-Elektronik / Yazılım`, `Kimya / Biyoloji` veya `Mekanik` sınıflarından birine atar ve arayüzde bilgi olarak gösterir.
 
+## v5.4.79 / 2026-09-25.v71 — Unsur türü semantiği + bağımlı istem kapanış yerleşimi
+
+- Ham BBF unsur adı genel `... fonksiyonu` olsa bile açıklama bunun gerçekte bir `birim/modül/sunucu/cihaz` olduğunu söylüyorsa referans numarası korunarak tarifname boyunca teknik taşıyıcı adı kullanılır. Standart özel ağ fonksiyonları (ör. açıkça SMF/UPF gibi adlandırılmış standart fonksiyonlar) keyfi yeniden adlandırılmaz.
+- `Ajan keşif fonksiyonu` veya sıra sıfatlı `çekirdek şebeke fonksiyonu` gibi genel, standart özel ad olmayan referans unsurlarının yalın `fonksiyon` türünde kalması final kapısında reddedilir.
+- Bir ajanın `fonksiyon üzerinde konumlandırılması` gibi soyut barındırma ilişkisi reddedilir; kaynak destekliyorsa `birim bünyesinde yer alan/çalışan` gibi teknik ilişki kurulur.
+- Çok maddeli bağımlı istemde son madde ile `içermesidir.` kapanışı Word'de birlikte tutulur. Kapanış şablon girintisini kullanır ve sayfa başında tek başına kalamaz.
+- Ham BBF semantik kontrolü yalnız kelime eşlemesi değildir: unsur adı, referans numarası ve kaynakta açıklanan teknik rol birlikte değerlendirilir. Kanonikleştirme teknik anlamı değiştiremez ve yeni özellik ekleyemez.
+
 ## v5.4.78 / 2026-09-25.v70 — Bağımlı istem feature-delta + Türkçe dilbilgisi + önceki teknik genel giriş
 
 - `%92` veya başka bir kelime-benzerlik eşiği bağımlı istem geçerliliği için kullanılmaz. Her alt istem bağlandığı istem ve tüm ata istemlerin miras kapsamına karşı **feature-by-feature** incelenir; yeni teknik sınırlama yoksa fail-closed reddedilir.
@@ -882,3 +890,13 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - `ajanlar-arası` yazımı house-style katmanında `ajanlar arası` olarak normalize edilir.
 - Türkçe ÖNCEKİ TEKNİK ilk genel paragrafı zorunlu olarak `Günümüzde ...` ile başlar ve müşterinin özel standart/protokol/patent örneklerinden önce mevcut tekniğin genel işleyişini anlatır. Özel örnekler ve literatür sonraki paragraflara geçer.
 - Bu kontroller taslak kalite kapısında, otomatik repair geri bildiriminde ve nihai Word akışında fail-closed çalışır.
+
+
+## v5.4.80 / 2026-09-28.v72 — Tip 3 ilk-10 derin araştırma kapısı
+
+- Tip 3 normal kullanıcı sırası değişmez. İlk 10 + `Totalpatent/Espaenet sorgusu` + önerilen D1/D2 görünür olduktan sonra `Sizin araştırdığınız benzer dokümanlar var mı?` sorulur ve kullanıcı dokümanları ayrı `10+` hattında değerlendirilir.
+- Ancak ilk 10 artık tek araştırma çağrısından üretilmez. Kullanıcıya gösterilmeden önce arka planda dört zorunlu tur tamamlanır: `GLOBAL_RECALL`, `GAP_SEARCH`, `FAMILY_NEIGHBOUR`, `D1_CHALLENGE`.
+- Global recall geniş aday havuzu kurar. Gap search en yakın belgelerin açıklamadığı ayırt edici özellik/ilişkileri hedefler. Family/neighbour turu patent ailesi/priority, cited/citing ve dar IPC/CPC komşuluğunu inceler. D1 challenge geçici D1'i ve D1+D2 kombinasyonunu yenmeye çalışan bağımsız son araştırmadır.
+- Araştırma baştan sona globaldir. TR dahil belirli bir ülkeye özel ayrıcalıklı katman yoktur. Aile kontrolü bütün güçlü adaylar için uygulanır.
+- Aynı patent ailesinin mükerrer yayınları ilk 10'u dolduramaz. Final D1 ana teknik çekirdeği tek başına en fazla açıklayan belge, D2 ise gerekiyorsa D1'in eksik bıraktığı ayırt edici teknik ilişkiyi en iyi tamamlayan belgedir.
+- Final kapısı dört tur tamamlanmadan, tam 10 benzersiz doğrulanmış yayın bulunmadan, D1/D2 final 10 içinde olmadan veya `Totalpatent/Espaenet sorgusu` final 10 ile birebir eşleşmeden kullanıcıya ilk 10 göstermez.

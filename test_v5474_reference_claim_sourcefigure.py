@@ -237,7 +237,7 @@ def test_epo_pct_clarity_prompt_says_do_not_block_delivery_and_comment_at_issue(
     assert "Yeni teknik bilgi" in prompt
 
 
-# v5.4.78 — central final compliance gate regressions
+# v5.4.80 — central final compliance gate regressions
 
 def _tiny_docx_bytes(text="x"):
     import io
@@ -290,3 +290,30 @@ def test_ui_has_single_download_entrypoint_only():
 
 def test_safe_output_name_gorus_no_longer_turns_space_into_underscore():
     assert app.safe_output_name('Görüş%20Metni_700286.docx','x.docx','gorus') == 'Görüş Metni_700286.docx'
+
+
+def test_v5479_generic_function_element_type_is_fail_closed_but_standard_nf_name_can_remain():
+    bad = {"elements":[{"number":"502","name":"Ajan keşif fonksiyonu"}], "detailed_paragraphs":[], "system_claim":{}, "dependent_system_claims":[]}
+    with pytest.raises(ValueError, match="fonksiyonu"):
+        app._validate_element_semantic_types(bad, "Türkçe")
+
+    good = {"elements":[{"number":"502","name":"Ajan keşif birimi"}], "detailed_paragraphs":[], "system_claim":{}, "dependent_system_claims":[]}
+    app._validate_element_semantic_types(good, "Türkçe")
+
+    standard = {"elements":[{"number":"310","name":"Session Management Function (SMF)"}], "detailed_paragraphs":[], "system_claim":{}, "dependent_system_claims":[]}
+    app._validate_element_semantic_types(standard, "Türkçe")
+
+
+def test_v5479_function_hosting_wording_and_dependent_tail_layout_are_hardened():
+    bad = {
+        "elements":[{"number":"310","name":"Çekirdek şebeke birimi"},{"number":"311","name":"Çekirdek şebeke ajanı"}],
+        "detailed_paragraphs":["çekirdek şebeke fonksiyonu (310) üzerinde konumlandırılan çekirdek şebeke ajanı (311)"],
+        "system_claim":{},
+        "dependent_system_claims":[],
+    }
+    with pytest.raises(ValueError, match="fonksiyon üzerinde"):
+        app._validate_element_semantic_types(bad, "Türkçe")
+
+    source = Path(app.__file__).read_text(encoding="utf-8")
+    assert "paragraph_format.keep_with_next = True" in source
+    assert "_closure_p.paragraph_format.keep_together = True" in source

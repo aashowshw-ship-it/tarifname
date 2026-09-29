@@ -2101,6 +2101,8 @@ KRİTİK TALİMATLAR:
 - Örnek tarifnamelerden yalnızca kurguyu öğren; teknik bilgi aktarma.
 - technical_field iki paragraf olmalıdır ve paragraflar \n\n ile ayrılmalıdır. Türkçe çıktıda ilk paragraf yalnız “Buluş, ... ile ilgilidir.”, ikinci paragraf “Buluş, özellikle ...” ile; İngilizce çıktıda ilk paragraf yalnız “The invention relates to ... .”, ikinci paragraf “In particular, the invention relates to ... .” ile başlamalıdır. Seçilen istem modu “Sistem ve yöntem” ise Türkçe ilk paragrafın sonu özellikle “... sistemi ve yöntemi ile ilgilidir.” olmalıdır; yalnız sistemde “... sistemi ile ilgilidir.”, yalnız yöntemde “... yöntemi ile ilgilidir.” yapısı kullanılmalıdır.
 - ÖNCEKİ TEKNİK ilk genel paragrafı MUTLAKA `Günümüzde ...` ile başlasın. Bu ilk paragrafta müşterinin verdiği özel patent/standart/protokol/dokümana doğrudan dalma; önce ilgili teknik alanın güncel genel işleyişini ve yaygın yaklaşımını nötr biçimde açıkla. Sonraki paragraflarda BBF'deki 3GPP/A2A/MCP gibi somut önceki teknik örneklerine ve bunların eksikliklerine geç. Patent literatürü bundan sonra ayrı ayrı paragraf olsun.
+- Referanslı unsur adı genel `... fonksiyonu` biçimindeyse ham BBF açıklamasını kontrol et. Açıklama bunun bir birim/modül/sunucu olduğunu söylüyorsa referans numarasını koruyarak teknik taşıyıcı adıyla (`... birimi`/`... modülü`) kanonikleştir. Standart özel ağ fonksiyonu adlarını keyfi değiştirme.
+- Bir ajanı/alt unsuru `fonksiyon üzerinde konumlandırılan` diye yazma; kaynak destekliyorsa `... birimi bünyesinde yer alan/çalışan` gibi teknik ilişki kur.
 - ÖNCEKİ TEKNİK'teki aynı anlatımın devamı olan “Özellikle...”, “Bununla birlikte...”, “Bu nedenle...” gibi cümleleri ayrı paragraf yapma. Patent literatürü dokümanları ise ayrı ayrı paragraf olsun.
 - Türkçe tarifnamede her patent literatürü paragrafında doğrulanmış İngilizce başlık ile Türkçe başlık karşılığı birlikte yazılsın. Türkçe literatür paragrafı bağlayıcı taslak dilini izlesin: “Literatürde yapılan araştırmalar sonucu ... numaralı, İngilizce başlığı ‘...’ ve Türkçe karşılığı ‘...’ olan patent dokümanına rastlanmıştır. Söz konusu başvuru/doküman ... ile ilgilidir. Ancak bahsedilen başvuruda/dokümanda ... ile ilgili bir emareye rastlanmamıştır.” “Buluşta ise ...” biçiminde karşılaştırmalı görüş/savunma dili kullanılmasın. İngilizce tarifnamede özgün İngilizce patent başlığı kullanılsın; Türkçe başlık karşılığı nihai İngilizce metne eklenmesin.
 - BULUŞUN DETAYLI AÇIKLAMASI'nda numaralı sistem/cihaz unsurlarını tek tek ayrı paragraf yapma; bütün unsur açıklamalarını teknik akış içinde tek sürekli paragrafta topla. Sistem unsuru-yöntem adımı ilişkisini açıklamak için “İşlem Adımı / Gerçekleştiren Unsur / Açıklama” türü tablo oluşturma. Bu ilişkiyi modül (1), sonraki modül (2) ve ilgili yöntem adımı (1001, 1002...) arasındaki veri/işlev bağlantısını gösteren doğal teknik paragraf olarak yaz. Yalnız ham kaynakta gerçekten sayısal/deneysel veri tablosu olan tabloları tables alanında koru. Gerçekten ayrı bir yapılanma/alternatif/yöntem/çalışma prensibi ayrıca paragraf olabilir.
@@ -3755,6 +3757,50 @@ def _validate_dependent_method_claim_semantic_repetition(
         parent_map[claim_no] = parent
 
 
+
+_STANDARD_NETWORK_FUNCTION_ACRONYMS = {"AMF","SMF","UPF","PCF","NRF","NEF","AUSF","UDM","NSSF","AF","NWDAF","SEPP","CHF","UDR","UDSF"}
+
+def _looks_like_standard_network_function_name(name: str) -> bool:
+    raw = str(name or "")
+    tokens = set(re.findall(r"\b[A-Z][A-Z0-9]{1,7}\b", raw))
+    return bool(tokens & _STANDARD_NETWORK_FUNCTION_ACRONYMS)
+
+
+def _validate_element_semantic_types(draft: dict[str, Any], language: str = "Türkçe") -> None:
+    """Generic action/function labels may not masquerade as referencable technical carriers.
+
+    A standards-defined network function may keep its proper name, but generic labels such as
+    `Ajan keşif fonksiyonu` or ordinal `... çekirdek şebeke fonksiyonu` must be canonicalized to the
+    carrier actually described by the source (birim/modül/etc.) while preserving the reference number.
+    """
+    if _english_spec(language):
+        return
+    bad_refs: list[str] = []
+    for row in (draft.get("elements") or []):
+        number = str((row or {}).get("number", "") or "").strip()
+        name = str((row or {}).get("name", "") or "").strip()
+        low = _tr_lower(name)
+        if re.search(r"\bfonksiyonu\s*$", low) and not _looks_like_standard_network_function_name(name):
+            bad_refs.append(f"{name} ({number})" if number else name)
+    if bad_refs:
+        raise ValueError(
+            "Ham BBF/unsur semantik türü kapısı: standart özel ağ fonksiyonu olmayan genel `... fonksiyonu` "
+            "referans unsuru olarak bırakılamaz. Kaynak açıklamasındaki gerçek teknik taşıyıcı türünü "
+            "(`birim`, `modül`, `sunucu` vb.) referans numarasını koruyarak kullanın: " + ", ".join(bad_refs)
+        )
+
+    visible = "\n".join([
+        *[str(x or "") for x in (draft.get("detailed_paragraphs") or [])],
+        *[str(x or "") for x in _system_claim_all_texts(draft.get("system_claim") or {})],
+        *[str(x or "") for x in (draft.get("dependent_system_claims") or [])],
+    ])
+    if re.search(r"\bfonksiyonu(?:nun|na|nda|ndan)?\s*\([^)]*\)\s*(?:üzerinde|üstünde)\s+(?:konumlandırılan|bulunan|çalışan)", visible, re.I):
+        raise ValueError(
+            "Unsur-barındırma semantiği kapısı: bir ajan/alt unsur `fonksiyon üzerinde` konumlandırılamaz. "
+            "Kaynak destekliyorsa teknik taşıyıcıyı `birim/modül` olarak adlandırın ve `bünyesinde yer alan/çalışan` ilişkisini kurun."
+        )
+
+
 def _validate_system_claim_reference_order(system_claim: dict[str, Any], element_numbers: list[str]) -> None:
     """Düz veya ortak-taşıyıcı gruplu ana istemde ilk-tanım sırasını zorlar."""
     if not system_claim:
@@ -4748,6 +4794,7 @@ def validate_tarifname_draft(
         _validate_dependent_system_claim_possessive_grammar(dependents, language)
         _validate_dependent_system_claim_type_closure(dependents, draft, language)
         _validate_reference_role_rules(draft, language)
+        _validate_element_semantic_types(draft, language)
         method_dependents = _all_method_dependent_claims(draft)
         dependent_method_start_re = re.compile(r"^\s*İstem\s+\d+\s*[’']\s*(?:a|e|ya|ye)\s+uygun\s+yöntem\s+olup,\s*özelliği;", re.IGNORECASE)
         for dep_index, claim in enumerate(method_dependents, start=1):
@@ -5840,10 +5887,16 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
             if _parts:
                 _header, _bullets, _closure = _parts
                 add_numbered_claim(doc, template, _header)
+                _bullet_paragraphs = []
                 for _i, _bullet in enumerate(_bullets):
                     _txt = _bullet.rstrip(".,;:") + ("," if _i < len(_bullets) - 1 else "")
-                    add_template_list_item(doc, template, 86, _txt)
-                tpl_text(93, _closure)
+                    _bullet_paragraphs.append(add_template_list_item(doc, template, 86, _txt))
+                if _bullet_paragraphs:
+                    _bullet_paragraphs[-1].paragraph_format.keep_with_next = True
+                    _bullet_paragraphs[-1].paragraph_format.widow_control = True
+                _closure_p = tpl_text(93, _closure)
+                _closure_p.paragraph_format.keep_together = True
+                _closure_p.paragraph_format.widow_control = True
             else:
                 add_numbered_claim(doc, template, str(dependent))
             tpl_blank(96)
@@ -5870,10 +5923,16 @@ def build_tarifname_docx(draft: dict[str, Any], language: str = "Türkçe") -> b
             if _parts:
                 _header, _bullets, _closure = _parts
                 add_numbered_claim(doc, template, _header)
+                _bullet_paragraphs = []
                 for _i, _bullet in enumerate(_bullets):
                     _txt = _bullet.rstrip(".,;:") + ("," if _i < len(_bullets) - 1 else "")
-                    add_template_list_item(doc, template, 86, _txt)
-                tpl_text(93, _closure)
+                    _bullet_paragraphs.append(add_template_list_item(doc, template, 86, _txt))
+                if _bullet_paragraphs:
+                    _bullet_paragraphs[-1].paragraph_format.keep_with_next = True
+                    _bullet_paragraphs[-1].paragraph_format.widow_control = True
+                _closure_p = tpl_text(93, _closure)
+                _closure_p.paragraph_format.keep_together = True
+                _closure_p.paragraph_format.widow_control = True
             else:
                 add_numbered_claim(doc, template, str(dependent))
             # 98 numaralı şablon paragrafı ÖZET öncesindeki manuel sayfa sonunu içerir;
@@ -7200,11 +7259,185 @@ def build_claim_revision_pair(source_docx: bytes, amendments: list[dict[str, Any
 # -----------------------------------------------------------------------------
 # TİP 3 ÖN ARAŞTIRMA MODÜLÜ
 # -----------------------------------------------------------------------------
-def top10_research_prompt(bbf_text: str, cutoff_date: str) -> str:
+def _compact_research_candidates(payload: dict[str, Any], keys: tuple[str, ...], *, limit: int = 40) -> list[dict[str, Any]]:
+    """Araştırma turları arasında yalnız gerekli patent metadata/teknik yakınlık alanlarını taşır."""
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for key in keys:
+        for item in payload.get(key) or []:
+            number = str(item.get("publication_number") or item.get("number") or "").strip()
+            norm = re.sub(r"[^A-Z0-9]", "", number.upper())
+            if not norm or norm in seen:
+                continue
+            seen.add(norm)
+            rows.append({
+                "publication_number": number,
+                "title": str(item.get("title") or "").strip(),
+                "date": str(item.get("date") or "").strip(),
+                "jurisdiction": str(item.get("jurisdiction") or "").strip(),
+                "source_url": str(item.get("source_url") or "").strip(),
+                "matching_features": item.get("matching_features") or [],
+                "missing_features": item.get("missing_features") or [],
+                "relevance_score": item.get("relevance_score", 0),
+                "family_relation": str(item.get("family_relation") or "").strip(),
+                "discovery_reason": str(item.get("discovery_reason") or "").strip(),
+            })
+    rows.sort(key=lambda x: float(x.get("relevance_score") or 0), reverse=True)
+    return rows[:limit]
+
+
+def _validate_research_candidate_pass(payload: dict[str, Any], *, key: str, min_count: int, label: str) -> None:
+    rows = payload.get(key) or []
+    if len(rows) < min_count:
+        raise ValueError(f"{label} kalite kapısı: en az {min_count} aday beklenirken {len(rows)} aday bulundu.")
+    seen: set[str] = set()
+    for item in rows:
+        number = str(item.get("publication_number") or item.get("number") or "").strip()
+        title = str(item.get("title") or "").strip()
+        url = str(item.get("source_url") or "").strip()
+        norm = re.sub(r"[^A-Z0-9]", "", number.upper())
+        if not norm or not title or not url:
+            raise ValueError(f"{label} kalite kapısı: yayın numarası, başlık ve kaynak URL zorunludur.")
+        if norm in seen:
+            raise ValueError(f"{label} kalite kapısı: mükerrer patent yayını bulundu: {number}")
+        seen.add(norm)
+
+
+def research_recall_prompt(bbf_text: str, cutoff_date: str) -> str:
     return f"""{ARASTIRMA_RULES}
-Aşağıdaki BBF için araştırma kesim tarihi {cutoff_date} olacak şekilde global patent araştırması yap ve en benzer tam 10 patent dokümanını belirle.
-Google Patents, Espacenet, PATENTSCOPE, TÜRKPATENT ve ulaşılabilir resmi/yarı resmi patent kaynaklarını kapsayacak geniş web araştırması yap.
-Dokümanları teknik yakınlığa göre sırala. Numara, başlık, tarih ve kaynak URL doğrulanmış olsun. İlk araştırma çıktısında tam 10 dokümanla birlikte `totalpatent_query`, `proposed_d1` ve `proposed_d2` alanlarını mutlaka doldur. Her doküman için yayımlanmış özgün İngilizce Abstract metni doğrulanabiliyorsa `abstract_en` alanına doğrudan aktar; Türkçeye çevirme veya yeniden özetleme. Kullanıcı dokümanlarını bu aşamada sorma veya varsayma. JSON dışında yazma.
+Aşağıdaki araştırma konusu için kesim tarihi {cutoff_date} olacak şekilde İLK GENİŞ GLOBAL TARAMAYI yap.
+Bu turda nihai ilk 10'u seçme. Amaç yüksek recall ile güçlü bir aday havuzu oluşturmaktır.
+
+ZORUNLU ARAŞTIRMA DAVRANIŞI:
+- Önce teknik problem, teknik etki, ana fiziksel/yazılımsal unsurlar, işlevsel ilişkiler ve varsa yöntem adımlarını çıkar.
+- En az 8 ayrı arama ekseni üret. Tam buluş cümlesi dışında yapı+işlev, problem+çözüm, unsur+uygulama alanı, IPC/CPC ve eşanlamlı terim kombinasyonları kullan.
+- Global davran. TR, EP/Espacenet, WO/PATENTSCOPE, US, CN, JP, KR, GB, DE ve erişilebilen diğer patent kaynaklarını aynı araştırma evreninde tara. Hiçbir ülkeye özel ayrıcalıklı tur uygulama.
+- Aynı patent ailesinin çok sayıdaki yayınıyla havuzu yapay biçimde şişirme. Teknik olarak en temsilî yayını kullan ve aile ilişkisini not et.
+- 30-50 arası DOĞRULANMIŞ aday hedefle. Çok dar alanda bu sayı mümkün değilse yine en az 20 gerçek aday getir.
+- Bu turda özgün abstract kopyalamaya çalışma. Kısa teknik eşleşme/eksik özellik notları yeterlidir.
+- Doküman uydurma. Her adayın yayın numarası, başlığı, tarihi/öncelik bağlamı ve kaynak URL'si doğrulanmış olsun.
+JSON dışında yazma.
+ŞEMA:
+{{
+ "technical_problem":"",
+ "technical_effects":[""],
+ "technical_features":[""],
+ "method_steps":[{{"number":"1001","text":""}}],
+ "search_axes":[""],
+ "searched_jurisdictions":["TR","EP","WO","US","CN","JP","KR","GB","DE"],
+ "candidate_documents":[{{
+   "publication_number":"","title":"","date":"","jurisdiction":"","source_url":"",
+   "matching_features":[""],"missing_features":[""],"relevance_score":0,"family_relation":""
+ }}]
+}}
+ARAŞTIRMA KONUSU:\n{bbf_text}"""
+
+
+def research_gap_prompt(bbf_text: str, cutoff_date: str, recall: dict[str, Any]) -> str:
+    compact = _compact_research_candidates(recall, ("candidate_documents",), limit=40)
+    return f"""{ARASTIRMA_RULES}
+Aşağıdaki araştırma konusu için kesim tarihi {cutoff_date}. İlk geniş global tarama tamamlandı.
+Şimdi İKİNCİ TUR GAP SEARCH yap. Kullanıcıya henüz ilk 10 gösterilmeyecek.
+
+AMAÇ:
+1. İlk havuzdaki en yakın belgelerin birlikte dahi açıklamadığı ayırt edici teknik özellik/ilişkileri belirle.
+2. Her kalan boşluk için ayrı hedefli patent aramaları yap.
+3. İlk havuzda görünmeyen daha yakın belgeleri bulmaya özellikle çalış.
+4. Araştırma yine globaldir. Belirli bir ülkeye özel tur yapma.
+5. Sırf farklı numara elde etmek için aynı ailenin mükerrerlerini ekleme.
+6. En az 6 gerçek yeni aday hedefle. Uygun aday yoksa bunu gap_targets içinde açıkla, ama bulunanları uydurma.
+
+JSON dışında yazma.
+ŞEMA:
+{{
+ "gap_targets":[{{"feature_or_relation":"","why_uncovered":"","search_queries":[""]}}],
+ "new_candidates":[{{
+   "publication_number":"","title":"","date":"","jurisdiction":"","source_url":"",
+   "matching_features":[""],"missing_features":[""],"relevance_score":0,"discovery_reason":""
+ }}],
+ "gap_search_note":""
+}}
+ARAŞTIRMA KONUSU:\n{bbf_text}\n
+İLK GENİŞ TARAMA ADAYLARI:\n{json.dumps(compact, ensure_ascii=False, indent=2)}"""
+
+
+def research_family_neighbour_prompt(
+    bbf_text: str,
+    cutoff_date: str,
+    recall: dict[str, Any],
+    gap: dict[str, Any],
+) -> str:
+    base = _compact_research_candidates(recall, ("candidate_documents",), limit=24)
+    new = _compact_research_candidates(gap, ("new_candidates",), limit=20)
+    return f"""{ARASTIRMA_RULES}
+Aşağıdaki araştırma konusu için kesim tarihi {cutoff_date}. Geniş tarama ve gap search tamamlandı.
+Şimdi ÜÇÜNCÜ TUR FAMILY / NEIGHBOUR SEARCH yap. Kullanıcıya henüz ilk 10 gösterilmeyecek.
+
+ZORUNLU KONTROLLER:
+- Teknik yakınlığı en yüksek adayların patent ailelerini/priority zincirlerini kontrol et. Aynı buluşun daha açıklayıcı WO/EP/US/ulusal yayını varsa not et, ancak aileyi mükerrer dokümanlarla şişirme.
+- En yakın adayların cited/citing patentlerini ve aynı dar IPC/CPC komşuluğundaki belgeleri ara.
+- Yakın başvuru sahibi/assignee kümelerini yalnız teknik yakınlık varsa incele.
+- Bu global bir kalite turudur. TR dahil hiçbir ülke için özel ayrı bir araştırma katmanı oluşturma.
+- Bu tur sonunda 8-12 dokümanlık geçici kısa liste ve en az 5 yeni/komşu aday üret. Gerçekten yeni aday yoksa uydurma ve gerekçeyi yaz.
+- `provisional_d1` ana istem/teknik çekirdeğin en fazla kritik özelliğini TEK BAŞINA açıklayan en yakın belge olsun.
+- `provisional_d2`, D1'in eksik bıraktığı ayırt edici teknik özelliği/ilişkiyi tamamlamaya en elverişli belge olsun. Tek belge yeniliği bozuyorsa boş olabilir.
+JSON dışında yazma.
+ŞEMA:
+{{
+ "provisional_shortlist":[{{"publication_number":"","title":"","source_url":"","relevance_score":0,"reason":""}}],
+ "neighbour_candidates":[{{
+   "publication_number":"","title":"","date":"","jurisdiction":"","source_url":"",
+   "matching_features":[""],"missing_features":[""],"relevance_score":0,"family_relation":"","discovery_reason":""
+ }}],
+ "provisional_d1":"",
+ "provisional_d2":"",
+ "family_neighbour_note":""
+}}
+ARAŞTIRMA KONUSU:\n{bbf_text}\n
+GENİŞ TARAMA EN YAKIN ADAYLARI:\n{json.dumps(base, ensure_ascii=False, indent=2)}\n
+GAP SEARCH YENİ ADAYLARI:\n{json.dumps(new, ensure_ascii=False, indent=2)}"""
+
+
+def research_d1_challenge_prompt(
+    bbf_text: str,
+    cutoff_date: str,
+    recall: dict[str, Any],
+    gap: dict[str, Any],
+    neighbour: dict[str, Any],
+) -> str:
+    pool: list[dict[str, Any]] = []
+    for payload, keys, limit in (
+        (recall, ("candidate_documents",), 28),
+        (gap, ("new_candidates",), 18),
+        (neighbour, ("neighbour_candidates",), 18),
+    ):
+        pool.extend(_compact_research_candidates(payload, keys, limit=limit))
+    dedup: dict[str, dict[str, Any]] = {}
+    for item in pool:
+        norm = re.sub(r"[^A-Z0-9]", "", str(item.get("publication_number") or "").upper())
+        if not norm:
+            continue
+        if norm not in dedup or float(item.get("relevance_score") or 0) > float(dedup[norm].get("relevance_score") or 0):
+            dedup[norm] = item
+    pool = sorted(dedup.values(), key=lambda x: float(x.get("relevance_score") or 0), reverse=True)[:50]
+    provisional_d1 = str(neighbour.get("provisional_d1") or "")
+    provisional_d2 = str(neighbour.get("provisional_d2") or "")
+    return f"""{ARASTIRMA_RULES}
+Aşağıdaki araştırma konusu için kesim tarihi {cutoff_date}. Üç araştırma turu tamamlandı.
+Şimdi BAĞIMSIZ D1 CHALLENGE / FINAL SELECTION turunu yap. Bu tur bitmeden ilk 10 kullanıcıya gösterilmez.
+
+GÖREVİN:
+- Geçici D1 `{provisional_d1}` belgesinden daha yakın TEK bir belge bulmaya özellikle çalış. Sadece mevcut havuzla yetinme, bağımsız web patent araması da yap.
+- Geçici D1+D2 `{provisional_d1}` + `{provisional_d2}` kombinasyonundan daha güçlü bir D1+D2 kombinasyonu bulmaya çalış.
+- Ana teknik çekirdeğin tek belgede ne kadarının doğrudan/açık bulunduğunu, eksik ayırt edici özellikleri ve işlevsel ilişkileri karşılaştır.
+- Daha güçlü belge/kombinasyon bulursan onu nihai seçime geçir. Bulamazsan nedenini `challenge_note` içinde açıkla.
+- Aile mükerrerlerini tek teknik öğreti gibi değerlendir. Nihai 10 farklı teknik öğretiden oluşsun.
+- Nihai liste tam 10 doğrulanmış patent dokümanı olmalı ve teknik yakınlığa göre sıralanmalı.
+- Nihai `proposed_d1` ve gerekiyorsa `proposed_d2` bu 10 içinde bulunmalı.
+- `totalpatent_query` TAM olarak nihai 10 yayın numarasını aynı sırada ` or ` ile birleştirmeli.
+- Nihai 10 için yayımlanmış özgün İngilizce Abstract doğrulanabiliyorsa `abstract_en` alanına doğrudan aktar. Türkçeye çevirme veya yeniden yazma.
+- İlk üç tur kullanıcıya gösterilmeyecek. Kullanıcıya görünen sıra eski arayüzle aynıdır: önce bu nihai 10 + sorgu + önerilen D1/D2, sonra `Sizin araştırdığınız benzer dokümanlar var mı?` sorusu.
+JSON dışında yazma.
 ŞEMA:
 {{
  "subject_title":"",
@@ -7222,9 +7455,113 @@ Dokümanları teknik yakınlığa göre sırala. Numara, başlık, tarih ve kayn
  "proposed_d1":"publication_number",
  "proposed_d2":"publication_number veya boş",
  "preliminary_novelty":"sağlanır/sağlanmaz",
- "preliminary_inventive_step":"sağlanır/sağlanmaz/belirsiz"
+ "preliminary_inventive_step":"sağlanır/sağlanmaz/belirsiz",
+ "research_quality_audit":{{
+   "global_recall_completed":true,
+   "gap_search_completed":true,
+   "family_neighbour_search_completed":true,
+   "d1_challenge_completed":true,
+   "final_top10_ready":true,
+   "stronger_single_document_found":false,
+   "stronger_combination_found":false,
+   "challenge_note":""
+ }}
 }}
-BBF:\n{bbf_text}"""
+ARAŞTIRMA KONUSU:\n{bbf_text}\n
+ADAY HAVUZU:\n{json.dumps(pool, ensure_ascii=False, indent=2)}"""
+
+
+def validate_top10_research_result(result: dict[str, Any]) -> None:
+    docs = result.get("documents") or []
+    if len(docs) != 10:
+        raise ValueError(f"Tip 3 ilk-10 kalite kapısı: tam 10 doküman yerine {len(docs)} doküman bulundu.")
+    numbers: list[str] = []
+    seen: set[str] = set()
+    for idx, doc in enumerate(docs, start=1):
+        number = str(doc.get("publication_number") or "").strip()
+        title = str(doc.get("title") or "").strip()
+        url = str(doc.get("source_url") or "").strip()
+        norm = re.sub(r"[^A-Z0-9]", "", number.upper())
+        if not norm or not title or not url:
+            raise ValueError("Tip 3 ilk-10 kalite kapısı: her dokümanda yayın numarası, başlık ve kaynak URL zorunludur.")
+        if norm in seen:
+            raise ValueError(f"Tip 3 ilk-10 kalite kapısı: mükerrer yayın/aile girdisi bulundu: {number}")
+        seen.add(norm)
+        numbers.append(number)
+        if int(doc.get("rank") or 0) != idx:
+            raise ValueError("Tip 3 ilk-10 kalite kapısı: sıralama 1-10 kesintisiz olmalıdır.")
+    d1 = re.sub(r"[^A-Z0-9]", "", str(result.get("proposed_d1") or "").upper())
+    d2 = re.sub(r"[^A-Z0-9]", "", str(result.get("proposed_d2") or "").upper())
+    if not d1 or d1 not in seen:
+        raise ValueError("Tip 3 ilk-10 kalite kapısı: önerilen D1 nihai 10 doküman içinde bulunmalıdır.")
+    if d2 and (d2 not in seen or d2 == d1):
+        raise ValueError("Tip 3 ilk-10 kalite kapısı: önerilen D2 boş olmalı veya D1'den farklı şekilde nihai 10 içinde bulunmalıdır.")
+    expected_query = "Totalpatent/Espaenet sorgusu: " + " or ".join(numbers)
+    actual_query = str(result.get("totalpatent_query") or "").strip()
+    if actual_query != expected_query:
+        raise ValueError("Tip 3 ilk-10 kalite kapısı: Totalpatent/Espaenet sorgusu nihai 10 yayın numarasıyla birebir ve aynı sırada olmalıdır.")
+    audit = result.get("research_quality_audit") or {}
+    for key in ("global_recall_completed", "gap_search_completed", "family_neighbour_search_completed", "d1_challenge_completed", "final_top10_ready"):
+        if audit.get(key) is not True:
+            raise ValueError(f"Tip 3 araştırma kalite kapısı tamamlanmadı: {key}")
+    if not str(audit.get("challenge_note") or "").strip():
+        raise ValueError("Tip 3 D1 Challenge kapısı: challenge_note boş bırakılamaz.")
+
+
+def run_top10_research_pipeline(
+    bbf_text: str,
+    cutoff_date: str,
+    extra_instruction: str = "",
+    *,
+    progress_callback: Any = None,
+) -> dict[str, Any]:
+    """Kullanıcıya tek nihai ilk-10 gösterirken arka planda dört zorunlu araştırma turu çalıştırır."""
+    def progress(value: int, message: str) -> None:
+        if progress_callback is not None:
+            progress_callback(value, message)
+
+    progress(25, "Geniş global aday taraması yapılıyor...")
+    recall = ask_json(_with_extra_instruction(research_recall_prompt(bbf_text, cutoff_date), extra_instruction), web_search=True)
+    _validate_research_candidate_pass(recall, key="candidate_documents", min_count=20, label="Global recall")
+
+    progress(45, "İlk havuzun açıklamadığı teknik boşluklar için hedefli ikinci tarama yapılıyor...")
+    gap = ask_json(_with_extra_instruction(research_gap_prompt(bbf_text, cutoff_date, recall), extra_instruction), web_search=True)
+    # Gap turunda gerçekten yeni aday bulunamayabilir; ancak alan ve arama eksenleri mutlaka açıklanmalıdır.
+    if not (gap.get("gap_targets") or []):
+        raise ValueError("Tip 3 gap-search kalite kapısı: ayırt edici teknik boşluk analizi boş bırakılamaz.")
+    if gap.get("new_candidates"):
+        _validate_research_candidate_pass(gap, key="new_candidates", min_count=1, label="Gap search")
+
+    progress(63, "Patent aileleri, atıflar ve yakın IPC/CPC komşuluğu taranıyor...")
+    neighbour = ask_json(_with_extra_instruction(research_family_neighbour_prompt(bbf_text, cutoff_date, recall, gap), extra_instruction), web_search=True)
+    if len(neighbour.get("provisional_shortlist") or []) < 8:
+        raise ValueError("Tip 3 family/neighbour kalite kapısı: geçici kısa liste en az 8 doküman içermelidir.")
+    if not str(neighbour.get("provisional_d1") or "").strip():
+        raise ValueError("Tip 3 family/neighbour kalite kapısı: provisional_d1 boş bırakılamaz.")
+
+    progress(80, "Mevcut D1'i yenmeye çalışan bağımsız son araştırma ve kombinasyon kontrolü yapılıyor...")
+    final = ask_json(_with_extra_instruction(research_d1_challenge_prompt(bbf_text, cutoff_date, recall, gap, neighbour), extra_instruction), web_search=True)
+    validate_top10_research_result(final)
+    final["_research_pipeline"] = {
+        "recall_candidates": len(recall.get("candidate_documents") or []),
+        "gap_candidates": len(gap.get("new_candidates") or []),
+        "neighbour_candidates": len(neighbour.get("neighbour_candidates") or []),
+        "provisional_d1": neighbour.get("provisional_d1") or "",
+        "provisional_d2": neighbour.get("provisional_d2") or "",
+        "quality_audit": final.get("research_quality_audit") or {},
+    }
+    progress(92, "Nihai ilk 10 doğrulandı ve kullanıcıya sunulmak üzere kilitlendi...")
+    return final
+
+
+def top10_research_prompt(bbf_text: str, cutoff_date: str) -> str:
+    """Geriye dönük uyumluluk için final seçim promptu; normal UI dört turlu pipeline kullanır."""
+    return f"""{ARASTIRMA_RULES}
+Aşağıdaki araştırma konusu için araştırma kesim tarihi {cutoff_date} olacak şekilde global patent araştırması yap ve tam 10 doğrulanmış patent dokümanı seç.
+Normal arayüzde bu seçim tek çağrıyla yapılmaz; global recall, gap search, family/neighbour ve D1 challenge turları tamamlandıktan sonra kullanıcıya gösterilir.
+Dokümanları teknik yakınlığa göre sırala. `totalpatent_query` tam 10 yayın numarasını aynı sırada içersin. `proposed_d1` ve gerekiyorsa `proposed_d2` bu 10 içinde olsun.
+ŞEMA: {{"documents":[],"totalpatent_query":"Totalpatent/Espaenet sorgusu: CN... or US...","proposed_d1":"","proposed_d2":""}}
+ARAŞTIRMA KONUSU:\n{bbf_text}"""
 
 
 # -----------------------------------------------------------------------------
@@ -10576,11 +10913,14 @@ elif work_type == "Tip 3 - Ön araştırma raporu":
                 cutoff_text = cutoff.strftime("%d.%m.%Y")
                 research_extra_instruction = _normalize_extra_instruction(research_extra_instruction_input)
                 st.session_state.research_extra_instruction = research_extra_instruction
-                progress.progress(20, text="Global patent veritabanlarında araştırma yapılıyor...")
-                top10 = ask_json(_with_extra_instruction(top10_research_prompt(bbf_text, cutoff_text), research_extra_instruction), web_search=True)
+                progress.progress(20, text="Çok turlu global patent araştırması başlatılıyor...")
+                top10 = run_top10_research_pipeline(
+                    bbf_text,
+                    cutoff_text,
+                    research_extra_instruction,
+                    progress_callback=lambda value, message: progress.progress(value, text=message),
+                )
                 docs = top10.get("documents") or []
-                if len(docs) != 10:
-                    raise ValueError(f"Tam 10 doküman yerine {len(docs)} doküman döndü. Araştırmayı tekrar çalıştırın.")
                 st.session_state.top10_result = top10
                 st.session_state.research_bbf_text = bbf_text
                 st.session_state.research_cutoff = cutoff_text

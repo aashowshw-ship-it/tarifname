@@ -450,6 +450,19 @@ def validate_draft(draft: dict[str, Any]) -> list[dict[str, str]]:
         if re.search(r"\bbir\s+fonksiyon\s+olmasıdır\.?$", str(claim or ""), re.I):
             findings.append({"level":"Hata","message":"Bağımlı sistem istemi `bir fonksiyon olmasıdır` diye bitmemeli; standart olmayan yazılımsal bileşen birim/modül gibi somut teknik türle yazılmalı."})
 
+
+    # v5.4.79: generic `... fonksiyonu` element names are not a sufficient carrier type unless explicitly standardized.
+    standard_nf = {"AMF","SMF","UPF","PCF","NRF","NEF","AUSF","UDM","NSSF","AF","NWDAF","SEPP","CHF","UDR","UDSF"}
+    for row in draft.get("elements") or []:
+        name = str((row or {}).get("name", "") or "").strip()
+        number = str((row or {}).get("number", "") or "").strip()
+        tokens = set(re.findall(r"\b[A-Z][A-Z0-9]{1,7}\b", name))
+        if re.search(r"\bfonksiyonu\s*$", name, re.I) and not (tokens & standard_nf):
+            findings.append({"level":"Hata","message":f"Genel `... fonksiyonu` referans unsuru teknik taşıyıcı türüne kanonikleştirilmeli; kaynak anlamına göre birim/modül vb. kullanın: {name} ({number})."})
+    visible_semantic = "\n".join([*map(str, draft.get("detailed_paragraphs") or []), *map(str, _system_claim_all_texts(draft.get("system_claim") or {})), *map(str, draft.get("dependent_system_claims") or [])])
+    if re.search(r"\bfonksiyonu(?:nun|na|nda|ndan)?\s*\([^)]*\)\s*(?:üzerinde|üstünde)\s+(?:konumlandırılan|bulunan|çalışan)", visible_semantic, re.I):
+        findings.append({"level":"Hata","message":"Bir ajan/alt unsur `fonksiyon üzerinde` konumlandırılamaz; kaynak destekliyorsa birim/modül bünyesinde ilişki kurun."})
+
     findings.extend(_reference_identity_findings(draft))
     findings.extend(_reference_presence_findings(draft))
     findings.extend(_main_claim_first_definition_findings(draft))
