@@ -1,4 +1,4 @@
-# Patent Atölyesi v5.4.80
+# Patent Atölyesi v5.4.81
 
 
 ## v5.4.77 / 2026-09-25 — Atomik istem revizyonu, insertion-first ve bağımsız revizyon denetimi
@@ -260,7 +260,7 @@ Akış:
 
 Uygulamadaki kuralların tek yürütme kaynağı `rules.py` dosyasıdır. İnsan tarafından okunabilir kayıt `RULES_MEMORY.md` içindedir.
 
-Kural sürümü: `2026-09-28.v72`
+Kural sürümü: `2026-10-02.v73`
 
 ## Yerel çalıştırma
 
@@ -855,3 +855,13 @@ Bu sürüm Türkçe `i/İ` normalizasyon hatasını giderir, UTM/teknik kısaltm
 - `D1_CHALLENGE`, geçici D1'den daha yakın tek belgeyi ve geçici D1+D2'den daha güçlü kombinasyonu bağımsız son aramayla bulmaya çalışır. Daha güçlü belge bulunursa final ilk 10 ve önerilen D1/D2 buna göre güncellenir.
 - Kullanıcı arayüz sırası değişmemiştir: kullanıcı yalnız nihai 10 + `Totalpatent/Espaenet sorgusu` + önerilen D1/D2'yi görür. Bundan sonra yine `Sizin araştırdığınız benzer dokümanlar var mı?` sorusu gelir. Kullanıcı dokümanları `10+` hattında değerlendirilir ve dondurulmuş ilk 10 yeniden yazılmaz.
 - İlk-10 final kapısı tam 10 benzersiz yayın, D1/D2'nin final listede bulunması, sorgu satırının final 10 ile birebir eşleşmesi ve dört araştırma turunun tamamlanmasını zorunlu tutar.
+
+
+## v5.4.81 / 2026-10-02 — Tarifname Düzenleme paragraf, formül ve istem-ailesi hardening
+
+- Tarifname Düzenleme akışında her `insert_paragraph_after/before` işlemi yalnız bir gerçek Word paragrafı (`w:p`) üretebilir. Tek operasyona manuel satır sonuyla iki paragraf gömmek fail-closed reddedilir; çok paragraflı müşteri cevabı ayrı operasyonlarla eklenir.
+- Müşteri cevabındaki açık matematiksel bağıntılar düzenleme akışında da düz metin bırakılmaz. `[[EQ: ...]]` / `[[FORMULA: ...]]` işaretleri gerçek OMML denkleme dönüştürülür ve Markup/Clean OMML sayısı doğrulanır.
+- İstem ailesi blok bütünlüğü zorunludur: bağımsız istem ve ona bağlı bütün bağımlılar kesintisiz blok halinde kalır. Sonraki bağımsız istem ailesi başladıktan sonra önceki aileye ait bağımlı istem en sona eklenemez.
+- Yeni sistem bağımlı istemi sistem bloğuna, yöntem bağımlı istemi yöntem bloğuna yerleştirilir; gerekiyorsa sonraki istem numaraları ve bağımlılık referansları atomik/minimum Track Changes ile yeniden numaralandırılır.
+- Nihai Clean/accepted istem sırası 1'den başlayarak kesintisiz numaralandırılır; bağımlılık yalnız daha önce tanımlanmış istemlere gidebilir. Sistem/ürün ve yöntem kategorileri fiziksel istem dizisinde ileri-geri dönüş yapamaz.
+- Bu kontroller `tarifname_update.py` içinde deterministik final gate olarak ve mevcut `test_v5432_tarifname_update.py` içinde regresyon olarak uygulanır.

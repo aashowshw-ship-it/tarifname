@@ -72,7 +72,7 @@
 - İngilizce çıktı Word kapısı Türkçe şablon kalıntılarını deterministik olarak reddeder.
 - İngilizce görüş varsayılan dosya adı `Response Letter_XXXXXX.docx` olur.
 
-Kural sürümü: **2026-09-28.v72**
+Kural sürümü: **2026-10-02.v73**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -900,3 +900,12 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Araştırma baştan sona globaldir. TR dahil belirli bir ülkeye özel ayrıcalıklı katman yoktur. Aile kontrolü bütün güçlü adaylar için uygulanır.
 - Aynı patent ailesinin mükerrer yayınları ilk 10'u dolduramaz. Final D1 ana teknik çekirdeği tek başına en fazla açıklayan belge, D2 ise gerekiyorsa D1'in eksik bıraktığı ayırt edici teknik ilişkiyi en iyi tamamlayan belgedir.
 - Final kapısı dört tur tamamlanmadan, tam 10 benzersiz doğrulanmış yayın bulunmadan, D1/D2 final 10 içinde olmadan veya `Totalpatent/Espaenet sorgusu` final 10 ile birebir eşleşmeden kullanıcıya ilk 10 göstermez.
+
+
+## v5.4.81 / 2026-10-02.v73 — Tarifname Düzenleme paragraf / OMML / istem ailesi kapıları
+
+- `insert_paragraph_after` ve `insert_paragraph_before` tek operasyonda yalnız bir gerçek Word paragrafı üretir. `\n`/manuel satır sonu ile birden fazla kavramsal paragraf tek `w:p` içine gömülemez. Çok paragraflı içerik ayrı operasyonlara bölünür ve kaynak paragraf geometrisi korunur.
+- Tarifname Düzenleme sırasında müşteri kaynağındaki açık matematiksel bağıntılar da gerçek Word OMML denklem nesnesi olarak yazılır; düz metin formül kabul edilmez. Planlanan denklem sayısı Markup ve Clean OOXML içinde doğrulanır.
+- İstem ailesi blok bütünlüğü bağlayıcıdır: bağımsız istem + tüm bağımlıları kesintisiz bloktur. Sonraki bağımsız istem ailesi başladıktan sonra önceki aileye dönülmez.
+- Sistem/ürün/cihaz ailesi ile yöntem ailesi fiziksel istem dizisinde ayrı bloklar halinde tutulur. Yeni bağımlı istem kendi ailesinin sonuna, sonraki bağımsız istemden önce eklenir. Gerekirse aşağıdaki istem numaraları ve bağımlılık referansları minimum atomik değişiklikle güncellenir.
+- Nihai Clean/accepted istem numaraları 1'den başlayarak kesintisiz artar; bağımlılık yalnız daha önce tanımlanmış istemlere gider. Bu kapı final Markup/Clean tesliminden önce deterministik çalışır.

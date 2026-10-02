@@ -16,6 +16,7 @@ from docx.text.paragraph import Paragraph
 from docx.table import Table
 
 from gorus_audit import validate_minimal_tracked_changes
+from word_math import EQ_MARKER_RE, build_inline_omath
 
 
 ALLOWED_DECISIONS = {
@@ -283,8 +284,14 @@ def validate_update_plan(plan: dict[str, Any], source_docx: bytes, customer_text
                 raise ValueError(f"Tarifname düzenleme hedef kapısı: {rid} old_text hedef paragrafta bulunamadı.")
         else:
             anchor = str(op.get("anchor_text", "")).strip()
-            if not anchor or not _norm(op.get("new_text", "")):
+            raw_new_text = str(op.get("new_text", ""))
+            if not anchor or not _norm(raw_new_text):
                 raise ValueError(f"Tarifname düzenleme kalite kapısı: {rid} paragraf ekleme için anchor_text ve new_text zorunludur.")
+            if "\n" in raw_new_text or "\r" in raw_new_text:
+                raise ValueError(
+                    f"Tarifname düzenleme paragraf-yapısı kapısı: {rid} tek insert_paragraph işlemi birden fazla paragraf/manuel satır sonu içeremez. "
+                    "Her yeni paragraf ayrı insert_paragraph_after/before işlemi olmalıdır."
+                )
             matches = _paragraph_matches(paragraphs, anchor)
             if len(matches) != 1:
                 raise ValueError(
@@ -372,6 +379,132 @@ def _append_plain_run(parent, text: str, rpr: Any = None, *, deleted: bool = Fal
     parent.append(run)
 
 
+def _append_insert_content(parent, text: str, rpr: Any = None) -> int:
+    """Append inserted content while converting [[EQ: ...]] markers to real OMML.
+
+    Returns the number of OMML equations created. Text surrounding an equation remains a
+    normal Word run. This helper is used inside w:ins as well as clean paragraphs.
+    """
+    raw = str(text or "")
+    pos = 0
+    count = 0
+    for match in EQ_MARKER_RE.finditer(raw):
+        if match.start() > pos:
+            _append_plain_run(parent, raw[pos:match.start()], rpr)
+        parent.append(build_inline_omath(match.group(1).strip()))
+        count += 1
+        pos = match.end()
+    if pos < len(raw):
+        _append_plain_run(parent, raw[pos:], rpr)
+    if not count and not raw:
+        return 0
+    return count
+
+
+def _count_equation_markers(plan: dict[str, Any]) -> int:
+    return sum(len(EQ_MARKER_RE.findall(str(op.get("new_text", "")))) for op in (plan.get("operations") or []))
+
+
+def _count_omml(docx_bytes: bytes) -> int:
+    try:
+        from lxml import etree
+        with zipfile.ZipFile(io.BytesIO(docx_bytes), "r") as zf:
+            root = etree.fromstring(zf.read("word/document.xml"))
+        M = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+        return len(root.xpath(".//m:oMath", namespaces={"m": M}))
+    except Exception:
+        return 0
+
+
+def _extract_numbered_claims(docx_bytes: bytes) -> list[tuple[int, str]]:
+    """Return numbered claim paragraphs after İSTEMLER/CLAIMS, ignoring bullet continuations."""
+    doc = Document(io.BytesIO(docx_bytes))
+    in_claims = False
+    claims: list[tuple[int, str]] = []
+    for para in iter_document_paragraphs(doc):
+        text = _norm(para.text)
+        if not in_claims:
+            if re.fullmatch(r"(?:İSTEMLER|CLAIMS)", text, flags=re.I):
+                in_claims = True
+            continue
+        if re.fullmatch(r"(?:ÖZET|ABSTRACT)", text, flags=re.I):
+            break
+        match = re.match(r"^(\d+)\.\s*(.+)$", text)
+        if match:
+            claims.append((int(match.group(1)), match.group(2).strip()))
+    return claims
+
+
+def _claim_dependency_refs(body: str, claim_no: int) -> list[int]:
+    text = str(body or "")
+    refs = [int(x) for x in re.findall(r"\b(?:İstem|Claim)\s+(\d+)\b", text, flags=re.I)]
+    return [x for x in refs if x < claim_no]
+
+
+def _independent_claim_kind(body: str) -> str:
+    low = str(body or "").casefold()
+    if re.search(r"\b(yöntem|method)\b", low):
+        return "method"
+    if re.search(r"\b(sistem|cihaz|ürün|düzenek|tertibat|yapılanma|system|device|apparatus|product)\b", low):
+        return "system"
+    return "other"
+
+
+def _validate_claim_family_block_order(docx_bytes: bytes) -> None:
+    """Fail closed when a dependent claim returns to an earlier claim family.
+
+    Example rejected order: system main/dependents -> method main/dependents -> new system dependent.
+    Newly added dependent claims must be placed inside their own independent-claim block, which may
+    require minimal downstream renumbering of claim numbers and dependencies.
+    """
+    claims = _extract_numbered_claims(docx_bytes)
+    if not claims:
+        return
+    numbers = [num for num, _ in claims]
+    if numbers != list(range(numbers[0], numbers[0] + len(numbers))) or numbers[0] != 1:
+        raise ValueError(
+            "Tarifname düzenleme istem-sıra kapısı: istem numaraları 1'den başlayarak fiziksel sırayla kesintisiz artmalıdır."
+        )
+    roots: dict[int, int] = {}
+    root_kinds: dict[int, str] = {}
+    root_sequence: list[int] = []
+    kind_sequence: list[str] = []
+    for num, body in claims:
+        refs = _claim_dependency_refs(body, num)
+        if not refs:
+            root = num
+            root_kinds[root] = _independent_claim_kind(body)
+        else:
+            missing = [ref for ref in refs if ref not in roots]
+            if missing:
+                raise ValueError(
+                    "Tarifname düzenleme istem-sıra kapısı: bağımlı istem, henüz tanımlanmamış/geçersiz isteme bağlı: "
+                    + ", ".join(map(str, missing))
+                )
+            root_set = {roots[ref] for ref in refs}
+            if len(root_set) != 1:
+                raise ValueError(
+                    f"Tarifname düzenleme istem-ailesi kapısı: İstem {num} birden fazla bağımsız istem ailesine çapraz bağlanıyor."
+                )
+            root = next(iter(root_set))
+        roots[num] = root
+        if not root_sequence or root_sequence[-1] != root:
+            if root in root_sequence:
+                raise ValueError(
+                    "Tarifname düzenleme istem-ailesi kapısı: bir istem ailesine, sonraki bağımsız istem ailesi başladıktan sonra geri dönülemez. "
+                    "Yeni bağımlı istem kendi ana istem bloğu içinde, sonraki bağımsız istemden önce yer almalıdır."
+                )
+            root_sequence.append(root)
+            kind = root_kinds.get(root, "other")
+            if kind != "other":
+                if kind_sequence and kind != kind_sequence[-1] and kind in kind_sequence:
+                    raise ValueError(
+                        "Tarifname düzenleme istem-kategori kapısı: sistem/ürün istemleri ve yöntem istemleri ayrı ve kesintisiz bloklar halinde tutulmalıdır."
+                    )
+                if not kind_sequence or kind_sequence[-1] != kind:
+                    kind_sequence.append(kind)
+
+
 def _append_revision(parent, text: str, *, kind: str, change_id: int, rpr: Any = None) -> None:
     if not text:
         return
@@ -379,7 +512,10 @@ def _append_revision(parent, text: str, *, kind: str, change_id: int, rpr: Any =
     wrapper.set(qn("w:id"), str(change_id))
     wrapper.set(qn("w:author"), "Destek Patent")
     wrapper.set(qn("w:date"), datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
-    _append_plain_run(wrapper, text, rpr, deleted=(kind == "delete"))
+    if kind == "insert":
+        _append_insert_content(wrapper, text, rpr)
+    else:
+        _append_plain_run(wrapper, text, rpr, deleted=True)
     parent.append(wrapper)
 
 
@@ -497,7 +633,7 @@ def _insert_paragraph_relative(anchor: Paragraph, text: str, *, before: bool, tr
         _append_revision(new_p, text, kind="insert", change_id=change_id, rpr=base_rpr)
         change_id += 1
     else:
-        _append_plain_run(new_p, text, base_rpr)
+        _append_insert_content(new_p, text, base_rpr)
     if before:
         anchor._p.addprevious(new_p)
     else:
@@ -664,12 +800,30 @@ def validate_update_result(source_docx: bytes, markup_docx: bytes, accepted_docx
 
     accepted_text = document_text(accepted_docx)
     for op in plan.get("operations") or []:
-        new_text = _norm(op.get("new_text", ""))
+        raw_new_text = str(op.get("new_text", ""))
+        new_text = _norm(raw_new_text)
+        if EQ_MARKER_RE.search(raw_new_text):
+            # OMML math is not surfaced by python-docx paragraph.text; equation presence is
+            # checked deterministically below via document.xml.
+            continue
         if new_text and _find_relaxed_phrase_span(accepted_text, new_text) is None:
             raise ValueError(
                 "Tarifname düzenleme çıktı kapısı: planlanan yeni metin clean kabul görünümünde doğrulanamadı: "
                 + new_text[:120]
             )
+
+    expected_equations = _count_equation_markers(plan)
+    if expected_equations:
+        accepted_equations = _count_omml(accepted_docx)
+        markup_equations = _count_omml(markup_docx)
+        if accepted_equations < expected_equations or markup_equations < expected_equations:
+            raise ValueError(
+                "Tarifname düzenleme formül kapısı: planlanan açık matematiksel bağıntıların tümü gerçek Word OMML denklem nesnesi olarak üretilmedi."
+            )
+        if "[[EQ:" in document_text(accepted_docx).upper() or "[[FORMULA:" in document_text(accepted_docx).upper():
+            raise ValueError("Tarifname düzenleme formül kapısı: denklem işaretleyicisi nihai Clean metinde düz yazı olarak kaldı.")
+
+    _validate_claim_family_block_order(accepted_docx)
 
     expected_comments = len(plan.get("comments") or [])
     if expected_comments:
@@ -703,6 +857,9 @@ Görevin mevcut tarifnameyi sıfırdan yeniden yazmak değildir. Müşterinin HE
 ÖNEMLİ:
 - `locator_text`, mevcut tarifnamedeki TEK bir paragrafı benzersiz gösterecek yeterli ama gereksiz uzun olmayan birebir/çok yakın pasajdır.
 - `old_text`, yalnız değiştirilecek en küçük mevcut ifade olmalıdır. Yeni paragraf gerçekten gerekliyse replace_text ile tüm paragrafı yeniden yazma; insert_paragraph_after/before kullan.
+- Her insert_paragraph işlemi yalnız TEK gerçek paragraf içermelidir; new_text içinde satır sonu veya iki paragrafı birleştiren metin kullanma. Birden fazla yeni paragraf gerekiyorsa ayrı operasyonlar üret.
+- Açık matematiksel bağıntıyı düz metin denklem olarak bırakma. Yeni/ayrıntılandırılan formülü `[[EQ: ...]]` ile işaretle; Word üreticisi gerçek OMML denklem nesnesi oluşturacaktır.
+- İSTEMLER bölümüne yeni bağımlı istem ekliyorsan onu ait olduğu bağımsız istem ailesinin KESİNTİSİZ bloğuna yerleştir. Sistem bloğundan sonra yöntem bloğu başlamışsa en sona yeniden sistem bağımlısı ekleme. Gerekirse sonraki istemleri ve bağımlılık referanslarını minimum değişiklikle yeniden numaralandır.
 - `basis_source=existing_spec` ise basis_quote mevcut tarifnamede; `basis_source=customer_request` ise basis_quote müşteri dönüşünde birebir bulunmalıdır.
 - Başvuru yapılmışsa yalnız müşteri dönüşünde ortaya çıkan yeni teknik içeriği otomatik ekleme; clarification olarak işaretle.
 - Rüçhan başvurusu yapılmış ve sonraki başvuru hazırlanıyorsa yalnız sonraki müşteri bilgisindeki yeni teknik içeriği otomatik ekleme; rüçhan etkisi için clarification olarak işaretle.
@@ -791,6 +948,9 @@ Aşağıdaki müşteri dönüşünü ve mevcut tarifnameyi SIFIRDAN yeniden oku.
 İKİNCİ OKUMADA ÖZELLİKLE:
 - Müşteri `istemlerde açıkça vurgulansın/görülsün` dediği bir teknik içeriği mevcut istem veya tarifnamede semantik olarak buluyorsan, `zaten var` sonucu yeterli değildir; requested terminology/kısaltma görünürlüğünü minimum Track Changes ile gerçekten sağla.
 - Aynı talepte sayılan her teknik test/işlevi tek tek kontrol et; bir kısmını uygulayıp diğerlerini sessizce atlama.
+- Yeni paragraf eklemelerinde bir insert operasyonuna birden fazla paragraf/manuel satır sonu doldurma; her paragraf ayrı Word paragrafı olmalıdır.
+- Kaynaktaki açık matematiksel bağıntılar düzenleme akışında da `[[EQ: ...]]` işaretleyicisiyle gerçek OMML olarak üretilmelidir; düz metin denklem bırakma.
+- İstem ailelerinin blok sırasını baştan sona yeniden kontrol et: bağımsız istem ve bütün bağımlıları kesintisiz kalmalı; sonraki aile başladıktan sonra önceki aileye dönülmemelidir. Yeni bağımlı istem kendi ailesine yerleştirilmeli ve gerekiyorsa sonraki numara/bağımlılıklar atomik olarak güncellenmelidir.
 - Şekil aksiyonunda otomatik düzenleme güvenliyse `safe_auto_edit=true` + dayanak + edit_instructions ver; yalnız öneri bırakılması gerekiyorsa false ver.
 
 Mail:

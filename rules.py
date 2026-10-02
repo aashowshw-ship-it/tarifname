@@ -5,8 +5,8 @@ import re
 import zipfile
 from urllib.parse import unquote
 
-APP_VERSION = "v5.4.80"
-RULESET_VERSION = "2026-09-28.v72"
+APP_VERSION = "v5.4.81"
+RULESET_VERSION = "2026-10-02.v73"
 
 # v5.4.79 — Kaynak-anlamlı unsur türü / bağımlı istem kapanış yerleşimi / ham-BBF semantik sertleştirme.
 # Generic `... fonksiyonu` unsur adları standart ağ fonksiyonu özel adı değilse `... birimi/modülü` gibi teknik
@@ -455,6 +455,8 @@ C. EN AZ DEĞİŞİKLİK / MARKUP
 14. Çıktı zorunlu olarak gerçek OOXML Word Track Changes/Markup dosyasıdır. Sadece kırmızı yazı, kalın yazı veya üstü çizili biçim markup sayılmaz.
 15. Track Changes karakter/kelime bazında minimum fark gösterir; değişmeyen ön/son kelime, artikel, noktalama veya unsur adı silinip yeniden eklenmez.
 16. Yeni paragraf gerçekten gerekliyse mevcut paragrafı silip uzun bir paragraf olarak yeniden yazmak yerine uygun konuma Track Changes ile yeni paragraf eklenir.
+16A. Her `insert_paragraph_after` / `insert_paragraph_before` işlemi TAM OLARAK BİR gerçek Word paragrafı (`w:p`) üretir. Tek bir insert işleminde `\n`, manuel satır sonu veya birden fazla kavramsal paragraf gömülemez. Müşteri cevabı birden fazla paragraf gerektiriyorsa her paragraf ayrı operasyon olarak, kaynak paragraf stilini/boşluk geometrisini koruyacak şekilde eklenir. Markup render'ında yeni paragrafın önceki/sonraki paragrafla görsel olarak birleşmesi kalite hatasıdır ve teslimi durdurur.
+16B. Tarifname düzenleme sırasında müşteri kaynağında açık matematiksel bağıntı/formül varsa yeni tarifname oluşturma akışındaki Word matematik kuralı AYNEN geçerlidir. Formül düz metin `x = ...` olarak bırakılmaz; plan içinde `[[EQ: ...]]` / `[[FORMULA: ...]]` işaretleyicisiyle gerçek OMML denklem nesnesine dönüştürülür. Bir formül ayrı denklem ise ayrı gerçek Word paragrafında/denklem paragrafında tutulur; nihai Markup ve Clean'de planlanan denklem sayısı ile gerçek OMML sayısı doğrulanır.
 17. Ana çıktı yalnız Markup dosyasıdır. Clean/accepted sürüm kullanıcı ayrıca istemedikçe indirme çıktısı olarak verilmez; sistem gerekirse yalnız iç kalite kontrolünde clean görünüm üretir.
 18. Mevcut font, font boyutu, satır aralığı, paragraf boşluğu, başlık biçimi, numaralandırma, sayfa yapısı, section/margin ve line-numbering yapıları korunur. Metin değiştirirken tüm run yapısını sıfırlayan yöntemler kullanılmaz.
 19. Word yorumları yalnız gerçekten faydalı olduğunda eklenir; her değişikliğe yorum eklenmez. Yorum, patent metninin parçası değildir ve müşteriye açıklama/stratejik not işlevi görür.
@@ -473,6 +475,8 @@ D. DAYANAK, NEW MATTER VE İSTEM STRATEJİSİ
 30. İstem, detaylı açıklama, referans numaraları, yöntem adımları, kısa açıklama, özet ve şekil açıklamaları arasında revizyonla etkilenen terminoloji senkronize edilir.
 30A. Müşteri bir teknik işlevin, testin, terimin veya kısaltmanın istemlerde açıkça görünmesini/vurgulanmasını istiyorsa ve aynı teknik içerik mevcut tarifname veya başvuru öncesi müşteri teknik bilgisinde zaten destekleniyorsa sistem `zaten semantik olarak var` diyerek talebi kapatamaz. Koruma kapsamını gereksiz daraltmadan en küçük kelime/ibare değişikliğiyle görünür terminoloji sağlanır. Uygunsa tam teknik ad ile kısaltma birlikte `tam ad (KISALTMA)` biçiminde yazılır; kullanıcı iki mevcut alternatifi slash ile açıkça görünür istemişse teknik belirsizlik yaratmıyorsa `tam ad (A) / tam ad (B)` biçimi kullanılabilir.
 30B. Aynı müşteri talebinde birden fazla test/işlev/özellik birlikte sayılmışsa her biri ayrı dayanak kontrolünden geçirilir. Bir kısmının istemde, diğer kısmının yalnız detaylı açıklamada bulunması diğerlerinin sessizce atlanmasına gerekçe değildir. Mevcut tarifnamede desteklenen fakat istemde adı açıkça geçmeyen özellik, istem stratejisi bakımından uygunsa bağımlı isteme minimum müdahaleyle taşınır; dayanağı olmayan özellik eklenmez.
+30C. İSTEM AİLESİ BLOK BÜTÜNLÜĞÜ zorunludur. Her bağımsız istem, kendisine bağlı bütün bağımlı istemlerle KESİNTİSİZ bir blok oluşturur. Sonraki bağımsız istem ailesi başladıktan sonra önceki aileye ait yeni bağımlı istem en sona veya sonraki ailenin içine eklenemez. Örneğin `sistem ana istemi + sistem bağımlıları → yöntem ana istemi + yöntem bağımlıları → yeni sistem bağımlısı` sırası YASAKTIR. Yeni sistem bağımlı istemi, yöntem ana isteminden ÖNCE sistem bloğunun sonuna yerleştirilir; gerekiyorsa sonraki istem numaraları ve bağımlılık referansları yalnız zorunlu ölçüde atomik olarak yeniden numaralandırılır.
+30D. Mevcut dosyada sistem/ürün/cihaz ailesi önce, yöntem ailesi sonra kurulmuşsa bu aile sırası korunur. Yeni tarifname oluşturma ve başvuru öncesi düzenlemede varsayılan sıra da `sistem/ürün/cihaz ana istemi + bağımlıları → yöntem ana istemi + bağımlıları`dır. Aynı kategoriye ait ikinci bağımsız istem ailesi varsa kendi bağımlılarıyla tek blok halinde tutulur; sistem/yöntem kategorileri fiziksel istem dizisinde ileri-geri dönüş yapamaz. Nihai Clean/accepted istem dizisi 1'den başlayarak kesintisiz numaralanmalı ve bağımlılık zinciri yalnız daha önce tanımlanmış istemlere gitmelidir.
 
 E. SORULAR, ŞEKİLLER VE MAIL
 31. Unity, PCT/EP stratejisi, aynı kategoride bağımsız istem, ISA, rüçhan, ülke, maliyet gibi usuli/stratejik sorular tarifnameye zorla yazılmaz; mailde cevaplanır veya açık konu olarak gösterilir.

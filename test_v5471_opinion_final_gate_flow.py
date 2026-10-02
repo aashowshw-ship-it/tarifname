@@ -31,8 +31,8 @@ def _opinion():
 
 
 def test_version_bumped():
-    assert APP_VERSION == "v5.4.80"
-    assert RULESET_VERSION == "2026-09-28.v72"
+    assert APP_VERSION == "v5.4.81"
+    assert RULESET_VERSION == "2026-10-02.v73"
 
 
 def test_binding_title_paragraphs_are_centered_and_gate_enforces_it():

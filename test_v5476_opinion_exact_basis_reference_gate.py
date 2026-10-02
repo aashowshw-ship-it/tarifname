@@ -37,9 +37,9 @@ def _exact_line_pdf() -> bytes:
 
 
 def test_v5476_version_and_required_gorus_receipts():
-    assert APP_VERSION == "v5.4.80"
-    assert RULESET_VERSION == "2026-09-28.v72"
-    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.80")
+    assert APP_VERSION == "v5.4.81"
+    assert RULESET_VERSION == "2026-10-02.v73"
+    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.81")
     required = FINAL_COMPLIANCE_REQUIRED_CHECKS["gorus"]
     assert "spec_basis_coverage" in required
     assert "reference_binding" in required

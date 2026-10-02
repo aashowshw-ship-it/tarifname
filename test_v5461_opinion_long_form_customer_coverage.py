@@ -57,8 +57,8 @@ def long_opinion() -> dict:
 
 
 def test_release_version_and_binding_rules():
-    assert APP_VERSION == "v5.4.80"
-    assert RULESET_VERSION == "2026-09-28.v72"
+    assert APP_VERSION == "v5.4.81"
+    assert RULESET_VERSION == "2026-10-02.v73"
     low = GORUS_RULES.casefold()
     assert "en az 2200 kelime" in low
     assert "en az 700 kelimelik" in low
