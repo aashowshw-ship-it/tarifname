@@ -1,3 +1,11 @@
+## v5.4.84 / 2026-10-07.v76 — Şekil türü ayrımı / fonksiyonel diyagram istisnası
+
+- Şekil denetiminde önce tür ayrımı yapılır: fiziksel/yapısal unsur çizimi, fonksiyonel sistem mimarisi/veri akışı, karar/işlem akışı, kanonik yöntem akışı.
+- Fiziksel/yapısal şekillerde tek fiziksel unsur veya küçük çağrı etiketi yalnız tek referans taşır; referans ve lider çizgisi fiziksel karşılıkla açık eşleşir.
+- Fonksiyonel mimari ve karar/işlem akışlarında teknik ilişkiyi taşıyan Türkçe açıklama kutuları korunabilir. Süreç/karar/çıktı kutularına uydurma referans verilmez ve boş kutu bırakılmaz.
+- Tek bir numaralı teknik unsuru temsil eden kutu yine tek ref taşır. Yalnız kaynak veya kullanıcı onaylı üst-seviye mantıksal `group_container` aynı taşıyıcı altındaki birden fazla alt birimi açıkça gruplayabiliyorsa doğrulanmış çoklu ref aynı grup kutusunda korunabilir. Bu istisna fiziksel tek unsur kutularında ve küçük çağrı etiketlerinde kullanılamaz.
+- Yöntem şekillerinde v5.4.83 kuralı aynen sürer: her 1001+ adım ayrı kutuda, yalnız kendi refiyle, tam bir kez ve sırayla bulunur.
+
 ## v5.4.77 / 2026-09-25.v69 — Atomik istem revizyonu / insertion-first / bağımsız Amendment Auditor
 
 - Teknik istem revizyonunda varsayılan işlem `INSERT`tir. Mevcut istemdeki kelime/ibare korunabiliyorsa silme veya cümleyi yeniden kurma yasaktır. Silme/replace yalnız gerçekten zorunluysa `deletion_required=true`, somut gerekçe ve ilgili uzman-itiraz kimliğiyle yapılabilir.
@@ -72,7 +80,7 @@
 - İngilizce çıktı Word kapısı Türkçe şablon kalıntılarını deterministik olarak reddeder.
 - İngilizce görüş varsayılan dosya adı `Response Letter_XXXXXX.docx` olur.
 
-Kural sürümü: **2026-10-02.v73**
+Kural sürümü: **2026-10-07.v76**
 
 **BBF tamlık kontrolü görsel içeriği de kapsar:** gömülü teknik şekiller, grafikler, ısı haritaları, eksen/etiketler ve görsellerden açıkça çıkarılabilen teknik sonuçlar, metinsel içerikle birlikte eksiksiz değerlendirilir.
 
@@ -909,3 +917,22 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - İstem ailesi blok bütünlüğü bağlayıcıdır: bağımsız istem + tüm bağımlıları kesintisiz bloktur. Sonraki bağımsız istem ailesi başladıktan sonra önceki aileye dönülmez.
 - Sistem/ürün/cihaz ailesi ile yöntem ailesi fiziksel istem dizisinde ayrı bloklar halinde tutulur. Yeni bağımlı istem kendi ailesinin sonuna, sonraki bağımsız istemden önce eklenir. Gerekirse aşağıdaki istem numaraları ve bağımlılık referansları minimum atomik değişiklikle güncellenir.
 - Nihai Clean/accepted istem numaraları 1'den başlayarak kesintisiz artar; bağımlılık yalnız daha önce tanımlanmış istemlere gider. Bu kapı final Markup/Clean tesliminden önce deterministik çalışır.
+
+
+## v5.4.82 / 2026-10-06.v74 — Şekil tek-ref, sistem/yöntem ayrımı ve önceki teknik akışı
+- REFERANS NUMARALARI yöntem satırında sistem/cihaz `(N)` işareti gösterilmez; yalnız yöntem ref + teknik adım metni vardır. Aynı adım DETAYLI AÇIKLAMA'da sistem/cihaz unsur adlarıyla birlikte kendi `(N)` referanslarını taşır.
+- Sistem şekillerinde yöntem 1001+ referansları yasaktır; tüm yöntem adımları ayrı yöntem akış şeklinde gösterilir.
+- Sistem şekli grafik kutusunda yalnız tek ana ref bulunabilir. Aynı taşıyıcıdaki ayrı ref'ler kutu dışındaki ayrı küçük tek-ref çağrı etiketleri ve ayrı kılavuz çizgileriyle gösterilir. Aynı kutu/çağrıda iki veya daha fazla ref FAIL'dir.
+- Tarifnamede gerçek unsur olmayan bağlam kutusuna ref uydurulmaz; kaldırılmış ref şekilden de kaldırılır.
+- Aynı teknik geometriyi gösteren yalnız yazı/referans varyantı şekiller tekilleştirilebilir; son set yeniden 1..N numaralanır ve kısa şekil açıklamaları yeniden senkronize edilir.
+- Bir sayfada birden fazla şekil olabilir ama tek şekil bölünemez; sayfa sayacı üstte, ŞEKİL N görselin hemen altında kalır.
+- ÖNCEKİ TEKNİK'te genel girişten sonra teknik problemler doğal neden→sakınca→yetersizlik akışıyla yazılır; art arda aynı `gerektirir` gibi fiille biten mekanik cümleler kabul edilmez.
+
+
+## v5.4.83 / 2026-10-06.v75 — Yöntem metni üçlü senkron + yöntem şekli tekil referans kapısı
+- Yöntem adımının kanonik metni tek kaynaktır. Ana yöntem istemi veya detaylı açıklamadaki bir 1001+ adımı revize edildiğinde `method_steps` de aynı anda revize edilir; REFERANS NUMARALARI eski/kısa sürümde bırakılamaz.
+- REFERANS NUMARALARI görünümünde sistem/cihaz `(N)` işaretleri kaldırılır; bunun dışında adımın teknik kelime dizisi DETAYLI AÇIKLAMA ve bağımsız yöntem istemiyle aynı kalır.
+- Nihai Word doğrulaması üç görünümü belge içinden geri okur ve normalize edilmiş metinleri birebir karşılaştırır. Eksik/tekrarlı görünüm veya farklı teknik metin FAIL'dir.
+- Ayrı yöntem akış şekli yalnız 1001+ yöntem referanslarını taşır. Her ref kendi boş kutusunda tam bir kez ve `method_steps` sırasıyla gösterilir. Aynı refin birden fazla kaynak alt-kutusunda tekrarlanması yasaktır.
+- Kaynak yöntem şekli tekrarlı/eksik/fazla/sıra dışı ref içeriyorsa dedicated method flow olarak kabul edilmez; kanonik yöntem akışı üretilerek kaynak yöntem görünümünün yerini alır.
+- Yöntem şeklinin içine ayrıca `Şekil X - Yöntem Akışı` başlığı gömülmez; resmi `ŞEKİL N` caption Word katmanında görselin altında bulunur.

@@ -21,8 +21,8 @@ def base_draft():
 
 
 def test_version_and_rules():
-    assert APP_VERSION == "v5.4.81"
-    assert RULESET_VERSION == "2026-10-02.v73"
+    assert APP_VERSION == "v5.4.84"
+    assert RULESET_VERSION == "2026-10-07.v76"
     assert "DETAYLI AÇIKLAMA SIRA KURALI" in TARIFNAME_RULES
     assert "Buluş;" in TARIFNAME_RULES
     assert "uygundur" in TARIFNAME_RULES

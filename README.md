@@ -1,5 +1,23 @@
-# Patent Atölyesi v5.4.81
+# Patent Atölyesi v5.4.84
 
+
+## v5.4.84 / 2026-10-07 — Şekil türü ayrımı ve fonksiyonel diyagram orta-yol kuralı
+
+- Şekiller önce `physical_structural`, `functional_architecture`, `process_decision_flow`, `method_flow`, `mixed` veya `other` olarak sınıflandırılır.
+- Fiziksel/yapısal parça çizimlerinde klasik patent kuralı sürer: tek fiziksel unsur veya küçük çağrı etiketi yalnız tek referans taşır; lider çizgisi/ok doğru parçayı gösterir ve numara çizgi/ok ucunun üzerine bindirilmez.
+- Sistem mimarisi, veri akışı ve karar/işlem akışlarında teknik anlaşılabilirliği sağlayan Türkçe kutu metinleri kaynakta varsa korunabilir. Süreç, karar, durum, veri ve çıktı kutularına sırf numaralandırma için referans uydurulmaz.
+- Bir fonksiyonel kutu tek numaralı teknik unsuru temsil ediyorsa yine tek referans taşır. Ancak kaynak veya kullanıcı onaylı üst-seviye mimari kutusu aynı mantıksal taşıyıcı altında birden fazla alt birimi açıkça gruplayan `group_container` ise doğrulanmış çoklu referans aynı grup kutusunda korunabilir. Bu istisna fiziksel tek unsur kutularına ve küçük çağrı etiketlerine uygulanmaz.
+- Boş kutu nihai şekillerde kabul edilmez. Açıklaması silinen kutu gerçek referansla doldurulmuyorsa teknik kaynak metni korunur veya kutu kaynak geometriyi bozmayacak şekilde dışlanır.
+- Yöntem akış kuralı değişmez: her `1001+` adım ayrı kutuda, yalnız kendi referansıyla, tam bir kez ve kanonik sırada bulunur.
+- Ref. 182392'de kullanıcıca güncellenen sistem/akış yaklaşımı bu ayrımın kabul edilen örneğidir: fiziksel şekillerde katı tek-ref; fonksiyonel mimaride metin + gerektiğinde grup-ref; işlem/karar akışında açıklayıcı metin; yöntem akışında katı `1001+` kutuları.
+
+## v5.4.83 / 2026-10-06 — Yöntem adımı tek-kaynak senkronu ve yöntem şekli tekil akışı
+
+- Yöntem adımları için **tek kanonik `method_steps` kaynağı** zorunludur. Ana yöntem istemi veya detaylı açıklamadaki bir adım açıklık/NASIL nedeniyle değiştirilirse REFERANS NUMARALARI aynı anda aynı kanonik metinden yeniden üretilir.
+- Nihai Word kapısı `REFERANS NUMARALARI ↔ BULUŞUN DETAYLI AÇIKLAMASI ↔ bağımsız yöntem istemi` üç görünümünü Word metninden geri okur; yalnız referans listesindeki sistem/cihaz `(N)` işaretlerini normalize eder. Geri kalan teknik kelime dizisi farklıysa teslim FAIL olur.
+- Ayrı yöntem akış şeklinde her yöntem refi (`1001`, `1002`...) **tam bir kez**, kendi boş kutusunda ve kanonik sırada görünür. Tekrarlı/eksik/fazla/sıra dışı yöntem refi bulunan kaynak yöntem şekli otomatik kabul edilmez; kanonik yöntem akışıyla değiştirilir.
+- Yöntem patent şeklinin kutularında yalnız yöntem refi bulunur; şeklin içine ayrıca `Şekil X - Yöntem Akışı` gibi başlık gömülmez. Resmi `ŞEKİL N` başlığı Word'de görselin altında kalır.
+- Sistem şekli ↔ yöntem şekli ayrımı ve tek grafik kutusu = tek ana sistem referansı kuralları v5.4.82'den aynen devam eder.
 
 ## v5.4.77 / 2026-09-25 — Atomik istem revizyonu, insertion-first ve bağımsız revizyon denetimi
 

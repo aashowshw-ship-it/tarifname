@@ -965,16 +965,17 @@ KRİTİK DENETİM MANTIĞI:
 - Ok uçları küçük, sade ve şeklin ölçeğiyle orantılı olmalıdır; büyük ok uçları kullanma.
 - Yöntem akış şekline kaynak işlem-adımı düzeyinde açık bir döngü vermiyorsa son adımdan önceki bir adıma geri dönüş oku ekleme. Modül geri beslemesini sistem şekli üzerinde modüller arasında göster.
 - Bir referans belirli alt parçaya aitse bütün tertibatı gösteremez. Örneğin referans listesinde `9 = Travers` ise 9 yalnız traversin kendisini göstermelidir.
-- REFERANS NUMARALARI bölümünde AYRI numaraya ve ayrı ada sahip unsurlar aynı taşıyıcı içinde bulunsa dahi tek ayırt edilemeyen kutu/hedef üzerinde `2-3`, `2/3` veya iki numara birlikte gösterilemez. Her ayrı unsur için ayrı kutucuk, ayrı çağrı alanı veya ayrı kılavuz çizgisi olmalıdır. Böyle bir birleşik gösterim görürsen `merged_reference_groups` alanına numaraları yaz ve status=`needs_edit` yap. Ortak taşıyıcı ve mevcut teknik bağlantılar korunarak yalnız çağrı/referans katmanının ayrıştırılmasını iste.
+- ÖNCE ŞEKİL TÜRÜNÜ SINIFLANDIR: `physical_structural`, `functional_architecture`, `process_decision_flow`, `method_flow`, `mixed`, `other`. Fiziksel/yapısal şekillerde tek fiziksel unsur/çağrı = tek referans zorunludur; `120,121`, `2-3`, `2/3` gibi birleşik gösterim fiziksel tek unsur kutusunda yasaktır. Fonksiyonel mimari/veri/karar akışında açıklayıcı Türkçe metin kutuları korunabilir ve referanssız süreç/karar/çıktı kutularına uydurma numara verilmez. Yalnız üst-seviye bir `group_container`, kaynakta aynı mantıksal taşıyıcı altında birden fazla alt birimi açıkça gruplayan bir kutuysa çoklu referans birlikte korunabilir; bu durumda occupancy `role=group_container` olmalı ve `reference_layout_valid=true` kalabilir. Tek teknik unsuru temsil eden kutu yine yalnız tek referans taşır. Boş kutu bırakma.
 - Bu şekil tek başına bütün referansları taşımak zorunda değildir; fakat nihai şekil SETİ tamamlandığında referans listesindeki tüm sistem unsurları en az bir şekil üzerinde, yöntem adımları da uygulanabilir yöntem/akış şekillerinde kapsanacaktır.
 - KRİTİK: Sistem/cihaz/unsur şekline sırf yöntem istemi 1001, 1002... içeriyor diye yöntem adımı numarası EKLEME. Kaynak görsel açıkça ayrı bir yöntem/işlem akış şekli değilse 1001+ yöntem referansları için action=`omit` ver ve `dedicated_method_flow=false` yap. Yöntem adımları için ayrı bir akış şekli sistem tarafından ayrıca oluşturulacaktır.
+- AYRI YÖNTEM AKIŞ ŞEKLİ ise tam tersine yalnız kanonik yöntem adımı referanslarını taşır. `method_steps` sırası 1001,1002,... ise her referans şekil üzerinde TAM BİR KEZ, kendi kutusunda ve aynı sırayla görünmelidir. Aynı yöntemin iki açıklama kutusuna bölündüğü kaynak akış nedeniyle `1001` veya başka bir yöntem refi iki kez tekrarlanamaz. Tekrarlı/eksik/fazla/sıra dışı ise `method_refs_unique_and_ordered=false`, status=`needs_edit` ver.
 - Her görünür parçayı zorla numaralandırma. Yalnız tarifnamede gerçek referansla tanımlanmış ve BU ŞEKİLDE fiziksel karşılığı güvenilir biçimde görülen unsuru değerlendir.
 - Referanslı ve bu şekilde görünür bir unsur numarasızsa, fiziksel yeri güvenilir biçimde belirlenebiliyorsa action=`add` yap. Belirsizse `unresolved` yaz; uydurma hedef seçme.
 - Mevcut numara doğru fakat ok yanlış fiziksel parçaya gidiyorsa action=`correct` yap.
 - Doğru numara ve doğru hedef varsa action=`keep` yap.
 - Unsur bu şekilde görünmüyorsa action=`omit` yap; sırf tüm referansları kullanmak için ekleme yapma.
 - Geçici/yardımcı şekil numaralarını gerçek tarifname referansı gibi kabul etme.
-- KAYNAK ŞEKİL SADAKATİ: Müşterinin teknik şekli kullanılabilir bir akış/geometri taşıyorsa metin yoğunluğu veya referans dışı iç etiketler nedeniyle otomatik dışlama yapma. Özgün kutu/ok/bağlantı/kesikli çizgi/dallanma geometrisini koru ve gerekiyorsa yalnız yazı/referans katmanını temizle.
+- KAYNAK ŞEKİL SADAKATİ: Müşterinin teknik şekli kullanılabilir bir akış/geometri taşıyorsa metin yoğunluğu veya referans dışı iç etiketler nedeniyle otomatik dışlama yapma. Özellikle `functional_architecture` ve `process_decision_flow` türlerinde teknik akışı anlaşılır kılan Türkçe kutu metinlerini varsayılan olarak KORU. Özgün kutu/ok/bağlantı/kesikli çizgi/dallanma geometrisini koru; yalnız gerçekten gerekli referans düzeltmesini yap.
 - Kullanıcı/ek talimat algoritma şeklinin yazısız olmasını gerektiriyorsa referanslı kutudaki unsur açıklamasını kaldırıp GERÇEK referans numarasını aynı kutu içinde ortala. Numarasız bağlam/karar yazısı ancak ek talimat açıkça bütün yazıları kaldırmayı istiyorsa silinir.
 - Yazı temizliği sırasında kutu kenarı, yarım ok, ok ucu, bağlantı çizgisi veya kesikli çizgi kaybolamaz. Bu öğeler kaynakla birebir ikinci kontrolde doğrulanmalıdır.
 - Kaynak şekil ancak teknik değer taşımıyor veya güvenilir biçimde temizlenemiyorsa dışlanabilir. Yazısı silinen/dışlanan görseldeki benzersiz teknik bilgileri `unique_technical_information` alanında atomik olarak yaz ve tarifname gövdesindeki gerçek kanıtlarını `spec_coverage_evidence` alanına koy; eksik teknik bilgi varsa status=`unresolved` yap.
@@ -984,8 +985,11 @@ JSON ŞEMASI:
 {{
   "figure_index": {figure_index},
   "figure_description": "",
-  "figure_kind": "system/method/mixed/other",
+  "figure_kind": "physical_structural/functional_architecture/process_decision_flow/method_flow/mixed/other",
   "dedicated_method_flow": false,
+  "method_reference_sequence": ["1001","1002"],
+  "method_reference_counts": [{{"reference":"1001","count":1}}],
+  "method_refs_unique_and_ordered": true,
   "status": "ok/needs_edit/unresolved",
   "final_use": "include/exclude_only_if_nontechnical_or_unrecoverable",
   "text_cleanup_required": false,
@@ -1007,6 +1011,9 @@ JSON ŞEMASI:
       "confidence": 0.95
     }}
   ],
+  "one_reference_per_box": true,
+  "reference_layout_valid": true,
+  "reference_box_occupancy": [{{"box":"ana kutu/çağrı-1","role":"single_element/group_container/context_process","references":["2"]}}],
   "merged_reference_groups": [["2","3"]],
   "extra_or_temporary_marks": [""],
   "unresolved": [""],
@@ -1041,14 +1048,63 @@ def audit_figure_references(
     # Deterministic safety: method-step references may not be invented on a source system figure.
     method_refs = set(method_step_numbers(draft.get("method_steps") or []))
     if method_refs and not bool(audit.get("dedicated_method_flow")):
-        audit["existing_reference_marks"] = [
-            x for x in (audit.get("existing_reference_marks") or []) if str(x or "").strip() not in method_refs
-        ]
+        raw_marks = [str(x or "").strip() for x in (audit.get("existing_reference_marks") or [])]
+        source_method_marks = sorted(set(raw_marks) & method_refs)
+        audit["existing_reference_marks"] = [x for x in raw_marks if x not in method_refs]
+        if source_method_marks:
+            audit["status"] = "needs_edit"
+            audit["text_cleanup_required"] = True
+            audit.setdefault("text_to_remove", [])
+            for ref in source_method_marks:
+                if ref not in audit["text_to_remove"]:
+                    audit["text_to_remove"].append(ref)
+                if not any(str(a.get("reference", "") or "").strip() == ref for a in (audit.get("annotations") or [])):
+                    audit.setdefault("annotations", []).append({
+                        "reference": ref, "name": "method_step", "visible": True, "action": "omit",
+                        "location_description": "system figure",
+                        "reason": "Yöntem referansı yalnız ayrı yöntem/akış şeklinde gösterilebilir.", "confidence": 1.0,
+                    })
         for annotation in audit.get("annotations") or []:
             if str(annotation.get("reference", "") or "").strip() in method_refs:
                 annotation["action"] = "omit"
-                annotation["visible"] = False
                 annotation["reason"] = "Yöntem referansı ayrı yöntem/akış şeklinde gösterilecektir."
+    if method_refs and bool(audit.get("dedicated_method_flow")):
+        expected_sequence = method_step_numbers(draft.get("method_steps") or [])
+        sequence = [str(x or "").strip() for x in (audit.get("method_reference_sequence") or []) if str(x or "").strip()]
+        counts = {str(x.get("reference", "") or "").strip(): int(x.get("count", 0) or 0) for x in (audit.get("method_reference_counts") or []) if str(x.get("reference", "") or "").strip()}
+        unique_ordered = (
+            bool(audit.get("method_refs_unique_and_ordered"))
+            and sequence == expected_sequence
+            and set(counts) == set(expected_sequence)
+            and all(counts.get(ref) == 1 for ref in expected_sequence)
+        )
+        audit["method_refs_unique_and_ordered"] = unique_ordered
+        if not unique_ordered:
+            audit["status"] = "needs_edit"
+            audit["edit_instruction"] = "Yöntem akış şeklini kanonik method_steps sırasına göre yeniden kur: her yöntem referansı kendi boş kutusunda tam bir kez yer alsın; tekrar/eksik/fazla referans ve şekil içi başlık kullanma."
+    # Deterministic figure-type guard: multi-ref is forbidden for physical single-element boxes,
+    # but may be retained in a source-backed functional architecture group_container.
+    figure_kind = str(audit.get("figure_kind", "") or "").strip().casefold()
+    multi_groups = []
+    invalid_multi_groups = []
+    for occ in audit.get("reference_box_occupancy") or []:
+        refs = [str(x or "").strip() for x in (occ.get("references") or []) if str(x or "").strip()]
+        role = str(occ.get("role", "") or "").strip().casefold()
+        if len(set(refs)) > 1:
+            multi_groups.append(refs)
+            allowed_group = figure_kind in {"functional_architecture", "process_decision_flow", "mixed"} and role == "group_container"
+            if not allowed_group:
+                invalid_multi_groups.append(refs)
+    audit["reference_layout_valid"] = not bool(invalid_multi_groups)
+    if invalid_multi_groups or (figure_kind == "physical_structural" and audit.get("one_reference_per_box") is False):
+        audit["status"] = "needs_edit"
+        audit["one_reference_per_box"] = False
+        audit.setdefault("merged_reference_groups", [])
+        for grp in invalid_multi_groups:
+            if grp not in audit["merged_reference_groups"]:
+                audit["merged_reference_groups"].append(grp)
+    elif multi_groups:
+        audit["one_reference_per_box"] = False
     return audit
 
 
@@ -1105,7 +1161,7 @@ def edit_figure_reference_annotations(
     client = get_client()
     context = _figure_reference_context(draft, figure_index)
     prompt = f"""Bu görsel bir patent şeklidir ve özgün müşteri çizimi teknik kaynak olarak bağlayıcıdır.
-Yalnız referans numaraları ile bunların kılavuz çizgileri/oklarını ve AYRI REFERANSLI yazılım/modül unsurları için gereken sade çağrı/kutucuk katmanını düzelt. Mekanik/elektronik taşıyıcı geometrisini, parça biçimlerini, delikleri, kesit taramalarını, perspektifi, boyut ilişkilerini, bağlantı oklarını veya teknik kurguyu değiştirme. Yeni teknik parça üretme veya parça silme. Ancak iki ayrı referans kaynak şekil üzerinde tek `2-3`/tek kutuda birleştirilmişse ortak taşıyıcıyı koruyarak yalnız bu referans gösterimini iki ayrı küçük kutucuk/çağrı alanına ayırabilirsin.
+Yalnız referans numaraları ile bunların kılavuz çizgileri/oklarını ve AYRI REFERANSLI yazılım/modül unsurları için gereken sade çağrı/kutucuk katmanını düzelt. Mekanik/elektronik taşıyıcı geometrisini, parça biçimlerini, delikleri, kesit taramalarını, perspektifi, boyut ilişkilerini, bağlantı oklarını veya teknik kurguyu değiştirme. Yeni teknik parça üretme veya parça silme. Fiziksel/yapısal tek unsur kutusunda iki ayrı referans birleşmişse ortak taşıyıcıyı koruyarak referansları ayrı tek-ref çağrılara ayırabilirsin. Ancak audit `figure_kind=functional_architecture/process_decision_flow` ve occupancy `role=group_container` diyorsa kaynak grup kutusundaki doğrulanmış çoklu referansı sırf biçim için bölme; açıklayıcı Türkçe akış metnini de koru.
 
 REFERANS DENETİMİ:
 {json.dumps(audit, ensure_ascii=False, indent=2)}
@@ -1120,13 +1176,15 @@ UYGULAMA KURALLARI:
 - action=keep olan referansı ve doğru hedefini koru.
 - action=correct olan numaranın kılavuz çizgisi/okunu location_description içinde tarif edilen fiziksel unsura yönelt.
 - action=add olan referansı yalnız tarif edilen fiziksel/şematik unsur kesin görünüyorsa ekle.
-- action=split ise birleşik referans gösterimini (örn. 2-3) aynı ortak taşıyıcı içinde iki ayrı ve ayırt edilebilir referans kutucuğu/çağrısına ayır; teknik bağlantıları ve taşıyıcıyı değiştirme.
+- action=split yalnız fiziksel/yapısal tek-unsur kutusu veya küçük çağrı etiketi için uygulanır. `group_container` olarak doğrulanmış fonksiyonel mimari kutusunu split etme. Fiziksel split gerekiyorsa ana kutuda tek referans bırak, diğer her ayrı fiziksel unsur için tek-ref çağrı ve ayrı kılavuz çizgisi kullan.
 - action=omit olan referansı sırf referans listesinde var diye bu şekle ekleme.
 - Ok/kılavuz çizgisi ucu doğrudan ilgili fiziksel unsur üzerinde sonlansın; boş alana veya genel tertibata yönelmesin.
 - Referans belirli bir alt parçaya aitse tüm tertibatı işaretleme.
+- Sistem/cihaz şekline 1001+ yöntem adımı numarası koyma; kaynak sistem şeklinde mevcutsa kaldır. Yöntem referansları yalnız ayrı yöntem/akış şekline aittir.
 - Mümkün olduğunca çizgi kesişmelerini azalt; fakat teknik geometrinin hiçbir bölümünü değiştirme.
 - audit.text_cleanup_required=true ise yalnız audit.text_to_remove kapsamındaki yazıları temizle. Referanslı kutuda açıklama + referans varsa açıklamayı sil ve mevcut referansı AYNI KUTUNUN içinde ortala.
-- Numara taşımayan bağlam yazılarını preserve_unnumbered_context_text=true ise KORU. Ek talimat açıkça tüm algoritma yazılarının silinmesini istiyorsa bu talimata göre audit tarafından işaretlenen yazıları kaldır.
+- Numara taşımayan bağlam/süreç/karar/çıktı yazılarını preserve_unnumbered_context_text=true ise KORU. Fonksiyonel mimari ve karar/işlem akışında bu metinler teknik anlaşılabilirliğin parçasıdır. Ek talimat açıkça tüm algoritma yazılarının silinmesini istiyorsa yalnız açıkça işaretlenen yazıları kaldır.
+- BOŞ KUTU bırakma. Bir kutunun açıklaması silinmiş ve gerçek referansla doldurulmuyorsa kaynak teknik metnini geri koru; fiziksel/yöntem kutusuna uydurma metin veya ref ekleme.
 - Yazı silerken kutu kenarı, ok, yarım ok, ok ucu, bağlantı çizgisi, kesikli çizgi veya dalı asla silme/kısaltma. Müşteri şeklinin göreli yerleşimini yeniden çizme.
 - Çıktıda yalnız patent şekli bulunsun; açıklama listesi, referans lejandı, başlık veya ek metin ekleme.
 - Siyah-beyaz patent çizimi ve özgün en-boy oranı korunmalıdır.
@@ -1175,7 +1233,9 @@ KABUL KRİTERLERİ:
 3. Her kılavuz çizgisi/ok doğrudan doğru fiziksel unsurda sonlanmalı; boş alanı, komşu parçayı veya genel tertibatı göstermemelidir.
 4. Adayda tarifnamede olmayan yeni referans numarası/legend/açıklama eklenmemelidir.
 5. Bu şekilde görünmeyen unsurlar sırf numaralandırma amacıyla eklenmemelidir.
-6. REFERANS NUMARALARI bölümünde ayrı olan unsurlar tek `2-3`/tek kutu/tek hedefte birleştirilmemelidir; ortak taşıyıcı içinde dahi ayrı kutucuk/çağrı/ok ile ayırt edilebilir olmalıdır.
+6. Referans yerleşimi şekil türüne uygun olmalıdır. Fiziksel/yapısal tek unsur kutusu ve küçük çağrı etiketi yalnız tek referans taşıyabilir. Fonksiyonel mimari/veri/karar akışında açıklayıcı Türkçe metin kutuları korunabilir; referanssız süreç/karar/çıktı kutularına uydurma numara verilmemelidir. Yalnız kaynakta açık bir üst-seviye mantıksal `group_container` olan kutu birden fazla doğrulanmış alt-birim referansını birlikte taşıyabilir. Boş kutu kalmamalıdır.
+6A. Aday sistem/cihaz şekliyse 1001+ yöntem adımı referansı hiçbir kutu, çağrı etiketi veya kılavuz üzerinde bulunmamalıdır; bunlar yalnız ayrı yöntem şekline aittir.
+6B. Aday ayrı yöntem akış şekliyse kanonik yöntem adımlarının her biri kendi kutusunda TAM BİR KEZ ve doğru sırada görünmelidir. Tekrarlı, eksik, fazla veya sıra dışı yöntem referansı varsa method_refs_unique_and_ordered=false yap.
 7. Denetimde unresolved kalan unsur varsa annotations_correct=false yap.
 8. Özgündeki bütün oklar, ok uçları/yarım oklar, kutu kenarları, kesikli çizgiler ve bağlantılar adayda korunmuş olmalıdır. Yazı silme sırasında bir çizgi parçası dahi kaybolmuşsa ilgili preserve alanını false yap.
 9. Yalnız istenen yazı/referans katmanı değişmiş olmalıdır; kutu/ok/yerleşim yeniden çizilmişse only_requested_text_changed=false yap.
@@ -1197,7 +1257,13 @@ JSON ŞEMASI:
   "connections_preserved": true,
   "only_requested_text_changed": true,
   "annotations_correct": true,
+  "reference_layout_valid": true,
+  "functional_text_preserved": true,
+  "no_empty_boxes": true,
   "distinct_references_separated": true,
+  "one_reference_per_box": true,
+  "method_refs_absent_on_system_figure": true,
+  "method_refs_unique_and_ordered": true,
   "wrong_or_missing": [""],
   "extra_reference_marks": [""],
   "confidence": 0.95,
@@ -1372,6 +1438,10 @@ def prepare_figures_with_reference_audit(
                 report["final_status"] = "excluded_nontechnical_or_unrecoverable"
             reports.append(report)
             continue
+        if dedicated_method and audit.get("method_refs_unique_and_ordered") is False:
+            report["final_status"] = "replace_with_generated_method_flow"
+            reports.append(report)
+            continue
         if _audit_has_unsafe_edit(audit):
             message = f"ŞEKİL {index}: en az bir referansın fiziksel karşılığı güvenilir biçimde belirlenemedi."
             unresolved.append(message)
@@ -1426,7 +1496,11 @@ def prepare_figures_with_reference_audit(
             and bool(verification.get("connections_preserved"))
             and bool(verification.get("only_requested_text_changed"))
             and bool(verification.get("annotations_correct"))
-            and bool(verification.get("distinct_references_separated", True))
+            and bool(verification.get("reference_layout_valid", verification.get("one_reference_per_box", False)))
+            and bool(verification.get("functional_text_preserved", True))
+            and bool(verification.get("no_empty_boxes", True))
+            and bool(verification.get("method_refs_absent_on_system_figure", True))
+            and (not bool(audit.get("dedicated_method_flow")) or bool(verification.get("method_refs_unique_and_ordered", False)))
             and not _has_nonempty_items(verification.get("wrong_or_missing"))
             and not _has_nonempty_items(verification.get("extra_reference_marks"))
             and verify_confidence >= FIGURE_REFERENCE_CONFIDENCE
@@ -1448,7 +1522,8 @@ def prepare_figures_with_reference_audit(
     dedicated_method_reports = [
         r for r in reports
         if bool((r.get("audit") or {}).get("dedicated_method_flow"))
-        and r.get("final_status") not in {"unresolved", "excluded_nontechnical_or_unrecoverable"}
+        and bool((r.get("audit") or {}).get("method_refs_unique_and_ordered"))
+        and r.get("final_status") not in {"unresolved", "excluded_nontechnical_or_unrecoverable", "replace_with_generated_method_flow"}
     ]
     if expected_methods and not dedicated_method_reports:
         try:
@@ -1466,6 +1541,9 @@ def prepare_figures_with_reference_audit(
                 "audit": {
                     "figure_kind": "method",
                     "dedicated_method_flow": True,
+                    "method_reference_sequence": refs,
+                    "method_reference_counts": [{"reference": ref, "count": 1} for ref in refs],
+                    "method_refs_unique_and_ordered": True,
                     "existing_reference_marks": refs,
                     "annotations": [
                         {"reference": ref, "visible": True, "action": "keep", "confidence": 1.0}
@@ -1580,12 +1658,18 @@ def validate_figures_docx_structure(data: bytes, draft: dict[str, Any] | None = 
                 continue
             descr = str(node.get("descr") or "")
             if descr.startswith("method_flow:"):
-                method_refs.update(x.strip() for x in descr.split(":", 1)[1].split(",") if x.strip())
+                listed = [x.strip() for x in descr.split(":", 1)[1].split(",") if x.strip()]
+                if len(listed) != len(set(listed)):
+                    raise ValueError("ŞEKİLLER kalite kapısı: yöntem akış şeklinde aynı yöntem referansı birden fazla kez gösterilemez.")
+                method_refs.update(listed)
         if not method_refs:
             raise ValueError("ŞEKİLLER kalite kapısı: yöntem istemi bulunduğu halde ayrı yöntem/akış şekli yok.")
         missing = sorted(expected - method_refs)
+        extra = sorted(method_refs - expected)
         if missing:
             raise ValueError("ŞEKİLLER kalite kapısı: ayrı yöntem/akış şeklinde eksik yöntem referansları: " + ", ".join(missing))
+        if extra:
+            raise ValueError("ŞEKİLLER kalite kapısı: ayrı yöntem/akış şeklinde fazladan yöntem referansları: " + ", ".join(extra))
 
 
 def build_figures_docx(images: list[UploadedAsset], language: str = "Türkçe") -> bytes:
@@ -5137,6 +5221,33 @@ def validate_tarifname_docx_structure(data: bytes, draft: dict[str, Any], langua
         for number in element_numbers:
             if re.search(rf"\(\s*{re.escape(number)}\s*\)", ptxt):
                 raise ValueError("Word şablon kontrolü: Parantezli sistem/cihaz referansları BULUŞUN DETAYLI AÇIKLAMASI bölümünden önce kullanılmamalıdır.")
+
+    # Fail-closed üçlü yöntem senkronu: REFERANS NUMARALARI ↔ DETAYLI AÇIKLAMA ↔ bağımsız yöntem istemi.
+    # Referans satırında yalnız sistem/cihaz parantezleri bilinçli olarak kaldırılabilir; geri kalan teknik metin aynı olmalıdır.
+    def _norm_method_surface(value: str, method_no: str) -> str:
+        text = str(value or "").strip()
+        text = re.sub(rf"^\s*{re.escape(method_no)}\s*\.\s*", "", text)
+        text = re.sub(rf"\s*\(\s*{re.escape(method_no)}\s*\)\s*[,.;:]?\s*$", "", text)
+        text = _strip_known_element_reference_marks(text, element_numbers)
+        text = re.sub(r"\s+", " ", text).strip().rstrip(".,;:")
+        return text.casefold()
+
+    method_numbers = [str(x.get("number", "") or "").strip() for x in (draft.get("method_steps") or []) if str(x.get("number", "") or "").strip()]
+    detail_segment = texts[di + 1:ci]
+    claims_segment = texts[ci + 1:ai]
+    for method_no in method_numbers:
+        ref_candidates = [t for t in ref_segment if re.match(rf"^\s*{re.escape(method_no)}\s*\.", t)]
+        detail_candidates = [t for t in detail_segment if re.search(rf"\(\s*{re.escape(method_no)}\s*\)\s*[,.;:]?\s*$", t)]
+        claim_candidates = [t for t in claims_segment if re.search(rf"\(\s*{re.escape(method_no)}\s*\)\s*[,.;:]?\s*$", t)]
+        if len(ref_candidates) != 1 or len(detail_candidates) != 1 or len(claim_candidates) != 1:
+            raise ValueError(f"Word yöntem senkron kontrolü: {method_no} için üç görünümden biri eksik veya tekrarlı.")
+        surfaces = [
+            _norm_method_surface(ref_candidates[0], method_no),
+            _norm_method_surface(detail_candidates[0], method_no),
+            _norm_method_surface(claim_candidates[0], method_no),
+        ]
+        if len(set(surfaces)) != 1:
+            raise ValueError(f"Word yöntem senkron kontrolü: {method_no} teknik metni REFERANS NUMARALARI, DETAYLI AÇIKLAMA ve yöntem istemi arasında birebir senkron değil.")
 
     # Özet buluş adı başlığı: ÖZET + boş paragraf + kalın/ortalı başlık.
     title_idx = ai + 2
