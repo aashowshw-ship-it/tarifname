@@ -6,8 +6,8 @@ from app_core import build_gorus_docx
 
 
 def test_version_and_binding_rules():
-    assert APP_VERSION == "v5.4.84"
-    assert RULESET_VERSION == "2026-10-07.v76"
+    assert APP_VERSION == "v5.4.87"
+    assert RULESET_VERSION == "2026-10-09.v79"
     assert "Tarifnamede sayfa X, satır Y-Z’de bu durum şu şekilde belirtilmiştir:" in GORUS_RULES
     assert "Tarifnamedeki dayanak şöyledir:" in GORUS_RULES and "YASAKTIR" in GORUS_RULES
     assert "anlamlı bir cümle" in GORUS_RULES

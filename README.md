@@ -1,4 +1,21 @@
-# Patent Atölyesi v5.4.84
+# Patent Atölyesi v5.4.87
+
+## v5.4.87 / 2026-10-09.v79 — Tüm işlemler için kaynak ve son Word bağlı zorunlu ikinci teslim denetimi
+
+- Bütün çıktı türlerinde (`tarifname`, `figures`, `tarifname_update`, `figure_update`, `gorus`, `claim_amendment`, `tip3`, `tip3_update`) eski `checks={...: True}` bayrakları **tek başına indirmeyi açamaz**.
+- `release_evidence.py` kaynak dosyaların baytlarını ve nihai Word OOXML'ini **gerçekten açar**; paket bütünlüğü, boş belge, çıktı türüne göre ayrı içerik/şekil/Track Changes/istem/şablon denetimleri yapar.
+- Kaynak dosya ve nihai çıktı SHA-256 parmak izleri, kontrol listesi, tür ve dosya adı işlem-içi HMAC makbuzuna bağlanır. Eksik kaynak/makbuz, değiştirilmiş Word, şablon kaybı veya yasak istem kapanışı **FAIL** verir.
+- `app.py` indirme yolu ve `job_worker.py` arka plan teslim yolu aynı zorunlu denetleyiciyi kullanır. Arka plandan sonra yeniden indirilirken belge yeniden denetlenir. Sunucu kaynakları ulaşılmazsa teslim durur.
+- İş türlerine özgü mevcut ham kaynak/ikinci okuma/istem açıklığı/PDF kaynak/rapor/şekil değerlendirmeleri **ayrıca zorunludur**; bağımsız teslim denetimi bunların yerine geçmez.
+- Önemli sınır: deterministik yapı denetimi her hukuki-teknik belirsizliği matematiksel kesinlikle saptayamaz. Açıklık ve yeni konu gibi anlamsal değerlendirmeler ayrı uzman-model/auditor aşamalarında yapılır; kanıtlanamayan iddialar PASS sayılamaz.
+
+## v5.4.86 / 2026-10-09.v78 — Görüşte fiziksel satır atfı: Word PDF otoritesi
+
+- `Görüş hazırlama` için DOC/DOCX tarifname yükleyen kullanıcı artık aynı **nihai** Word dosyasından Microsoft Word'de dışa aktarılmış PDF'yi de yükler. Yalnız otomatik LibreOffice PDF'si ile basılı satır numarası kesinleştirilemez (ör. 699151'de 5–6 / 7–8 farkı).
+- Kabul edilen Word PDF'sinin bağımsız metin katmanı içerik eşleşmesi ve basılı 5/10/15... satır anchor'ları denetlenir; içerik uyuşmazlığı veya PDF yokluğu indirmeyi engeller. Satır numarası elle ±1/±2 kaydırılarak 'düzeltilmez'.
+- Son Markup Word kullanıldıysa kaynağın ilk PDF'si geçersizdir; **son Markup'tan Word'le oluşturulmuş PDF** ayrıca istenir. Manuel görüş metni düzeltmesi, otomatik görüş güçlendirmesi ve indirme anı aynı fiziksel otoriteye bağlanır.
+- Bu güncelleme genel X/Y savunma kurallarını, zorunlu arayüz kararlarını, Word şablonlarını veya Türkçe görüş dosya adı biçimini değiştirmez.
+
 
 
 ## v5.4.84 / 2026-10-07 — Şekil türü ayrımı ve fonksiyonel diyagram orta-yol kuralı
@@ -883,3 +900,14 @@ Bu sürüm Türkçe `i/İ` normalizasyon hatasını giderir, UTM/teknik kısaltm
 - Yeni sistem bağımlı istemi sistem bloğuna, yöntem bağımlı istemi yöntem bloğuna yerleştirilir; gerekiyorsa sonraki istem numaraları ve bağımlılık referansları atomik/minimum Track Changes ile yeniden numaralandırılır.
 - Nihai Clean/accepted istem sırası 1'den başlayarak kesintisiz numaralandırılır; bağımlılık yalnız daha önce tanımlanmış istemlere gidebilir. Sistem/ürün ve yöntem kategorileri fiziksel istem dizisinde ileri-geri dönüş yapamaz.
 - Bu kontroller `tarifname_update.py` içinde deterministik final gate olarak ve mevcut `test_v5432_tarifname_update.py` içinde regresyon olarak uygulanır.
+
+
+## v5.4.85 / 2026-10-08.v77 — Oturumdan bağımsız tarifname işleri ve aşama kayıtları
+
+- Tarifname oluşturma formu, dosya baytlarını ve arayüz cevaplarını başlatma anında özel sunucu klasörüne kaydederek bağımsız çalışan süreç başlatır; tarayıcı bağlantısı işin yürütülmesini belirlemez.
+- İşler kullanıcı hesabına göre ayrılır; arayüz aynı kullanıcının yakın işlerinin durumunu 5 saniyede bir yeniler ve onaylı DOCX sonuçlarını sunar.
+- `source_package`, `extracted`, `literature`, `final_draft_audit`, `docx`, `figures` aşamalarının çıktıları içerik imzalı kalıcı checkpoint olarak dosyaya atomik yazılır. Yeniden başlatma doğrulanmış aşamaları atlar, eksik aşamayı tekrar işler.
+- Aynı işin iki ayrı çalışan süreç tarafından eş zamanlı işlenmesi OS dosya kilidiyle engellenir; işlem hatası görünürdür; `Kaldığı Yerden Devam Et` düğmesi yalnız başarısız/kesilmiş işe uygulanır.
+- İndirme yalnız mevcut final compliance gate kontrolünden geçmiş çıktı dosyası ve işin `completed` durumu ile mümkündür.
+- Yeni mekanizma şu anda yalnız `Tarifname oluşturma` için arka planda çalışır. Diğer akışların mevcut arayüz/kuralları değişmez; otomatik yeniden başlatma onlar için vaat edilmez.
+- Render'ın ücretsiz planındaki geçici dosya sistemi redeploy/uyku/container değişiminde silinebilir. Uzun süreli kalıcılık için `PATENT_JOB_STORE` kalıcı disk dizinine ayarlanmalıdır.

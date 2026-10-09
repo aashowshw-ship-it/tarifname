@@ -7,8 +7,8 @@ ROOT = Path(__file__).resolve().parent
 
 
 def test_rev5_ruleset_and_method_how_rule_present():
-    assert APP_VERSION == "v5.4.84"
-    assert RULESET_VERSION == "2026-10-07.v76"
+    assert APP_VERSION == "v5.4.87"
+    assert RULESET_VERSION == "2026-10-09.v79"
     assert "34E-1." in TARIFNAME_RULES
     assert "her zorunlu işlem adımı" in TARIFNAME_RULES.lower()
     assert "kimden/nereden" in TARIFNAME_RULES
@@ -61,7 +61,7 @@ def test_tarifname_checkpoint_stages_and_content_signature_present():
 
 def test_gorus_checkpoint_stages_present_and_quality_not_bypassed():
     app = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert '_workflow_signature(\n            "gorus_analysis"' in app
+    assert '_workflow_signature(\n                "gorus_analysis"' in app
     assert '"analysis_source"' in app
     assert '"audited_opinion"' in app
     assert '"final_bundle"' in app

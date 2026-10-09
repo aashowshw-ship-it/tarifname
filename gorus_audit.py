@@ -290,6 +290,64 @@ def validate_line_reference_authority(spec_filename: str, line_source_filename: 
             "Word kaynaklarda bu PDF uygulama tarafından arka planda otomatik üretilir."
         )
 
+def validate_word_origin_pdf_authority(
+    word_filename: str, word_bytes: bytes, pdf_filename: str, pdf_bytes: bytes,
+    *, uploaded_by_user: bool = False,
+) -> None:
+    """Hard gate against silent Word/LibreOffice pagination and line drift.
+
+    LibreOffice's internal export is NOT proof of the physical layout displayed by
+    Microsoft Word, even when the same PDF index is independently read twice.
+    For original DOC/DOCX and final Markup DOCX, an independently supplied PDF
+    exported from the exact Word document is mandatory. Verify its text against
+    that document before using its printed anchor numbers. Do not add an offset.
+    """
+    suffix = Path(str(word_filename)).suffix.lower()
+    if suffix not in {'.doc', '.docx'}:
+        validate_line_reference_authority(word_filename, pdf_filename)
+        return
+    if not uploaded_by_user or Path(str(pdf_filename)).suffix.lower() != '.pdf':
+        raise ValueError(
+            'Görüş Word/PDF sayfa-satır güvenlik kapısı: otomatik LibreOffice PDF '
+            'Microsoft Word görünümünü kanıtlamaz. Aynı nihai Word belgesinden '
+            'Microsoft Word ile dışa aktarılan PDF yüklenmeden görüş indirilemez.'
+        )
+    if not pdf_bytes or not word_bytes:
+        raise ValueError('Görüş Word/PDF kapısı: boş kaynak veya doğrulama PDF dosyası.')
+    import difflib
+    with tempfile.TemporaryDirectory() as td:
+        src=Path(td)/('source'+suffix)
+        src.write_bytes(word_bytes)
+        if suffix=='.doc':
+            proc=subprocess.run(['antiword','-w','0',str(src)], capture_output=True, timeout=90)
+            if proc.returncode != 0:
+                raise ValueError('Görüş Word/PDF kapısı: DOC metni bağımsız çözümlenemedi.')
+            original=proc.stdout.decode('utf-8',errors='replace')
+        else:
+            doc=Document(io.BytesIO(word_bytes))
+            original=' '.join(p.text for p in doc.paragraphs)
+            original+=' '+' '.join(c.text for tab in doc.tables for row in tab.rows for c in row.cells)
+    try:
+        pdf=fitz.open(stream=pdf_bytes, filetype='pdf')
+        visible=' '.join(p.get_text('text') for p in pdf)
+        if not pdf.page_count or not visible.strip():
+            raise ValueError('Görüş Word/PDF kapısı: PDF metin katmanı okunamıyor.')
+    except (fitz.FileDataError, ValueError) as exc:
+        raise ValueError('Görüş Word/PDF kapısı: geçersiz veya okunamayan PDF.') from exc
+    def compact(t: str) -> str:
+        return ''.join(ch for ch in t.casefold() if ch.isalnum())
+    aa,bb=compact(original),compact(visible)
+    if not aa or not bb or difflib.SequenceMatcher(None,aa,bb,autojunk=False).ratio() < .97:
+        raise ValueError(
+            'Görüş Word/PDF kapısı: doğrulama PDF metni nihai Word ile eşleşmiyor; '
+            'farklı sürüm veya farklı görüntüleme ayarı olabilir.'
+        )
+    # Require a complete, measurable physical anchor grid in the USER's PDF.
+    index=build_page_line_index(pdf_filename,pdf_bytes)
+    if not any(r['line'] is not None for r in index):
+        raise ValueError('Görüş Word/PDF kapısı: basılı fiziksel satır işaretleri okunamadı.')
+
+
 def build_page_line_index(filename: str, data: bytes) -> list[dict[str, Any]]:
     """Build/reuse an exact physical page/line index from an authoritative PDF.
 

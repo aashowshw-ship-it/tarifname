@@ -37,9 +37,9 @@ def _exact_line_pdf() -> bytes:
 
 
 def test_v5476_version_and_required_gorus_receipts():
-    assert APP_VERSION == "v5.4.84"
-    assert RULESET_VERSION == "2026-10-07.v76"
-    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.84")
+    assert APP_VERSION == "v5.4.87"
+    assert RULESET_VERSION == "2026-10-09.v79"
+    assert (ROOT / "README.md").read_text(encoding="utf-8").startswith("# Patent Atölyesi v5.4.87")
     required = FINAL_COMPLIANCE_REQUIRED_CHECKS["gorus"]
     assert "spec_basis_coverage" in required
     assert "reference_binding" in required
@@ -120,7 +120,8 @@ def test_ui_requires_word_export_pdf_and_separates_two_references():
     src = (ROOT / "app.py").read_text(encoding="utf-8")
     assert "Tarifname sayfa/satır doğrulama PDF'si (zorunlu)" not in src
     assert "prepare_line_reference_source" in src
-    assert "arka planda PDF'ye çevrilir" in src
+    assert "Tarifname sayfa/satır PDF'si" in src
+    assert "validate_word_origin_pdf_authority" in src
     assert "Görüş referansı (çıktı dosyası için)" in src
     assert 'opinion["reference"] = source_state.get("reference") or ""' in src
     assert "validate_mandatory_spec_basis_coverage" in src

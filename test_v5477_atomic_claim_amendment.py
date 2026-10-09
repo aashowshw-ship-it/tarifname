@@ -60,8 +60,8 @@ def _revision_texts(docx_bytes: bytes):
 
 
 def test_v5477_versions_and_hard_rules():
-    assert APP_VERSION == "v5.4.84"
-    assert RULESET_VERSION == "2026-10-07.v76"
+    assert APP_VERSION == "v5.4.87"
+    assert RULESET_VERSION == "2026-10-09.v79"
     low = GORUS_RULES.casefold()
     assert "95. ATOMİK İSTEM REVİZYONU" in GORUS_RULES
     assert "insertion-first" in low
@@ -191,11 +191,15 @@ def test_claim_amendment_has_dedicated_final_compliance_receipts():
     markup, _ = build_claim_revision_pair(source, [amendment])
     with pytest.raises(ValueError):
         final_compliance_gate("claim_amendment", data=markup, output_name="x.docx", default_name="x.docx", checks={"atomic_plan": True})
-    assert final_compliance_gate("claim_amendment", data=markup, output_name="x.docx", default_name="x.docx", checks={"atomic_plan": True, "amendment_integrity": True}) == "x.docx"
+    from release_evidence import issue_delivery_evidence
+    checks={"atomic_plan": True, "amendment_integrity": True}
+    proof=issue_delivery_evidence("claim_amendment",markup,[b"original specification"],checks,"x.docx")
+    assert final_compliance_gate("claim_amendment", data=markup, output_name="x.docx", default_name="x.docx", checks=checks, audit_receipt=proof) == "x.docx"
 
 
 def test_revised_opinion_delivery_rebuilds_page_line_authority_from_final_markup():
     app = (Path(__file__).resolve().parent / "app.py").read_text(encoding="utf-8")
     assert 'if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:' in app
-    assert '_delivery_authority_name, _delivery_authority_bytes = prepare_line_reference_source(' in app
+    assert '_delivery_authority_name = str(source_state.get("revised_line_spec_name") or "")' in app
+    assert 'validate_word_origin_pdf_authority(' in app
     assert '_delivery_final_spec_name = "son_markup_tarifname.docx"' in app

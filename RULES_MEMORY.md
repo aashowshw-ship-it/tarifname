@@ -1,3 +1,18 @@
+## v5.4.87 / 2026-10-09.v79 — TÜM İŞ AKIŞLARINDA KANITLI TESLİM ZORUNLULUĞU
+
+1. Tarifname oluşturma, şekiller, tarifname düzenleme, görüş, istem revizyonu, Tip 3 ve araştırma güncelleme çıktılarına ortak ikinci `release_evidence` kalite kapısı uygulanır. Sadece `checks=True` yeterli değildir.
+2. Kaynakların gerçek baytları ve nihai DOCX fiziksel OOXML yapısı bağımsız yeniden okunur. İşlem türüne özgü zorunlu yapısal kontroller çalıştırılır.
+3. Başarılı inceleme makbuzu kaynak SHA-256 listesi, son DOCX SHA-256 özeti, kanıtlı tür, ad ve kontrol listesini taşır; sunucu işleminde bütünlük imzasıyla doğrulanır.
+4. FAIL / NOT_RUN / kaynak yok / makbuz yok / çıktıda tek bayt değişiklik durumunda indirme oluşmaz. Arka plan işi ve tekrar indirme aynı kurala tabidir.
+5. Önceden bağlayıcı bütün özel kalite kapıları bağımsız olarak çalışır; ikinci teslim katmanı hiçbirinin yerine geçmez. Tek başına otomatik PASS hukuki başarı veya kusursuz anlamsal kontrol garantisi değildir.
+
+## v5.4.86 / 2026-10-09.v78 — BAĞLAYICI: Word satır atfı güvenlik kapısı (önceki sürümlere üstün)
+
+- DOC/DOCX tarifname için **yalnız uygulamanın LibreOffice PDF render'ı yetkili satır kaynağı değildir**. Basılı satırlar Microsoft Word'ün görünümünden kayabilir. Kullanıcı aynı nihai Word dosyasından Microsoft Word'le **PDF olarak dışa aktarılmış** dosyayı ayrıca sunmalıdır.
+- Görüş üretimi öncesi ve Word indirme anında PDF ile Word'ün metni bağımsız karşılaştırılır, gerçek basılı 5/10/15... satır grid'i ve her alıntının ilk/son fiziksel satır konumu doğrulanır. Eksik/farklı/okunamayan PDF = **FAIL-CLOSED**. Satıra +/-1 ya da +/-2 tahmini düzeltme YASAK.
+- İstem revizyonu varsa aynı güvenlik kontrolü **SON Markup Word'ün Word'den dışa aktarılmış PDF'si** üzerinden yapılır. Orijinal/temiz sürüm PDF'si nihai Markup için yetkili değildir.
+- Bu hüküm eski v5.4.76 'kullanıcıdan ayrı PDF istenmez' açıklamasını **geçersiz kılar**; TXT'de iç dönüştürme, tarifname PDF'de orijinal PDF kullanımı değişmez. Word kökenli PDF'nin uygulama dışında gerçekten Microsoft Word'den üretildiği kriptografik olarak doğrulanamaz, bu yüzden kullanıcı PDF'nin kaynağını doğru seçmelidir.
+
 ## v5.4.84 / 2026-10-07.v76 — Şekil türü ayrımı / fonksiyonel diyagram istisnası
 
 - Şekil denetiminde önce tür ayrımı yapılır: fiziksel/yapısal unsur çizimi, fonksiyonel sistem mimarisi/veri akışı, karar/işlem akışı, kanonik yöntem akışı.
@@ -22,7 +37,7 @@
 - Word görüş metadata tablosundaki `Referans` değeri yalnız **Ana dosya referansı**dır. Ayrı **Görüş referansı** yalnız çıktı dosya adında kullanılır. Metadata referansı ana dosya referansıyla birebir uyuşmazsa final kapı FAIL verir.
 - Esas savunma dayanak kapsamı deterministiktir: her X esas savunmasında ve her gerçek Y/kombinasyon `Birlikte Değerlendirildiğinde` grubunda en az bir birebir tarifname alıntısı bulunmalıdır. Esas savunmada hiç alıntı yoksa Word üretilemez.
 - Sayfa/satır aralığı alıntının ilk karakterinin bulunduğu gerçek fiziksel satırdan başlar, son karakterinin bulunduğu gerçek fiziksel satırda biter. Yaklaşık değer, paragraf başlangıcı, en yakın anchor, varsayılan satır aralığı veya `17.5 pt` benzeri fallback kesinlikle kullanılamaz.
-- Kullanıcıdan ayrıca sayfa/satır doğrulama PDF'si istenmez. Tarifname PDF ise doğrudan kullanılır; DOC/DOCX/TXT ise uygulama aynı yüklenen dosyayı arka planda PDF'ye çevirir. PDF üzerinde gerçek fiziksel satır grid'i doğrulanamıyorsa veya alıntının ilk/son fiziksel satırı kesin çözülemiyorsa görüş teslimi FAIL-CLOSED durur.
+- [TARİHSEL, v5.4.86 İLE GEÇERSİZ] Kullanıcıdan ayrıca sayfa/satır doğrulama PDF'si istenmez. Tarifname PDF ise doğrudan kullanılır; DOC/DOCX/TXT ise uygulama aynı yüklenen dosyayı arka planda PDF'ye çevirir. PDF üzerinde gerçek fiziksel satır grid'i doğrulanamıyorsa veya alıntının ilk/son fiziksel satırı kesin çözülemiyorsa görüş teslimi FAIL-CLOSED durur.
 - Nihai Markup/Word revize edilmişse iç doğrulama PDF'si revize nihai dosyadan arka planda yeniden üretilir; eski/orijinal PDF/indeks geçersizdir.
 - İlk teknik analiz istem revizyonu gerekli/gereksiz sonucunu arayüzde açıkça gösterir. v5.4.77 ile revizyon gerekli ise bağımsız Amendment Auditor ve kullanıcı karar kapısı zorunludur; revizyon gerekmezse görüş mevcut istemlerle otomatik ilerler.
 
@@ -936,3 +951,14 @@ Bu sürümde tarifname üretimi için aşağıdaki kurallar yalnız prompt tavsi
 - Ayrı yöntem akış şekli yalnız 1001+ yöntem referanslarını taşır. Her ref kendi boş kutusunda tam bir kez ve `method_steps` sırasıyla gösterilir. Aynı refin birden fazla kaynak alt-kutusunda tekrarlanması yasaktır.
 - Kaynak yöntem şekli tekrarlı/eksik/fazla/sıra dışı ref içeriyorsa dedicated method flow olarak kabul edilmez; kanonik yöntem akışı üretilerek kaynak yöntem görünümünün yerini alır.
 - Yöntem şeklinin içine ayrıca `Şekil X - Yöntem Akışı` başlığı gömülmez; resmi `ŞEKİL N` caption Word katmanında görselin altında bulunur.
+
+
+## v5.4.85 / 2026-10-08.v77 — Oturumdan bağımsız tarifname işleri ve aşama kayıtları
+
+- Tarifname oluşturma formu, dosya baytlarını ve arayüz cevaplarını başlatma anında özel sunucu klasörüne kaydederek bağımsız çalışan süreç başlatır; tarayıcı bağlantısı işin yürütülmesini belirlemez.
+- İşler kullanıcı hesabına göre ayrılır; arayüz aynı kullanıcının yakın işlerinin durumunu 5 saniyede bir yeniler ve onaylı DOCX sonuçlarını sunar.
+- `source_package`, `extracted`, `literature`, `final_draft_audit`, `docx`, `figures` aşamalarının çıktıları içerik imzalı kalıcı checkpoint olarak dosyaya atomik yazılır. Yeniden başlatma doğrulanmış aşamaları atlar, eksik aşamayı tekrar işler.
+- Aynı işin iki ayrı çalışan süreç tarafından eş zamanlı işlenmesi OS dosya kilidiyle engellenir; işlem hatası görünürdür; `Kaldığı Yerden Devam Et` düğmesi yalnız başarısız/kesilmiş işe uygulanır.
+- İndirme yalnız mevcut final compliance gate kontrolünden geçmiş çıktı dosyası ve işin `completed` durumu ile mümkündür.
+- Yeni mekanizma şu anda yalnız `Tarifname oluşturma` için arka planda çalışır. Diğer akışların mevcut arayüz/kuralları değişmez; otomatik yeniden başlatma onlar için vaat edilmez.
+- Render'ın ücretsiz planındaki geçici dosya sistemi redeploy/uyku/container değişiminde silinebilir. Uzun süreli kalıcılık için `PATENT_JOB_STORE` kalıcı disk dizinine ayarlanmalıdır.

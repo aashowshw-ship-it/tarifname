@@ -1,7 +1,5 @@
-CHANGELOG_v5.4.81.md
-CHANGELOG_v5.4.82.md
-CHANGELOG_v5.4.83.md
-CHANGELOG_v5.4.84.md
+CHANGELOG_v5.4.86.md
+CHANGELOG_v5.4.87.md
 Dockerfile
 Gorus_metni_696809_template.docx
 On_Arastirma_Raporu_181612_template.docx
@@ -19,10 +17,13 @@ auth.py
 claim_amendment.py
 config.toml
 docgen.py
+durable_jobs.py
 gorus_audit.py
+job_worker.py
 packages.txt
 parsers.py
 prompts.py
+release_evidence.py
 render.yaml
 requirements.txt
 rules.py
@@ -35,10 +36,6 @@ tarifname_update.py
 template_audit.py
 test_login_auth.py
 test_v5425_gorus_raw_source_quality_gate.py
-test_v5426_ep_xy_rules.py
-test_v5427_minimal_markup.py
-test_v5428_opinion_modes_page_line_gate.py
-test_v5429_dp_name_raw_source_gate.py
 test_v5430_sentence_case_detail_cohesion.py
 test_v5431_strict_tarifname_format.py
 test_v5432_tarifname_update.py
@@ -95,5 +92,8 @@ test_v5476_opinion_exact_basis_reference_gate.py
 test_v5477_atomic_claim_amendment.py
 test_v5483_method_sync_figure_uniqueness.py
 test_v5484_functional_figure_exception.py
+test_v5485_durable_background_jobs.py
+test_v5486_word_layout_authority.py
+test_v5487_all_workflows_delivery_evidence.py
 validators.py
 word_math.py

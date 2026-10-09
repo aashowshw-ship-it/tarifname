@@ -4,6 +4,7 @@ import logging
 
 import base64
 import io
+import hashlib
 import json
 import os
 import re
@@ -104,6 +105,7 @@ from gorus_audit import (
     validate_quote_locations_against_spec,
     validate_mandatory_spec_basis_coverage,
     validate_line_reference_authority,
+    validate_word_origin_pdf_authority,
     prepare_line_reference_source,
     validate_opinion_reference_binding,
     extract_cited_original_figure_pages,
@@ -282,15 +284,25 @@ def _workflow_checkpoint_bucket(workflow: str, signature: str) -> dict[str, Any]
     return current.setdefault("stages", {})
 
 def _workflow_checkpoint_get(workflow: str, signature: str, stage: str) -> Any:
+    if os.getenv("PATENT_WORKER_JOB_ID"):
+        from durable_jobs import checkpoint_get
+        return checkpoint_get(workflow, signature, stage)
     stages = _workflow_checkpoint_bucket(workflow, signature)
     return stages.get(stage)
 
 def _workflow_checkpoint_set(workflow: str, signature: str, stage: str, value: Any) -> None:
+    if os.getenv("PATENT_WORKER_JOB_ID"):
+        from durable_jobs import checkpoint_set
+        checkpoint_set(workflow, signature, stage, value)
+        return
     stages = _workflow_checkpoint_bucket(workflow, signature)
     stages[stage] = value
 
 def _ai_metrics_bucket(workflow: str, signature: str) -> list[dict[str, Any]]:
-    """Same-session telemetry for one immutable workflow signature. Never participates in quality decisions."""
+    """Telemetry for one immutable workflow signature; durable in background jobs."""
+    if os.getenv("PATENT_WORKER_JOB_ID"):
+        from durable_jobs import metric_get
+        return metric_get(workflow, signature)
     root = st.session_state.setdefault(_AI_METRICS_KEY, {})
     key = f"{workflow}:{signature}"
     bucket = root.get(key)
@@ -300,6 +312,10 @@ def _ai_metrics_bucket(workflow: str, signature: str) -> list[dict[str, Any]]:
     return bucket
 
 def _record_ai_metric(workflow: str, signature: str, metric: dict[str, Any]) -> None:
+    if os.getenv("PATENT_WORKER_JOB_ID"):
+        from durable_jobs import metric_append
+        metric_append(workflow, signature, metric)
+        return
     _ai_metrics_bucket(workflow, signature).append(dict(metric))
 
 def _show_tarifname_ai_metrics(signature: str) -> None:
@@ -1932,12 +1948,20 @@ def compliant_download_button(
     default_name: str,
     artifact_type: str,
     checks: dict[str, bool],
+    audit_sources: list | None = None,
     mime: str = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     **kwargs,
 ):
     """The ONLY UI path allowed to expose a generated Word file for download."""
+    from release_evidence import issue_delivery_evidence
+    from rules import canonical_output_name
+    final_name = canonical_output_name(output_name, default_name, artifact_type)
+    # A type-specific, fresh audit must reopen final OOXML bytes and bind them to
+    # original input bytes. Legacy True flags alone are never a release receipt.
+    receipt = issue_delivery_evidence(artifact_type, data, audit_sources or [], checks, final_name)
     final_name = final_compliance_gate(
-        artifact_type, data=data, output_name=output_name, default_name=default_name, checks=checks
+        artifact_type, data=data, output_name=output_name, default_name=default_name,
+        checks=checks, audit_receipt=receipt,
     )
     return st.download_button(label, data=data, file_name=final_name, mime=mime, **kwargs)
 
@@ -8845,7 +8869,17 @@ def build_and_gate_gorus_opinion(
     # No quality rule is skipped; only redundant LibreOffice conversions are removed.
     validate_opinion_reference_binding(current_opinion, source_state.get("reference") or "")
     validate_mandatory_spec_basis_coverage(current_opinion)
-    if line_spec_name and line_spec_bytes:
+    if Path(final_spec_name).suffix.lower() in {".doc", ".docx"}:
+        is_original = (final_spec_name == source_state.get("spec_name") and
+                       hashlib.sha256(final_spec_bytes).digest() == hashlib.sha256(source_state.get("spec_bytes") or b"").digest())
+        prefix = "line_spec" if is_original else "revised_line_spec"
+        authority_name = str(source_state.get(prefix + "_name") or "")
+        authority_bytes = bytes(source_state.get(prefix + "_bytes") or b"")
+        validate_word_origin_pdf_authority(
+            final_spec_name, final_spec_bytes, authority_name, authority_bytes,
+            uploaded_by_user=bool(source_state.get(prefix + "_user_word_export")),
+        )
+    elif line_spec_name and line_spec_bytes:
         authority_name, authority_bytes = str(line_spec_name), bytes(line_spec_bytes)
     else:
         authority_name, authority_bytes = prepare_line_reference_source(final_spec_name, final_spec_bytes)
@@ -9094,170 +9128,14 @@ def build_and_gate_tip3_report(
 # -----------------------------------------------------------------------------
 # ARAYÜZ
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title=f"Patent Atölyesi {APP_VERSION}", page_icon="⚙️", layout="wide")
-st.markdown(
+
+def execute_tarifname_job(bbf, reference, language_choice, claim_choice, extra_technical_files, example_files,
+                          separate_figures, figure_files, literature, lit_count, jurisdiction, extra_instruction):
+    """Canonical v5.4.84 creation workflow, reused unchanged by detached worker.
+
+    Stage checkpoints are durable only while running inside a job worker.
     """
-    <style>
-      .block-container {max-width: 1180px; padding-top: 1.5rem; padding-bottom: 3rem;}
-      .hero {padding: 1.2rem 1.4rem; border:1px solid #e7e7e7; border-radius:16px; margin-bottom:1rem;}
-      .hero h1 {margin:0; font-size:2rem;}
-      .hero p {margin:.35rem 0 0 0; color:#666;}
-      .version {font-size:.82rem; color:#888; margin-top:.45rem;}
-      .login-wrap {max-width:520px; margin:4vh auto 0 auto;}
-      div[data-testid="stDownloadButton"] button, div[data-testid="stFormSubmitButton"] button {width:100%;}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-AUTH_SESSION_KEY = "pa_authenticated_user"
-
-
-def _configured_users():
-    raw = os.getenv("PATENT_USERS_JSON", "").strip()
-    if not raw:
-        try:
-            raw = str(st.secrets.get("PATENT_USERS_JSON", "")).strip()
-        except Exception:
-            raw = ""
-    return load_users(raw)
-
-
-try:
-    _users = _configured_users()
-except ValueError as exc:
-    st.error(f"Kullanıcı yapılandırması hatalı: {exc}")
-    st.stop()
-
-_current_username = str(st.session_state.get(AUTH_SESSION_KEY, "")).strip()
-_current_user = _users.get(_current_username) if _current_username else None
-if _current_user is None or not _current_user.active:
-    st.session_state.pop(AUTH_SESSION_KEY, None)
-    st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
-    st.markdown(
-        f"""
-        <div class="hero">
-          <h1>Patent Atölyesi {APP_VERSION}</h1>
-          <p>Devam etmek için kullanıcı hesabınızla giriş yapın.</p>
-          <div class="version">Kural sürümü: {RULESET_VERSION}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if not _users:
-        st.error(
-            "Henüz kullanıcı tanımlanmamış. Render > Environment bölümünde PATENT_USERS_JSON değişkenini tanımlayın."
-        )
-    else:
-        with st.form("login_form", clear_on_submit=False):
-            login_username = st.text_input("Kullanıcı adı", autocomplete="username")
-            login_password = st.text_input("Şifre", type="password", autocomplete="current-password")
-            login_submit = st.form_submit_button("Giriş yap", type="primary")
-        if login_submit:
-            user = authenticate(_users, login_username, login_password)
-            if user is None:
-                st.error("Kullanıcı adı veya şifre hatalı.")
-            else:
-                st.session_state[AUTH_SESSION_KEY] = user.username
-                st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
-
-# Giriş doğrulandıktan sonra asıl uygulama görünür.
-with st.sidebar:
-    st.caption(f"Aktif kullanıcı: {_current_user.display_name}")
-    if st.button("Çıkış yap", use_container_width=True):
-        for _key in list(st.session_state.keys()):
-            del st.session_state[_key]
-        st.rerun()
-
-st.markdown(
-    f"""
-    <div class="hero">
-      <h1>Patent Atölyesi {APP_VERSION}</h1>
-      <p>Tarifname oluşturma/düzenleme, görüş, Tip 3 ön araştırma ve araştırma güncelleme çalışmalarını tek arayüzden yürütün.</p>
-      <div class="version">Kural sürümü: {RULESET_VERSION}</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-if not os.getenv("OPENAI_API_KEY", "").strip():
-    st.warning("OPENAI_API_KEY henüz tanımlı değil. Arayüzü inceleyebilirsiniz; üretim düğmeleri API anahtarı olmadan çalışmaz.")
-
-work_type = st.radio(
-    "İş türü",
-    ["Tarifname oluşturma", "Tarifname düzenleme", "Görüş hazırlama", "Tip 3 - Ön araştırma raporu", "Araştırma güncelleme - Tip 3"],
-    horizontal=True,
-)
-
-# TARİFNAME
-if work_type == "Tarifname oluşturma":
-    st.subheader("Tarifname oluşturma")
-    with st.form("tarifname_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            bbf = st.file_uploader("BBF dosyası", type=["docx", "doc", "pdf", "txt"], key="tar_bbf")
-            reference = st.text_input("Referans Numarası", value="")
-            st.caption("Tarifname çıktı adı Referans Numarasından otomatik oluşturulur: Tarifname_<Referans Numarası>.docx")
-        with c2:
-            language_choice = st.selectbox("Tarifname dili", ["Türkçe", "İngilizce"], index=0)
-            claim_choice = st.selectbox(
-                "İstem yapısı",
-                ["BBF'ye göre otomatik belirle", "Yalnızca sistem", "Yalnızca yöntem", "Sistem ve yöntem"],
-            )
-            st.caption("Mevcut bir tarifnameyi değiştirme işlemi bu ekranda yapılmaz; tarifname düzenleme ayrı bir iş akışı olarak ele alınacaktır.")
-
-        extra_technical_files = st.file_uploader(
-            "Ek teknik müşteri belgeleri/notları (varsa)",
-            type=["pdf", "docx", "doc", "txt", "md", "png", "jpg", "jpeg", "webp", "svg", "zip"],
-            accept_multiple_files=True,
-            key="tar_extra_technical",
-        )
-        example_files = st.file_uploader(
-            "Örnek tarifnameler (yalnızca unsur/istem kurgusu için)",
-            type=["pdf", "docx", "doc", "txt", "zip"],
-            accept_multiple_files=True,
-            key="tar_examples",
-            help="Bu dosyaların teknik içeriği yeni tarifnameye aktarılmaz.",
-        )
-
-        separate_figures = st.checkbox("Şekilleri ayrı Word dosyası olarak oluştur")
-        if separate_figures:
-            st.caption("Şekiller çıktı adı Referans Numarasından otomatik oluşturulur: Şekiller_<Referans Numarası>.docx")
-        figure_files = st.file_uploader(
-            "Ayrıca kullanılacak şekil dosyaları",
-            type=["png", "jpg", "jpeg", "webp", "svg", "docx", "pdf"],
-            accept_multiple_files=True,
-            key="tar_figures",
-            disabled=not separate_figures,
-        )
-        if separate_figures:
-            st.caption(
-                "Şekiller Word'e alınmadan önce nihai REFERANS NUMARALARI ile otomatik çapraz kontrol edilir. "
-                "Eksik veya yanlış referans okları yalnız fiziksel karşılık güvenilir biçimde belirlenebiliyorsa düzeltilir; "
-                "belirsiz referans varsa şekiller çıktısı durdurulur ve uydurma işaretleme yapılmaz."
-            )
-
-        literature = st.checkbox("Literatür araştırması yap ve önceki tekniğe ekle")
-        lc1, lc2 = st.columns(2)
-        with lc1:
-            lit_count = st.number_input("Benzer patent sayısı", min_value=1, max_value=10, value=2, disabled=not literature)
-        with lc2:
-            jurisdiction = st.text_input("Tercih edilen ülke/veri tabanı", disabled=not literature)
-
-        extra_instruction = st.text_area(
-            "Ek Talimat (varsa)",
-            max_chars=MAX_EXTRA_INSTRUCTION_CHARS,
-            height=90,
-            key="tar_extra_instruction",
-            help="Yalnız bu tarifname çalışmasına özel kısa yönlendirme. Repo kuralları ve kalite kapıları önceliklidir.",
-        )
-        st.caption("Bu çalışmaya özel kısa not. En fazla 500 karakter; repo kurallarını veya kalite kapılarını geçersiz kılamaz.")
-
-        submit = st.form_submit_button("Tarifnameyi oluştur", type="primary")
-
-    if submit:
+    if True:
         if bbf is None:
             st.error("BBF yükleyin.")
         elif not str(reference or "").strip():
@@ -9633,7 +9511,7 @@ if work_type == "Tarifname oluşturma":
                 compliant_download_button(
                     "Tarifname Word dosyasını indir", data=data, output_name=output_name,
                     default_name=f"Tarifname_{str(reference).strip()}.docx", artifact_type="tarifname",
-                    checks=_tarifname_final_checks, type="primary",
+                    checks=_tarifname_final_checks, audit_sources=[bbf], type="primary",
                 )
                 if separate_figures and figure_reports:
                     with st.expander("Şekil referans kontrolü", expanded=bool(figure_unresolved)):
@@ -9662,872 +9540,1101 @@ if work_type == "Tarifname oluşturma":
                     compliant_download_button(
                         "Şekiller Word dosyasını indir", data=figure_data, output_name=figures_output_name,
                         default_name=f"Şekiller_{str(reference).strip()}.docx", artifact_type="figures",
-                        checks={"references": not bool(figure_unresolved), "structure": True, "render": True},
+                        checks={"references": not bool(figure_unresolved), "structure": True, "render": True}, audit_sources=[bbf],
                     )
             except Exception as exc:
                 st.exception(exc)
 
-# TARİFNAME DÜZENLEME
-elif work_type == "Tarifname düzenleme":
-    st.subheader("Tarifname düzenleme")
-    st.caption(
-        "Akış: müşteriye gönderilmiş son Word tarifnamesi → müşteri revizyon/soruları → başvuru durumu → "
-        "talep bazlı karar matrisi → en az değişiklikle gerçek Word Track Changes → Word yorumları → "
-        "güvenli/kaynak-destekli şekil revizyonları → müşteri maili."
+
+if os.getenv("PATENT_WORKER_MODE") != "1":
+    st.set_page_config(page_title=f"Patent Atölyesi {APP_VERSION}", page_icon="⚙️", layout="wide")
+    st.markdown(
+        """
+        <style>
+          .block-container {max-width: 1180px; padding-top: 1.5rem; padding-bottom: 3rem;}
+          .hero {padding: 1.2rem 1.4rem; border:1px solid #e7e7e7; border-radius:16px; margin-bottom:1rem;}
+          .hero h1 {margin:0; font-size:2rem;}
+          .hero p {margin:.35rem 0 0 0; color:#666;}
+          .version {font-size:.82rem; color:#888; margin-top:.45rem;}
+          .login-wrap {max-width:520px; margin:4vh auto 0 auto;}
+          div[data-testid="stDownloadButton"] button, div[data-testid="stFormSubmitButton"] button {width:100%;}
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-    with st.form("tarifname_duzenleme_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            update_spec = st.file_uploader(
-                "Müşteriye gönderilmiş son tarifname / istem seti (.docx / .doc)",
-                type=["docx", "doc"],
-                key="upd_spec",
-                help=".doc dosyaları biçim korunarak LibreOffice ile .docx tabanına dönüştürülür; Markup gerçek OOXML Track Changes olarak üretilir.",
+    AUTH_SESSION_KEY = "pa_authenticated_user"
+
+
+    def _configured_users():
+        raw = os.getenv("PATENT_USERS_JSON", "").strip()
+        if not raw:
+            try:
+                raw = str(st.secrets.get("PATENT_USERS_JSON", "")).strip()
+            except Exception:
+                raw = ""
+        return load_users(raw)
+
+
+    try:
+        _users = _configured_users()
+    except ValueError as exc:
+        st.error(f"Kullanıcı yapılandırması hatalı: {exc}")
+        st.stop()
+
+    _current_username = str(st.session_state.get(AUTH_SESSION_KEY, "")).strip()
+    _current_user = _users.get(_current_username) if _current_username else None
+    if _current_user is None or not _current_user.active:
+        st.session_state.pop(AUTH_SESSION_KEY, None)
+        st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="hero">
+              <h1>Patent Atölyesi {APP_VERSION}</h1>
+              <p>Devam etmek için kullanıcı hesabınızla giriş yapın.</p>
+              <div class="version">Kural sürümü: {RULESET_VERSION}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if not _users:
+            st.error(
+                "Henüz kullanıcı tanımlanmamış. Render > Environment bölümünde PATENT_USERS_JSON değişkenini tanımlayın."
             )
-            filing_status = st.selectbox(
-                "Başvuru durumu",
-                [
-                    "Henüz başvuru yapılmadı",
-                    "Başvuru yapıldı",
-                    "Rüçhan başvurusu yapıldı; sonraki başvuru hazırlanıyor",
-                ],
-                key="upd_filing_status",
-            )
-        with c2:
-            update_customer_files = st.file_uploader(
-                "Müşterinin revizyon talepleri / soruları",
-                type=["pdf", "docx", "doc", "txt", "md", "zip"],
+        else:
+            with st.form("login_form", clear_on_submit=False):
+                login_username = st.text_input("Kullanıcı adı", autocomplete="username")
+                login_password = st.text_input("Şifre", type="password", autocomplete="current-password")
+                login_submit = st.form_submit_button("Giriş yap", type="primary")
+            if login_submit:
+                user = authenticate(_users, login_username, login_password)
+                if user is None:
+                    st.error("Kullanıcı adı veya şifre hatalı.")
+                else:
+                    st.session_state[AUTH_SESSION_KEY] = user.username
+                    st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
+
+    # Giriş doğrulandıktan sonra asıl uygulama görünür.
+    with st.sidebar:
+        st.caption(f"Aktif kullanıcı: {_current_user.display_name}")
+        if st.button("Çıkış yap", use_container_width=True):
+            for _key in list(st.session_state.keys()):
+                del st.session_state[_key]
+            st.rerun()
+
+    st.markdown(
+        f"""
+        <div class="hero">
+          <h1>Patent Atölyesi {APP_VERSION}</h1>
+          <p>Tarifname oluşturma/düzenleme, görüş, Tip 3 ön araştırma ve araştırma güncelleme çalışmalarını tek arayüzden yürütün.</p>
+          <div class="version">Kural sürümü: {RULESET_VERSION}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if not os.getenv("OPENAI_API_KEY", "").strip():
+        st.warning("OPENAI_API_KEY henüz tanımlı değil. Arayüzü inceleyebilirsiniz; üretim düğmeleri API anahtarı olmadan çalışmaz.")
+
+    work_type = st.radio(
+        "İş türü",
+        ["Tarifname oluşturma", "Tarifname düzenleme", "Görüş hazırlama", "Tip 3 - Ön araştırma raporu", "Araştırma güncelleme - Tip 3"],
+        horizontal=True,
+    )
+
+    # TARİFNAME
+    if work_type == "Tarifname oluşturma":
+        st.subheader("Tarifname oluşturma")
+        with st.form("tarifname_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                bbf = st.file_uploader("BBF dosyası", type=["docx", "doc", "pdf", "txt"], key="tar_bbf")
+                reference = st.text_input("Referans Numarası", value="")
+                st.caption("Tarifname çıktı adı Referans Numarasından otomatik oluşturulur: Tarifname_<Referans Numarası>.docx")
+            with c2:
+                language_choice = st.selectbox("Tarifname dili", ["Türkçe", "İngilizce"], index=0)
+                claim_choice = st.selectbox(
+                    "İstem yapısı",
+                    ["BBF'ye göre otomatik belirle", "Yalnızca sistem", "Yalnızca yöntem", "Sistem ve yöntem"],
+                )
+                st.caption("Mevcut bir tarifnameyi değiştirme işlemi bu ekranda yapılmaz; tarifname düzenleme ayrı bir iş akışı olarak ele alınacaktır.")
+
+            extra_technical_files = st.file_uploader(
+                "Ek teknik müşteri belgeleri/notları (varsa)",
+                type=["pdf", "docx", "doc", "txt", "md", "png", "jpg", "jpeg", "webp", "svg", "zip"],
                 accept_multiple_files=True,
-                key="upd_customer_files",
+                key="tar_extra_technical",
+            )
+            example_files = st.file_uploader(
+                "Örnek tarifnameler (yalnızca unsur/istem kurgusu için)",
+                type=["pdf", "docx", "doc", "txt", "zip"],
+                accept_multiple_files=True,
+                key="tar_examples",
+                help="Bu dosyaların teknik içeriği yeni tarifnameye aktarılmaz.",
+            )
+
+            separate_figures = st.checkbox("Şekilleri ayrı Word dosyası olarak oluştur")
+            if separate_figures:
+                st.caption("Şekiller çıktı adı Referans Numarasından otomatik oluşturulur: Şekiller_<Referans Numarası>.docx")
+            figure_files = st.file_uploader(
+                "Ayrıca kullanılacak şekil dosyaları",
+                type=["png", "jpg", "jpeg", "webp", "svg", "docx", "pdf"],
+                accept_multiple_files=True,
+                key="tar_figures",
+                disabled=not separate_figures,
+            )
+            if separate_figures:
+                st.caption(
+                    "Şekiller Word'e alınmadan önce nihai REFERANS NUMARALARI ile otomatik çapraz kontrol edilir. "
+                    "Eksik veya yanlış referans okları yalnız fiziksel karşılık güvenilir biçimde belirlenebiliyorsa düzeltilir; "
+                    "belirsiz referans varsa şekiller çıktısı durdurulur ve uydurma işaretleme yapılmaz."
+                )
+
+            literature = st.checkbox("Literatür araştırması yap ve önceki tekniğe ekle")
+            lc1, lc2 = st.columns(2)
+            with lc1:
+                lit_count = st.number_input("Benzer patent sayısı", min_value=1, max_value=10, value=2, disabled=not literature)
+            with lc2:
+                jurisdiction = st.text_input("Tercih edilen ülke/veri tabanı", disabled=not literature)
+
+            extra_instruction = st.text_area(
+                "Ek Talimat (varsa)",
+                max_chars=MAX_EXTRA_INSTRUCTION_CHARS,
+                height=90,
+                key="tar_extra_instruction",
+                help="Yalnız bu tarifname çalışmasına özel kısa yönlendirme. Repo kuralları ve kalite kapıları önceliklidir.",
+            )
+            st.caption("Bu çalışmaya özel kısa not. En fazla 500 karakter; repo kurallarını veya kalite kapılarını geçersiz kılamaz.")
+
+            submit = st.form_submit_button("Tarifnameyi oluştur", type="primary")
+
+        if submit:
+            if bbf is None:
+                st.error("BBF yükleyin.")
+            elif not str(reference or "").strip():
+                st.error("Referans Numarasını girin.")
+            else:
+                from durable_jobs import start_job
+                try:
+                    _job_id = start_job(
+                        username=str(_current_user.username),
+                        workflow="tarifname_create",
+                        payload={
+                            "reference": reference, "language_choice": language_choice, "claim_choice": claim_choice,
+                            "separate_figures": separate_figures, "literature": literature,
+                            "lit_count": int(lit_count), "jurisdiction": jurisdiction,
+                            "extra_instruction": extra_instruction,
+                        },
+                        upload_groups={
+                            "bbf": [bbf], "extra_technical_files": extra_technical_files or [],
+                            "example_files": example_files or [],
+                            "figure_files": (figure_files or []) if separate_figures else [],
+                        },
+                    )
+                    st.session_state["tar_last_job"] = _job_id
+                    st.success("İş arka planda başlatıldı. Tarayıcı isteğinden bağımsızdır; sunucu ayakta kaldığı sürece işlem devam eder.")
+                except Exception as exc:
+                    st.error(f"Arka plan işi başlatılamadı: {exc}")
+
+        from durable_jobs import list_jobs, read_job, restart_job, get_artifact
+
+        @st.fragment(run_every="5s")
+        def _tarifname_job_status():
+            jobs = list_jobs(str(_current_user.username), workflow="tarifname_create", limit=8)
+            if not jobs:
+                return
+            st.markdown("### Tarifname iş durumu ve kaldığı yerden devam")
+            for item in jobs:
+                job_id = item["id"]
+                current = read_job(job_id, username=str(_current_user.username))
+                status = current.get("status", "unknown")
+                st.write(f"**{current.get('reference', '')}** | {status} | {current.get('stage', 'Hazırlık')} | %{current.get('percent', 0)}")
+                if status in ("queued", "running"):
+                    st.progress(min(100,max(0,int(current.get("percent",0)))),text="Arka planda sürüyor...")
+                elif status == "completed":
+                    for artifact in current.get("artifacts", []):
+                        try:
+                            data = get_artifact(job_id, artifact["filename"], str(_current_user.username))
+                            # Worker completed all existing compliance checks before publishing.
+                            compliant_download_button(
+                                artifact["label"], data=data, output_name=artifact["filename"],
+                                default_name=artifact["filename"], artifact_type=artifact["artifact_type"],
+                                checks=artifact["checks"], audit_sources=[__import__("durable_jobs").load_job_inputs(job_id)[1]], key=f"job_art_{job_id}_{artifact['filename']}",
+                            )
+                        except Exception as exc:
+                            st.error(f"Çıktı okunamadı: {exc}")
+                elif status in ("failed", "interrupted"):
+                    st.error(str(current.get("error") or "İş yarıda kesildi."))
+                    if st.button("Kaldığı Yerden Devam Et", key=f"resume_{job_id}"):
+                        try:
+                            restart_job(job_id, str(_current_user.username))
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Devam edilemedi: {exc}")
+        _tarifname_job_status()
+
+    # TARİFNAME DÜZENLEME
+    elif work_type == "Tarifname düzenleme":
+        st.subheader("Tarifname düzenleme")
+        st.caption(
+            "Akış: müşteriye gönderilmiş son Word tarifnamesi → müşteri revizyon/soruları → başvuru durumu → "
+            "talep bazlı karar matrisi → en az değişiklikle gerçek Word Track Changes → Word yorumları → "
+            "güvenli/kaynak-destekli şekil revizyonları → müşteri maili."
+        )
+
+        with st.form("tarifname_duzenleme_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                update_spec = st.file_uploader(
+                    "Müşteriye gönderilmiş son tarifname / istem seti (.docx / .doc)",
+                    type=["docx", "doc"],
+                    key="upd_spec",
+                    help=".doc dosyaları biçim korunarak LibreOffice ile .docx tabanına dönüştürülür; Markup gerçek OOXML Track Changes olarak üretilir.",
+                )
+                filing_status = st.selectbox(
+                    "Başvuru durumu",
+                    [
+                        "Henüz başvuru yapılmadı",
+                        "Başvuru yapıldı",
+                        "Rüçhan başvurusu yapıldı; sonraki başvuru hazırlanıyor",
+                    ],
+                    key="upd_filing_status",
+                )
+            with c2:
+                update_customer_files = st.file_uploader(
+                    "Müşterinin revizyon talepleri / soruları",
+                    type=["pdf", "docx", "doc", "txt", "md", "zip"],
+                    accept_multiple_files=True,
+                    key="upd_customer_files",
+                    help=(
+                        "Talep ayrı belge/mail metni olabilir. Müşteri yorumlarını veya Track Changes'i aynı tarifname üzerinde gönderdiyse "
+                        "ayrı dosya zorunlu değildir; sistem Word yorumlarını ve değişikliklerini talep kaynağı olarak okur."
+                    ),
+                )
+                mail_language = st.selectbox("Müşteriye gönderilecek mail dili", ["Türkçe", "İngilizce"], index=0, key="upd_mail_lang")
+
+            update_support_files = st.file_uploader(
+                "Ek teknik belgeler / mevcut şekiller (varsa)",
+                type=["pdf", "docx", "doc", "txt", "md", "png", "jpg", "jpeg", "webp", "svg", "zip"],
+                accept_multiple_files=True,
+                key="upd_support_files",
                 help=(
-                    "Talep ayrı belge/mail metni olabilir. Müşteri yorumlarını veya Track Changes'i aynı tarifname üzerinde gönderdiyse "
-                    "ayrı dosya zorunlu değildir; sistem Word yorumlarını ve değişikliklerini talep kaynağı olarak okur."
+                    "Yüklenen şekiller tarifnameyle uyum bakımından değerlendirilir. Kaynakla açıkça desteklenen, hedef şekli belirli "
+                    "ve sınırlı değişiklikler ikinci görsel doğrulamayı geçerse otomatik uygulanabilir; güvenli değilse yalnız şekil aksiyonu gösterilir."
                 ),
             )
-            mail_language = st.selectbox("Müşteriye gönderilecek mail dili", ["Türkçe", "İngilizce"], index=0, key="upd_mail_lang")
+            update_user_instruction = st.text_area(
+                "Ek yönlendirme (varsa)",
+                value="",
+                key="upd_user_instruction",
+                help="Örneğin belirli bir müşteri talebinin uygulanmamasını veya yalnız mailde cevaplanmasını burada belirtebilirsiniz.",
+            )
+            update_submit = st.form_submit_button("Tarifname güncelleme işlemini başlat", type="primary")
 
-        update_support_files = st.file_uploader(
-            "Ek teknik belgeler / mevcut şekiller (varsa)",
-            type=["pdf", "docx", "doc", "txt", "md", "png", "jpg", "jpeg", "webp", "svg", "zip"],
-            accept_multiple_files=True,
-            key="upd_support_files",
-            help=(
-                "Yüklenen şekiller tarifnameyle uyum bakımından değerlendirilir. Kaynakla açıkça desteklenen, hedef şekli belirli "
-                "ve sınırlı değişiklikler ikinci görsel doğrulamayı geçerse otomatik uygulanabilir; güvenli değilse yalnız şekil aksiyonu gösterilir."
-            ),
-        )
-        update_user_instruction = st.text_area(
-            "Ek yönlendirme (varsa)",
-            value="",
-            key="upd_user_instruction",
-            help="Örneğin belirli bir müşteri talebinin uygulanmamasını veya yalnız mailde cevaplanmasını burada belirtebilirsiniz.",
-        )
-        update_submit = st.form_submit_button("Tarifname güncelleme işlemini başlat", type="primary")
-
-    if update_submit:
-        if update_spec is None:
-            st.error("Müşteriye gönderilmiş son .docx veya .doc tarifnameyi yükleyin.")
-        else:
-            try:
-                progress = st.progress(0, text="Mevcut tarifname ve müşteri dönüşleri okunuyor...")
-                raw_spec_bytes = update_spec.getvalue()
-                if Path(update_spec.name).suffix.lower() == ".doc":
-                    progress.progress(5, text="Eski .doc tarifname Word Track Changes tabanına dönüştürülüyor...")
-                    raw_spec_bytes = legacy_doc_to_docx_bytes(raw_spec_bytes, update_spec.name)
-                review_context = extract_docx_review_context(raw_spec_bytes)
-                # Eğer aynı Word müşteri comment/Track Changes taşıyorsa bunları talep olarak okur,
-                # fakat esas markup katmanını müşteri değişiklikleri reddedilmiş temiz baz üzerinde üretiriz.
-                baseline_spec_bytes = prepare_review_baseline_docx(raw_spec_bytes) if review_context.strip() else raw_spec_bytes
-                spec_text = docx_text(baseline_spec_bytes)
-
-                customer_assets = assets_from_uploads(update_customer_files)
-                support_assets = assets_from_uploads(update_support_files)
-                # v5.4.64: independent deterministic source reads are prewarmed together.
-                extract_asset_texts_parallel([*customer_assets, *support_assets])
-                customer_text, customer_images = combine_asset_text("MÜŞTERİ REVİZYON / SORU", customer_assets)
-                if review_context.strip():
-                    customer_text += "\n--- AYNI WORD İÇİNDEKİ MÜŞTERİ YORUM / TRACK CHANGES ---\n" + review_context + "\n"
-                if not customer_text.strip():
-                    st.error(
-                        "Müşteri revizyon/soru kaynağı bulunamadı. Ayrı müşteri dosyası yükleyin veya Word yorum/Track Changes içeren müşteri dönüşü kullanın."
-                    )
-                    st.stop()
-
-                support_text, support_images = combine_asset_text("EK TEKNİK / ŞEKİL", support_assets)
-
-                # Tarifname düzenleme şekil revizyonunda mümkünse tek bir özgün şekiller Word dosyasının
-                # gömülü görselleri sırayla ŞEKİL 1..N olarak kullanılır. Böyle bir Word yoksa doğrudan
-                # yüklenen teknik görseller kullanılabilir.
-                update_figure_images: list[UploadedAsset] = []
-                for asset in support_assets:
-                    embedded = extract_embedded_images(asset)
-                    if Path(asset.name).suffix.lower() == ".docx" and embedded:
-                        update_figure_images = embedded
-                        break
-                if not update_figure_images:
-                    direct_support = [a for a in support_assets if Path(a.name).suffix.lower() in IMAGE_SUFFIXES]
-                    update_figure_images = [_model_ready_image(a) for a in direct_support]
-
-                model_images: list[UploadedAsset] = [*customer_images, *support_images]
-                for asset in [*customer_assets, *support_assets]:
-                    model_images.extend(extract_embedded_images(asset))
-                model_images = model_images[:24]
-
-                progress.progress(20, text="Müşterinin bütün talep ve soruları ayrı ayrı envantere alınıyor...")
-                initial_plan = ask_json(
-                    tarifname_update_analysis_prompt(
-                        TARIFNAME_DUZENLEME_RULES,
-                        spec_text,
-                        customer_text,
-                        filing_status,
-                        support_text,
-                        update_user_instruction,
-                    ),
-                    images=model_images,
-                )
-
-                progress.progress(48, text="Bağımsız ikinci okuma: hiçbir müşteri talebi cevapsız kalmayacak şekilde plan yeniden denetleniyor...")
-                final_plan = ask_json(
-                    tarifname_update_quality_prompt(
-                        TARIFNAME_DUZENLEME_RULES,
-                        spec_text,
-                        customer_text,
-                        filing_status,
-                        initial_plan,
-                        mail_language,
-                        support_text,
-                        update_user_instruction,
-                    ),
-                    images=model_images,
-                )
-
-                progress.progress(65, text="Kaynak, new-matter, minimum değişiklik ve talep-kapsam kapıları çalıştırılıyor...")
-                validate_update_plan(final_plan, baseline_spec_bytes, customer_text, filing_status)
-
-                requests = list(final_plan.get("requests") or [])
-                counts: dict[str, int] = {}
-                for row in requests:
-                    decision = str(row.get("decision", "")).strip()
-                    counts[decision] = counts.get(decision, 0) + 1
-
-                with st.expander("Müşteri talep / cevap matrisi", expanded=True):
-                    st.dataframe(
-                        [
-                            {
-                                "ID": r.get("id", ""),
-                                "Talep / soru": r.get("customer_request", ""),
-                                "Karar": r.get("decision", ""),
-                                "Gerekçe": r.get("reason", ""),
-                                "Müşteri cevabı": r.get("answer_for_customer", ""),
-                            }
-                            for r in requests
-                        ],
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-
-                blocking = [str(x).strip() for x in (final_plan.get("blocking_clarifications") or []) if str(x).strip()]
-                if blocking:
-                    st.error("Koruma kapsamı/new-matter açısından kullanıcı kararı gerektiren açık konu bulundu. Markup bu turda üretilmedi.")
-                    for item in blocking:
-                        st.warning(item)
-                else:
-                    progress.progress(78, text="Mevcut Word biçimi korunarak minimum OOXML Track Changes uygulanıyor...")
-                    markup_data = build_updated_spec_docx(
-                        baseline_spec_bytes,
-                        final_plan,
-                        track_changes=True,
-                        add_comments=True,
-                    )
-                    # Clean görünüm yalnız iç kalite kontrolü için oluşturulur; kullanıcıya varsayılan çıktı olarak sunulmaz.
-                    accepted_check = build_updated_spec_docx(
-                        baseline_spec_bytes,
-                        final_plan,
-                        track_changes=False,
-                        add_comments=False,
-                    )
-                    validate_update_result(baseline_spec_bytes, markup_data, accepted_check, final_plan)
-                    progress.progress(100, text="Hazır")
-                    output_name = derive_markup_output_name(update_spec.name)
-                    st.success(
-                        "Tarifname düzenleme tamamlandı. "
-                        f"Toplam {len(requests)} müşteri maddesi işlendi; "
-                        f"uygulanan {counts.get('apply', 0)}, kısmen uygulanan {counts.get('partial', 0)}, "
-                        f"açıklamayla cevaplanan {counts.get('explain', 0)}, şekil aksiyonu {counts.get('figure_action', 0)}, "
-                        f"usuli/stratejik aksiyon {counts.get('procedural_action', 0)}."
-                    )
-                    compliant_download_button(
-                        "Markup Word dosyasını indir", data=markup_data, output_name=output_name,
-                        default_name="Tarifname_markup.docx", artifact_type="tarifname_update",
-                        checks={"update_result": True}, type="primary",
-                    )
-
-                figure_actions = list(final_plan.get("figure_actions") or [])
-                figure_update_data = None
-                figure_update_unresolved: list[str] = []
-                if figure_actions:
-                    auto_actions = [x for x in figure_actions if bool(x.get("safe_auto_edit"))]
-                    if auto_actions and not blocking:
-                        if not update_figure_images:
-                            figure_update_unresolved.append(
-                                "Otomatik şekil revizyonu planlandı ancak ŞEKİL 1..N olarak eşlenebilecek bir şekiller Word/görsel seti yüklenmedi."
-                            )
-                        else:
-                            source_payload = [
-                                {"name": a.name, "data": a.data, "mime": a.mime or "image/png"}
-                                for a in update_figure_images
-                            ]
-                            prepared_payload, figure_reports, figure_update_unresolved = prepare_customer_figure_edits(
-                                source_payload,
-                                figure_actions,
-                                model=MODEL,
-                                confidence_threshold=FIGURE_REFERENCE_CONFIDENCE,
-                                client=get_client(),
-                            )
-                            if not figure_update_unresolved:
-                                prepared_assets = [
-                                    UploadedAsset(str(x.get("name") or f"figure_{i}.png"), bytes(x["data"]), str(x.get("mime") or "image/png"))
-                                    for i, x in enumerate(prepared_payload, 1)
-                                ]
-                                figure_update_data = build_figures_docx(prepared_assets, "Türkçe")
-
-                    with st.expander("Şekiller için revizyonlar", expanded=True):
-                        for item in figure_actions:
-                            auto_note = " [otomatik düzenleme adayı]" if bool(item.get("safe_auto_edit")) else ""
-                            st.write(
-                                f"**{item.get('figure', 'Genel')}**{auto_note} — {item.get('issue', '')} "
-                                f"→ {item.get('recommended_change', '')}"
-                            )
-                        for message in figure_update_unresolved:
-                            st.warning(message)
-
-                    if figure_update_data is not None:
-                        stem = re.sub(r"\s*\(\d+\)\s*$", "", Path(update_spec.name).stem).strip()
-                        if re.search(r"tarifname", stem, flags=re.I):
-                            fig_stem = re.sub(r"tarifname", "Şekiller", stem, count=1, flags=re.I)
-                        else:
-                            fig_stem = f"Şekiller_{stem}"
-                        render_figures_docx_smoke_test(figure_update_data)
-                        compliant_download_button(
-                            "Revize Şekiller Word dosyasını indir", data=figure_update_data,
-                            output_name=f"{fig_stem}_revize.docx", default_name="Şekiller_revize.docx",
-                            artifact_type="figure_update", checks={"render": True},
-                        )
-
-                open_items = [str(x).strip() for x in (final_plan.get("open_procedural_items") or []) if str(x).strip()]
-                if open_items:
-                    with st.expander("Açık usuli / stratejik konular", expanded=False):
-                        for item in open_items:
-                            st.write(f"• {item}")
-
-                mail = final_plan.get("mail") or {}
-                st.markdown("### Müşteriye gönderilecek mail")
-                st.text_input("Konu", value=str(mail.get("subject", "")), key="upd_mail_subject_result")
-                st.text_area("Mail metni", value=str(mail.get("body", "")), height=360, key="upd_mail_body_result")
-            except Exception as exc:
-                st.exception(exc)
-
-# GÖRÜŞ
-elif work_type == "Görüş hazırlama":
-    st.subheader("Görüş hazırlama")
-    st.caption("Akış: görüş türü → rapor ve önceki görüş → tarifname → araştırma raporunda X/Y veya ofis aksiyonunda gerekçede fiilen kullanılan savunma dokümanları → TÜM kaynaklar birlikte teknik analiz edilerek revizyon kararı → revizyon varsa minimum Track Changes + temiz sürüm ve kullanıcı onayı → görüşte önce yapılan değişiklikler + son Markup dayanakları → ardından X/Y/D savunmaları → ham-kaynak ikinci okuma → son Markup fiziksel sayfa/satır kontrolü → Word kalite kapıları → görüş çıktısı.")
-
-    opinion_modes = [
-        "Araştırma raporuna karşı",
-        "İnceleme raporuna karşı",
-        "EP araştırma raporu veya ofis aksiyon",
-        "Yurtdışı ofis aksiyon",
-    ]
-    opinion_case_mode = st.radio(
-        "Görüş çalışma sekmesi",
-        opinion_modes,
-        horizontal=True,
-        key="gor_case_mode",
-    )
-    report_type_map = {
-        "Araştırma raporuna karşı": "Türkiye araştırma raporuna karşı görüş",
-        "İnceleme raporuna karşı": "Türkiye inceleme raporuna karşı görüş",
-        "EP araştırma raporu veya ofis aksiyon": "EP araştırma raporu veya ofis aksiyonuna karşı görüş",
-        "Yurtdışı ofis aksiyon": "Yurtdışı ofis aksiyonuna karşı görüş",
-    }
-    report_label_map = {
-        "Araştırma raporuna karşı": "Türkiye araştırma raporu",
-        "İnceleme raporuna karşı": "Türkiye inceleme raporu",
-        "EP araştırma raporu veya ofis aksiyon": "EP araştırma raporu / ofis aksiyon",
-        "Yurtdışı ofis aksiyon": "Yurtdışı ofis aksiyon",
-    }
-    report_type = report_type_map[opinion_case_mode]
-    opinion_language = st.selectbox("Görüş dili", ["Türkçe", "İngilizce"], key="gor_language")
-    report_file = st.file_uploader(report_label_map[opinion_case_mode], type=["pdf", "docx", "doc", "txt"], key="gor_report")
-
-    prior_file = None
-    prior_yes = st.radio("Önceki sunulan görüş var mı?", ["Hayır", "Evet"], horizontal=True, key="gor_prior_yes")
-    if prior_yes == "Evet":
-        prior_file = st.file_uploader("Önceki sunulan görüş", type=["pdf", "docx", "doc", "txt"], key="gor_prior")
-
-    customer_yes = st.radio("Müşteriden bilgi var mı?", ["Hayır", "Evet"], horizontal=True)
-    customer_files = []
-    if customer_yes == "Evet":
-        customer_files = st.file_uploader(
-            "Müşteri bilgileri",
-            type=["pdf", "docx", "doc", "txt", "png", "jpg", "jpeg", "webp", "zip"],
-            accept_multiple_files=True,
-            key="gor_customer",
-        )
-
-    spec_file = st.file_uploader("Tarifname", type=["pdf", "docx", "doc", "txt"], key="gor_spec")
-    # Kullanıcıdan ayrıca sayfa/satır doğrulama PDF'si istenmez.
-    # PDF doğrudan kullanılır; Word/DOC/DOCX/TXT aynı dosyadan arka planda PDF'ye çevrilir.
-    reference = st.text_input("Ana dosya referansı nedir?", value="", help="Word içindeki Referans alanına yalnız bu ana dosya referansı yazılır.")
-    opinion_reference = st.text_input("Görüş referansı (çıktı dosyası için)", value="", key="gor_opinion_reference", help="Bu değer yalnız görüş Word dosyasının adında kullanılır; Word içindeki Referans metadata alanını değiştirmez.")
-    applicant_override = st.text_input("Başvuru sahibi (raporda yoksa girin)", value="", key="gor_applicant")
-    _opinion_name_ref = opinion_reference.strip() or reference.strip() or "XXXXXX"
-    output_name = (f"Response Letter_{_opinion_name_ref}.docx" if _english_spec(opinion_language) else f"Görüş Metni_{_opinion_name_ref}.docx")
-    st.caption(f"Metadata Referans = ana dosya referansı. Görüş referansı yalnız çıktı dosya adını belirler. Çıktı: {output_name}")
-    opinion_extra_instruction = st.text_area(
-        "Ek Talimat (varsa)",
-        max_chars=MAX_EXTRA_INSTRUCTION_CHARS,
-        height=90,
-        key="gor_extra_instruction",
-        help="Yalnız bu görüş çalışmasına özel kısa yönlendirme. Repo kuralları, kaynaklar ve kalite kapıları önceliklidir.",
-    )
-    st.caption("Bu çalışmaya özel kısa not. En fazla 500 karakter; repo kurallarını veya kalite kapılarını geçersiz kılamaz.")
-
-    for key, default in {
-        "gorus_required_docs": None,
-        "gorus_scope_report_text": None,
-        "gorus_analysis": None,
-        "gorus_source": None,
-        "gorus_markup_data": None,
-        "gorus_clean_data": None,
-        "gorus_final_spec_text": None,
-        "gorus_opinion_data": None,
-        "gorus_opinion_status": None,
-        "gorus_quality_report": None,
-        "gorus_examiner_assessment": None,
-        "gorus_opinion_json": None,
-        "gorus_revision_history": [],
-        "gorus_edit_revision": 0,
-        "gorus_analysis_upload_signature": None,
-        "gorus_amendment_decision": None,
-        "gorus_amendment_refine_revision": 0,
-    }.items():
-        if key not in st.session_state:
-            st.session_state[key] = default
-
-    if st.button("1. Raporu analiz et ve savunmada gerekli dokümanları belirle", type="primary", use_container_width=True):
-        if not all([reference.strip(), report_file, spec_file]):
-            st.error("Referans, rapor ve tarifnameyi yükleyin.")
-        elif prior_yes == "Evet" and prior_file is None:
-            st.error("Önceki sunulan görüş var seçildi; önceki görüşü yükleyin.")
-        elif customer_yes == "Evet" and not customer_files:
-            st.error("Müşteriden bilgi var seçildi; müşteri bilgilerini yükleyin.")
-        else:
-            try:
-                report_text_scope = extract_text_from_asset(UploadedAsset(report_file.name, report_file.getvalue(), report_file.type))
-                xy_scope = (
-                    opinion_case_mode == "Araştırma raporuna karşı"
-                    or (opinion_case_mode == "EP araştırma raporu veya ofis aksiyon" and is_ep_search_report(report_text_scope))
-                )
-                required_docs = detect_ep_xy_documents(report_text_scope) if xy_scope else detect_examiner_reasoned_documents(report_text_scope)
-                if xy_scope and not required_docs:
-                    scope_signature = _workflow_signature(
-                        "gorus_xy_scope",
-                        files=[(report_file.name, report_file.getvalue())],
-                        options={"case_mode": opinion_case_mode, "report_type": report_type},
-                    )
-                    cached_scope = _workflow_checkpoint_get("gorus_xy_scope", scope_signature, "validated_scope")
-                    if cached_scope is not None:
-                        required_docs = validate_xy_scope_documents(report_text_scope, cached_scope.get("required_docs") or [])
-                    else:
-                        fallback_payload = ask_json(xy_scope_ai_fallback_prompt(report_text_scope))
-                        required_docs = validate_xy_scope_ai_payload(report_text_scope, fallback_payload)
-                        _workflow_checkpoint_set(
-                            "gorus_xy_scope", scope_signature, "validated_scope", {"required_docs": required_docs}
-                        )
-                if not required_docs:
-                    raise ValueError("Savunmada kullanılacak doküman otomatik kesinleştirilemedi. Türkiye/EP araştırma raporlarında yalnız X/Y kategorileri, inceleme ve ofis aksiyonlarında ise gerekçede fiilen kullanılan dokümanlar kabul edilir.")
-                st.session_state.gorus_required_docs = required_docs
-                st.session_state.gorus_scope_report_text = report_text_scope
-                st.session_state.gorus_analysis = None
-                st.session_state.gorus_source = None
-                st.session_state.gorus_opinion_data = None
-                st.session_state.gorus_quality_report = None
-                st.session_state.gorus_examiner_assessment = None
-                st.session_state.gorus_opinion_json = None
-                st.session_state.gorus_revision_history = []
-                st.session_state.gorus_edit_revision = 0
-                st.session_state.gorus_analysis_upload_signature = None
-                st.session_state.gorus_amendment_decision = None
-                st.session_state.gorus_amendment_refine_revision = 0
-            except Exception as exc:
-                st.exception(exc)
-
-    required_docs = st.session_state.gorus_required_docs
-    similar_files = []
-    if required_docs:
-        st.success("Savunmada kullanılacak doküman(lar) tespit edildi.")
-        for item in required_docs:
-            st.markdown(f"- **{item.get('label','')} — {item.get('number','')}**")
-        required_text = ", ".join(f"{x.get('label','')} {x.get('number','')}" for x in required_docs)
-        similar_files = st.file_uploader(
-            f"Savunma için gerekli doküman(lar): {required_text}. Lütfen yalnız bu dokümanları yükleyin.",
-            type=["pdf", "docx", "doc", "txt", "zip"],
-            accept_multiple_files=True,
-            key="gor_sim",
-        )
-
-    analysis_upload_signature = None
-    if required_docs and similar_files:
-        analysis_upload_signature = _workflow_signature(
-            "gorus_analysis",
-            files=_uploaded_file_parts(report_file, spec_file, prior_file, customer_files, similar_files),
-            options={
-                "case_mode": opinion_case_mode,
-                "report_type": report_type,
-                "language": opinion_language,
-                "reference": reference,
-                "opinion_reference": opinion_reference.strip(),
-                "applicant_override": applicant_override.strip(),
-                "required_docs": required_docs,
-                "extra_instruction": _normalize_extra_instruction(opinion_extra_instruction),
-            },
-        )
-
-    # Savunma dokümanları yüklenir yüklenmez ikinci teknik analiz otomatik çalışır.
-    # Kullanıcıdan ayrıca "2. analiz" onayı istenmez.
-    if (
-        required_docs
-        and similar_files
-        and st.session_state.gorus_analysis_upload_signature != analysis_upload_signature
-    ):
-        st.session_state.gorus_analysis_upload_signature = analysis_upload_signature
-        try:
-            progress = st.progress(0, text="Dosyalar okunuyor...")
-            cached_analysis = _workflow_checkpoint_get("gorus_analysis", str(analysis_upload_signature), "analysis_source")
-            if cached_analysis is not None:
-                analysis = cached_analysis["analysis"]
-                source_state_cached = cached_analysis["source_state"]
-                validate_gorus_analysis(analysis, source_state_cached["spec_text"], source_state_cached.get("cust_text", ""))
-                if bool(analysis.get("amendment_required")):
-                    cached_amendment_audit = analysis.get("amendment_audit") or {}
-                    validate_amendment_audit(cached_amendment_audit, analysis)
-                st.session_state.gorus_analysis = analysis
-                st.session_state.gorus_source = source_state_cached
+        if update_submit:
+            if update_spec is None:
+                st.error("Müşteriye gönderilmiş son .docx veya .doc tarifnameyi yükleyin.")
             else:
-                metric_context = ("gorus", str(analysis_upload_signature))
-                spec_bytes = spec_file.getvalue()
-                line_spec_name, line_spec_bytes = prepare_line_reference_source(spec_file.name, spec_bytes)
-                core_assets = [
-                    UploadedAsset(report_file.name, report_file.getvalue(), report_file.type),
-                    UploadedAsset(spec_file.name, spec_bytes, spec_file.type),
-                ]
-                if prior_file:
-                    core_assets.append(UploadedAsset(prior_file.name, prior_file.getvalue(), prior_file.type))
-                core_texts = extract_asset_texts_parallel(core_assets, metric_context=metric_context)
-                report_text = core_texts[0]
-                spec_text = core_texts[1]
-                prior_text = core_texts[2] if len(core_texts) > 2 else ""
-                sim_assets = assets_from_uploads(similar_files)
-                sim_text, sim_images = combine_asset_text(
-                    "BENZER DOKÜMAN", sim_assets, metric_context=metric_context
-                )
-                cust_assets = assets_from_uploads(customer_files)
-                cust_text, cust_images = combine_asset_text(
-                    "MÜŞTERİ BİLGİSİ", cust_assets, metric_context=metric_context
-                )
-                model_images = [*sim_images, *cust_images]
+                try:
+                    progress = st.progress(0, text="Mevcut tarifname ve müşteri dönüşleri okunuyor...")
+                    raw_spec_bytes = update_spec.getvalue()
+                    if Path(update_spec.name).suffix.lower() == ".doc":
+                        progress.progress(5, text="Eski .doc tarifname Word Track Changes tabanına dönüştürülüyor...")
+                        raw_spec_bytes = legacy_doc_to_docx_bytes(raw_spec_bytes, update_spec.name)
+                    review_context = extract_docx_review_context(raw_spec_bytes)
+                    # Eğer aynı Word müşteri comment/Track Changes taşıyorsa bunları talep olarak okur,
+                    # fakat esas markup katmanını müşteri değişiklikleri reddedilmiş temiz baz üzerinde üretiriz.
+                    baseline_spec_bytes = prepare_review_baseline_docx(raw_spec_bytes) if review_context.strip() else raw_spec_bytes
+                    spec_text = docx_text(baseline_spec_bytes)
 
-                progress.progress(35, text="Rapor itirazları, savunma dokümanları ve mevcut istemler analiz ediliyor...")
-                analysis = ask_json(
-                    _with_extra_instruction(gorus_analysis_prompt(
-                        report_type,
-                        reference,
-                        report_text,
-                        spec_text,
-                        prior_text,
-                        sim_text,
-                        cust_text,
-                    ), opinion_extra_instruction),
-                    images=model_images,
-                    metric_stage="Görüş teknik analiz",
-                    metric_context=metric_context,
-                )
-                validate_gorus_analysis(analysis, spec_text, cust_text)
-                if bool(analysis.get("amendment_required")):
-                    progress.progress(52, text="Önerilen istem revizyonu bağımsız denetimden geçiriliyor...")
-                    amendment_audit = ask_json(
-                        _with_extra_instruction(gorus_amendment_audit_prompt(
-                            report_text, spec_text, sim_text, cust_text, analysis
+                    customer_assets = assets_from_uploads(update_customer_files)
+                    support_assets = assets_from_uploads(update_support_files)
+                    # v5.4.64: independent deterministic source reads are prewarmed together.
+                    extract_asset_texts_parallel([*customer_assets, *support_assets])
+                    customer_text, customer_images = combine_asset_text("MÜŞTERİ REVİZYON / SORU", customer_assets)
+                    if review_context.strip():
+                        customer_text += "\n--- AYNI WORD İÇİNDEKİ MÜŞTERİ YORUM / TRACK CHANGES ---\n" + review_context + "\n"
+                    if not customer_text.strip():
+                        st.error(
+                            "Müşteri revizyon/soru kaynağı bulunamadı. Ayrı müşteri dosyası yükleyin veya Word yorum/Track Changes içeren müşteri dönüşü kullanın."
+                        )
+                        st.stop()
+
+                    support_text, support_images = combine_asset_text("EK TEKNİK / ŞEKİL", support_assets)
+
+                    # Tarifname düzenleme şekil revizyonunda mümkünse tek bir özgün şekiller Word dosyasının
+                    # gömülü görselleri sırayla ŞEKİL 1..N olarak kullanılır. Böyle bir Word yoksa doğrudan
+                    # yüklenen teknik görseller kullanılabilir.
+                    update_figure_images: list[UploadedAsset] = []
+                    for asset in support_assets:
+                        embedded = extract_embedded_images(asset)
+                        if Path(asset.name).suffix.lower() == ".docx" and embedded:
+                            update_figure_images = embedded
+                            break
+                    if not update_figure_images:
+                        direct_support = [a for a in support_assets if Path(a.name).suffix.lower() in IMAGE_SUFFIXES]
+                        update_figure_images = [_model_ready_image(a) for a in direct_support]
+
+                    model_images: list[UploadedAsset] = [*customer_images, *support_images]
+                    for asset in [*customer_assets, *support_assets]:
+                        model_images.extend(extract_embedded_images(asset))
+                    model_images = model_images[:24]
+
+                    progress.progress(20, text="Müşterinin bütün talep ve soruları ayrı ayrı envantere alınıyor...")
+                    initial_plan = ask_json(
+                        tarifname_update_analysis_prompt(
+                            TARIFNAME_DUZENLEME_RULES,
+                            spec_text,
+                            customer_text,
+                            filing_status,
+                            support_text,
+                            update_user_instruction,
+                        ),
+                        images=model_images,
+                    )
+
+                    progress.progress(48, text="Bağımsız ikinci okuma: hiçbir müşteri talebi cevapsız kalmayacak şekilde plan yeniden denetleniyor...")
+                    final_plan = ask_json(
+                        tarifname_update_quality_prompt(
+                            TARIFNAME_DUZENLEME_RULES,
+                            spec_text,
+                            customer_text,
+                            filing_status,
+                            initial_plan,
+                            mail_language,
+                            support_text,
+                            update_user_instruction,
+                        ),
+                        images=model_images,
+                    )
+
+                    progress.progress(65, text="Kaynak, new-matter, minimum değişiklik ve talep-kapsam kapıları çalıştırılıyor...")
+                    validate_update_plan(final_plan, baseline_spec_bytes, customer_text, filing_status)
+
+                    requests = list(final_plan.get("requests") or [])
+                    counts: dict[str, int] = {}
+                    for row in requests:
+                        decision = str(row.get("decision", "")).strip()
+                        counts[decision] = counts.get(decision, 0) + 1
+
+                    with st.expander("Müşteri talep / cevap matrisi", expanded=True):
+                        st.dataframe(
+                            [
+                                {
+                                    "ID": r.get("id", ""),
+                                    "Talep / soru": r.get("customer_request", ""),
+                                    "Karar": r.get("decision", ""),
+                                    "Gerekçe": r.get("reason", ""),
+                                    "Müşteri cevabı": r.get("answer_for_customer", ""),
+                                }
+                                for r in requests
+                            ],
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+
+                    blocking = [str(x).strip() for x in (final_plan.get("blocking_clarifications") or []) if str(x).strip()]
+                    if blocking:
+                        st.error("Koruma kapsamı/new-matter açısından kullanıcı kararı gerektiren açık konu bulundu. Markup bu turda üretilmedi.")
+                        for item in blocking:
+                            st.warning(item)
+                    else:
+                        progress.progress(78, text="Mevcut Word biçimi korunarak minimum OOXML Track Changes uygulanıyor...")
+                        markup_data = build_updated_spec_docx(
+                            baseline_spec_bytes,
+                            final_plan,
+                            track_changes=True,
+                            add_comments=True,
+                        )
+                        # Clean görünüm yalnız iç kalite kontrolü için oluşturulur; kullanıcıya varsayılan çıktı olarak sunulmaz.
+                        accepted_check = build_updated_spec_docx(
+                            baseline_spec_bytes,
+                            final_plan,
+                            track_changes=False,
+                            add_comments=False,
+                        )
+                        validate_update_result(baseline_spec_bytes, markup_data, accepted_check, final_plan)
+                        progress.progress(100, text="Hazır")
+                        output_name = derive_markup_output_name(update_spec.name)
+                        st.success(
+                            "Tarifname düzenleme tamamlandı. "
+                            f"Toplam {len(requests)} müşteri maddesi işlendi; "
+                            f"uygulanan {counts.get('apply', 0)}, kısmen uygulanan {counts.get('partial', 0)}, "
+                            f"açıklamayla cevaplanan {counts.get('explain', 0)}, şekil aksiyonu {counts.get('figure_action', 0)}, "
+                            f"usuli/stratejik aksiyon {counts.get('procedural_action', 0)}."
+                        )
+                        compliant_download_button(
+                            "Markup Word dosyasını indir", data=markup_data, output_name=output_name,
+                            default_name="Tarifname_markup.docx", artifact_type="tarifname_update",
+                            checks={"update_result": True}, audit_sources=[update_spec, customer_text], type="primary",
+                        )
+
+                    figure_actions = list(final_plan.get("figure_actions") or [])
+                    figure_update_data = None
+                    figure_update_unresolved: list[str] = []
+                    if figure_actions:
+                        auto_actions = [x for x in figure_actions if bool(x.get("safe_auto_edit"))]
+                        if auto_actions and not blocking:
+                            if not update_figure_images:
+                                figure_update_unresolved.append(
+                                    "Otomatik şekil revizyonu planlandı ancak ŞEKİL 1..N olarak eşlenebilecek bir şekiller Word/görsel seti yüklenmedi."
+                                )
+                            else:
+                                source_payload = [
+                                    {"name": a.name, "data": a.data, "mime": a.mime or "image/png"}
+                                    for a in update_figure_images
+                                ]
+                                prepared_payload, figure_reports, figure_update_unresolved = prepare_customer_figure_edits(
+                                    source_payload,
+                                    figure_actions,
+                                    model=MODEL,
+                                    confidence_threshold=FIGURE_REFERENCE_CONFIDENCE,
+                                    client=get_client(),
+                                )
+                                if not figure_update_unresolved:
+                                    prepared_assets = [
+                                        UploadedAsset(str(x.get("name") or f"figure_{i}.png"), bytes(x["data"]), str(x.get("mime") or "image/png"))
+                                        for i, x in enumerate(prepared_payload, 1)
+                                    ]
+                                    figure_update_data = build_figures_docx(prepared_assets, "Türkçe")
+
+                        with st.expander("Şekiller için revizyonlar", expanded=True):
+                            for item in figure_actions:
+                                auto_note = " [otomatik düzenleme adayı]" if bool(item.get("safe_auto_edit")) else ""
+                                st.write(
+                                    f"**{item.get('figure', 'Genel')}**{auto_note} — {item.get('issue', '')} "
+                                    f"→ {item.get('recommended_change', '')}"
+                                )
+                            for message in figure_update_unresolved:
+                                st.warning(message)
+
+                        if figure_update_data is not None:
+                            stem = re.sub(r"\s*\(\d+\)\s*$", "", Path(update_spec.name).stem).strip()
+                            if re.search(r"tarifname", stem, flags=re.I):
+                                fig_stem = re.sub(r"tarifname", "Şekiller", stem, count=1, flags=re.I)
+                            else:
+                                fig_stem = f"Şekiller_{stem}"
+                            render_figures_docx_smoke_test(figure_update_data)
+                            compliant_download_button(
+                                "Revize Şekiller Word dosyasını indir", data=figure_update_data,
+                                output_name=f"{fig_stem}_revize.docx", default_name="Şekiller_revize.docx",
+                                artifact_type="figure_update", checks={"render": True}, audit_sources=[update_spec, customer_text],
+                            )
+
+                    open_items = [str(x).strip() for x in (final_plan.get("open_procedural_items") or []) if str(x).strip()]
+                    if open_items:
+                        with st.expander("Açık usuli / stratejik konular", expanded=False):
+                            for item in open_items:
+                                st.write(f"• {item}")
+
+                    mail = final_plan.get("mail") or {}
+                    st.markdown("### Müşteriye gönderilecek mail")
+                    st.text_input("Konu", value=str(mail.get("subject", "")), key="upd_mail_subject_result")
+                    st.text_area("Mail metni", value=str(mail.get("body", "")), height=360, key="upd_mail_body_result")
+                except Exception as exc:
+                    st.exception(exc)
+
+    # GÖRÜŞ
+    elif work_type == "Görüş hazırlama":
+        st.subheader("Görüş hazırlama")
+        st.caption("Akış: görüş türü → rapor ve önceki görüş → tarifname → araştırma raporunda X/Y veya ofis aksiyonunda gerekçede fiilen kullanılan savunma dokümanları → TÜM kaynaklar birlikte teknik analiz edilerek revizyon kararı → revizyon varsa minimum Track Changes + temiz sürüm ve kullanıcı onayı → görüşte önce yapılan değişiklikler + son Markup dayanakları → ardından X/Y/D savunmaları → ham-kaynak ikinci okuma → son Markup fiziksel sayfa/satır kontrolü → Word kalite kapıları → görüş çıktısı.")
+
+        opinion_modes = [
+            "Araştırma raporuna karşı",
+            "İnceleme raporuna karşı",
+            "EP araştırma raporu veya ofis aksiyon",
+            "Yurtdışı ofis aksiyon",
+        ]
+        opinion_case_mode = st.radio(
+            "Görüş çalışma sekmesi",
+            opinion_modes,
+            horizontal=True,
+            key="gor_case_mode",
+        )
+        report_type_map = {
+            "Araştırma raporuna karşı": "Türkiye araştırma raporuna karşı görüş",
+            "İnceleme raporuna karşı": "Türkiye inceleme raporuna karşı görüş",
+            "EP araştırma raporu veya ofis aksiyon": "EP araştırma raporu veya ofis aksiyonuna karşı görüş",
+            "Yurtdışı ofis aksiyon": "Yurtdışı ofis aksiyonuna karşı görüş",
+        }
+        report_label_map = {
+            "Araştırma raporuna karşı": "Türkiye araştırma raporu",
+            "İnceleme raporuna karşı": "Türkiye inceleme raporu",
+            "EP araştırma raporu veya ofis aksiyon": "EP araştırma raporu / ofis aksiyon",
+            "Yurtdışı ofis aksiyon": "Yurtdışı ofis aksiyon",
+        }
+        report_type = report_type_map[opinion_case_mode]
+        opinion_language = st.selectbox("Görüş dili", ["Türkçe", "İngilizce"], key="gor_language")
+        report_file = st.file_uploader(report_label_map[opinion_case_mode], type=["pdf", "docx", "doc", "txt"], key="gor_report")
+
+        prior_file = None
+        prior_yes = st.radio("Önceki sunulan görüş var mı?", ["Hayır", "Evet"], horizontal=True, key="gor_prior_yes")
+        if prior_yes == "Evet":
+            prior_file = st.file_uploader("Önceki sunulan görüş", type=["pdf", "docx", "doc", "txt"], key="gor_prior")
+
+        customer_yes = st.radio("Müşteriden bilgi var mı?", ["Hayır", "Evet"], horizontal=True)
+        customer_files = []
+        if customer_yes == "Evet":
+            customer_files = st.file_uploader(
+                "Müşteri bilgileri",
+                type=["pdf", "docx", "doc", "txt", "png", "jpg", "jpeg", "webp", "zip"],
+                accept_multiple_files=True,
+                key="gor_customer",
+            )
+
+        spec_file = st.file_uploader("Tarifname", type=["pdf", "docx", "doc", "txt"], key="gor_spec")
+        # v5.4.86: Office/LibreOffice pagination can disagree by 1-2 physical lines.
+        # Only a Word-origin exported PDF is authoritative for a DOC/DOCX source.
+        word_pdf_file = None
+        if spec_file and Path(spec_file.name).suffix.lower() in {".doc", ".docx"}:
+            word_pdf_file = st.file_uploader(
+                "Tarifname sayfa/satır PDF'si (aynı dosyadan Microsoft Word ile dışa aktarılmış, zorunlu)",
+                type=["pdf"], key="gor_native_word_pdf",
+                help="LibreOffice dönüşümü satırları kaydırabildiğinden otomatik PDF yerine Word'ün kendi PDF çıktısı kullanılır.",
+            )
+        reference = st.text_input("Ana dosya referansı nedir?", value="", help="Word içindeki Referans alanına yalnız bu ana dosya referansı yazılır.")
+        opinion_reference = st.text_input("Görüş referansı (çıktı dosyası için)", value="", key="gor_opinion_reference", help="Bu değer yalnız görüş Word dosyasının adında kullanılır; Word içindeki Referans metadata alanını değiştirmez.")
+        applicant_override = st.text_input("Başvuru sahibi (raporda yoksa girin)", value="", key="gor_applicant")
+        _opinion_name_ref = opinion_reference.strip() or reference.strip() or "XXXXXX"
+        output_name = (f"Response Letter_{_opinion_name_ref}.docx" if _english_spec(opinion_language) else f"Görüş Metni_{_opinion_name_ref}.docx")
+        st.caption(f"Metadata Referans = ana dosya referansı. Görüş referansı yalnız çıktı dosya adını belirler. Çıktı: {output_name}")
+        opinion_extra_instruction = st.text_area(
+            "Ek Talimat (varsa)",
+            max_chars=MAX_EXTRA_INSTRUCTION_CHARS,
+            height=90,
+            key="gor_extra_instruction",
+            help="Yalnız bu görüş çalışmasına özel kısa yönlendirme. Repo kuralları, kaynaklar ve kalite kapıları önceliklidir.",
+        )
+        st.caption("Bu çalışmaya özel kısa not. En fazla 500 karakter; repo kurallarını veya kalite kapılarını geçersiz kılamaz.")
+
+        for key, default in {
+            "gorus_required_docs": None,
+            "gorus_scope_report_text": None,
+            "gorus_analysis": None,
+            "gorus_source": None,
+            "gorus_markup_data": None,
+            "gorus_clean_data": None,
+            "gorus_final_spec_text": None,
+            "gorus_opinion_data": None,
+            "gorus_opinion_status": None,
+            "gorus_quality_report": None,
+            "gorus_examiner_assessment": None,
+            "gorus_opinion_json": None,
+            "gorus_revision_history": [],
+            "gorus_edit_revision": 0,
+            "gorus_analysis_upload_signature": None,
+            "gorus_amendment_decision": None,
+            "gorus_amendment_refine_revision": 0,
+        }.items():
+            if key not in st.session_state:
+                st.session_state[key] = default
+
+        if st.button("1. Raporu analiz et ve savunmada gerekli dokümanları belirle", type="primary", use_container_width=True):
+            if not all([reference.strip(), report_file, spec_file]):
+                st.error("Referans, rapor ve tarifnameyi yükleyin.")
+            elif spec_file and Path(spec_file.name).suffix.lower() in {".doc", ".docx"} and word_pdf_file is None:
+                st.error("Word tarifname için aynı dosyadan Microsoft Word ile dışa aktarılmış PDF yüklenmelidir; tahmini satır atfı üretilmez.")
+            elif prior_yes == "Evet" and prior_file is None:
+                st.error("Önceki sunulan görüş var seçildi; önceki görüşü yükleyin.")
+            elif customer_yes == "Evet" and not customer_files:
+                st.error("Müşteriden bilgi var seçildi; müşteri bilgilerini yükleyin.")
+            else:
+                try:
+                    report_text_scope = extract_text_from_asset(UploadedAsset(report_file.name, report_file.getvalue(), report_file.type))
+                    xy_scope = (
+                        opinion_case_mode == "Araştırma raporuna karşı"
+                        or (opinion_case_mode == "EP araştırma raporu veya ofis aksiyon" and is_ep_search_report(report_text_scope))
+                    )
+                    required_docs = detect_ep_xy_documents(report_text_scope) if xy_scope else detect_examiner_reasoned_documents(report_text_scope)
+                    if xy_scope and not required_docs:
+                        scope_signature = _workflow_signature(
+                            "gorus_xy_scope",
+                            files=[(report_file.name, report_file.getvalue())],
+                            options={"case_mode": opinion_case_mode, "report_type": report_type},
+                        )
+                        cached_scope = _workflow_checkpoint_get("gorus_xy_scope", scope_signature, "validated_scope")
+                        if cached_scope is not None:
+                            required_docs = validate_xy_scope_documents(report_text_scope, cached_scope.get("required_docs") or [])
+                        else:
+                            fallback_payload = ask_json(xy_scope_ai_fallback_prompt(report_text_scope))
+                            required_docs = validate_xy_scope_ai_payload(report_text_scope, fallback_payload)
+                            _workflow_checkpoint_set(
+                                "gorus_xy_scope", scope_signature, "validated_scope", {"required_docs": required_docs}
+                            )
+                    if not required_docs:
+                        raise ValueError("Savunmada kullanılacak doküman otomatik kesinleştirilemedi. Türkiye/EP araştırma raporlarında yalnız X/Y kategorileri, inceleme ve ofis aksiyonlarında ise gerekçede fiilen kullanılan dokümanlar kabul edilir.")
+                    st.session_state.gorus_required_docs = required_docs
+                    st.session_state.gorus_scope_report_text = report_text_scope
+                    st.session_state.gorus_analysis = None
+                    st.session_state.gorus_source = None
+                    st.session_state.gorus_opinion_data = None
+                    st.session_state.gorus_quality_report = None
+                    st.session_state.gorus_examiner_assessment = None
+                    st.session_state.gorus_opinion_json = None
+                    st.session_state.gorus_revision_history = []
+                    st.session_state.gorus_edit_revision = 0
+                    st.session_state.gorus_analysis_upload_signature = None
+                    st.session_state.gorus_amendment_decision = None
+                    st.session_state.gorus_amendment_refine_revision = 0
+                except Exception as exc:
+                    st.exception(exc)
+
+        required_docs = st.session_state.gorus_required_docs
+        similar_files = []
+        if required_docs:
+            st.success("Savunmada kullanılacak doküman(lar) tespit edildi.")
+            for item in required_docs:
+                st.markdown(f"- **{item.get('label','')} — {item.get('number','')}**")
+            required_text = ", ".join(f"{x.get('label','')} {x.get('number','')}" for x in required_docs)
+            similar_files = st.file_uploader(
+                f"Savunma için gerekli doküman(lar): {required_text}. Lütfen yalnız bu dokümanları yükleyin.",
+                type=["pdf", "docx", "doc", "txt", "zip"],
+                accept_multiple_files=True,
+                key="gor_sim",
+            )
+
+        analysis_upload_signature = None
+        if required_docs and similar_files:
+            analysis_upload_signature = _workflow_signature(
+                "gorus_analysis",
+                files=_uploaded_file_parts(report_file, spec_file, word_pdf_file, prior_file, customer_files, similar_files),
+                options={
+                    "case_mode": opinion_case_mode,
+                    "report_type": report_type,
+                    "language": opinion_language,
+                    "reference": reference,
+                    "opinion_reference": opinion_reference.strip(),
+                    "applicant_override": applicant_override.strip(),
+                    "required_docs": required_docs,
+                    "extra_instruction": _normalize_extra_instruction(opinion_extra_instruction),
+                },
+            )
+
+        # Savunma dokümanları yüklenir yüklenmez ikinci teknik analiz otomatik çalışır.
+        # Kullanıcıdan ayrıca "2. analiz" onayı istenmez.
+        if (
+            required_docs
+            and similar_files
+            and st.session_state.gorus_analysis_upload_signature != analysis_upload_signature
+        ):
+            st.session_state.gorus_analysis_upload_signature = analysis_upload_signature
+            try:
+                progress = st.progress(0, text="Dosyalar okunuyor...")
+                cached_analysis = _workflow_checkpoint_get("gorus_analysis", str(analysis_upload_signature), "analysis_source")
+                if cached_analysis is not None:
+                    analysis = cached_analysis["analysis"]
+                    source_state_cached = cached_analysis["source_state"]
+                    validate_gorus_analysis(analysis, source_state_cached["spec_text"], source_state_cached.get("cust_text", ""))
+                    if bool(analysis.get("amendment_required")):
+                        cached_amendment_audit = analysis.get("amendment_audit") or {}
+                        validate_amendment_audit(cached_amendment_audit, analysis)
+                    st.session_state.gorus_analysis = analysis
+                    st.session_state.gorus_source = source_state_cached
+                else:
+                    metric_context = ("gorus", str(analysis_upload_signature))
+                    spec_bytes = spec_file.getvalue()
+                    if word_pdf_file is not None:
+                        line_spec_name, line_spec_bytes = word_pdf_file.name, word_pdf_file.getvalue()
+                        validate_word_origin_pdf_authority(
+                            spec_file.name, spec_bytes, line_spec_name, line_spec_bytes,
+                            uploaded_by_user=True,
+                        )
+                    else:
+                        line_spec_name, line_spec_bytes = prepare_line_reference_source(spec_file.name, spec_bytes)
+                    core_assets = [
+                        UploadedAsset(report_file.name, report_file.getvalue(), report_file.type),
+                        UploadedAsset(spec_file.name, spec_bytes, spec_file.type),
+                    ]
+                    if prior_file:
+                        core_assets.append(UploadedAsset(prior_file.name, prior_file.getvalue(), prior_file.type))
+                    core_texts = extract_asset_texts_parallel(core_assets, metric_context=metric_context)
+                    report_text = core_texts[0]
+                    spec_text = core_texts[1]
+                    prior_text = core_texts[2] if len(core_texts) > 2 else ""
+                    sim_assets = assets_from_uploads(similar_files)
+                    sim_text, sim_images = combine_asset_text(
+                        "BENZER DOKÜMAN", sim_assets, metric_context=metric_context
+                    )
+                    cust_assets = assets_from_uploads(customer_files)
+                    cust_text, cust_images = combine_asset_text(
+                        "MÜŞTERİ BİLGİSİ", cust_assets, metric_context=metric_context
+                    )
+                    model_images = [*sim_images, *cust_images]
+
+                    progress.progress(35, text="Rapor itirazları, savunma dokümanları ve mevcut istemler analiz ediliyor...")
+                    analysis = ask_json(
+                        _with_extra_instruction(gorus_analysis_prompt(
+                            report_type,
+                            reference,
+                            report_text,
+                            spec_text,
+                            prior_text,
+                            sim_text,
+                            cust_text,
                         ), opinion_extra_instruction),
                         images=model_images,
-                        metric_stage="İstem revizyonu bağımsız denetimi",
+                        metric_stage="Görüş teknik analiz",
                         metric_context=metric_context,
                     )
-                    try:
-                        validate_amendment_audit(amendment_audit, analysis)
-                    except Exception:
-                        progress.progress(63, text="Revizyon denetimi bulgularına göre öneri bir kez düzeltiliyor...")
-                        analysis = ask_json(
-                            _with_extra_instruction(gorus_amendment_repair_prompt(
-                                report_text, spec_text, sim_text, cust_text, analysis, amendment_audit
-                            ), opinion_extra_instruction),
-                            images=model_images,
-                            metric_stage="İstem revizyonu düzeltme turu",
-                            metric_context=metric_context,
-                        )
-                        validate_gorus_analysis(analysis, spec_text, cust_text)
+                    validate_gorus_analysis(analysis, spec_text, cust_text)
+                    if bool(analysis.get("amendment_required")):
+                        progress.progress(52, text="Önerilen istem revizyonu bağımsız denetimden geçiriliyor...")
                         amendment_audit = ask_json(
                             _with_extra_instruction(gorus_amendment_audit_prompt(
                                 report_text, spec_text, sim_text, cust_text, analysis
                             ), opinion_extra_instruction),
                             images=model_images,
-                            metric_stage="İstem revizyonu tekrar denetimi",
+                            metric_stage="İstem revizyonu bağımsız denetimi",
                             metric_context=metric_context,
                         )
-                        validate_amendment_audit(amendment_audit, analysis)
-                    analysis["amendment_audit"] = amendment_audit
-                source_state_cached = {
-                    "report_type": report_type,
-                    "opinion_case_mode": opinion_case_mode,
-                    "language": opinion_language,
-                    "reference": reference,
-                    "opinion_reference": opinion_reference.strip(),
-                    "applicant_override": applicant_override.strip(),
-                    "output_name": output_name,
-                    "required_docs": required_docs,
-                    "extra_instruction": _normalize_extra_instruction(opinion_extra_instruction),
-                    "report_text": report_text,
-                    "spec_text": spec_text,
-                    "spec_name": spec_file.name,
-                    "spec_bytes": spec_bytes,
-                    "line_spec_name": line_spec_name,
-                    "line_spec_bytes": line_spec_bytes,
-                    "prior_text": prior_text,
-                    "sim_text": sim_text,
-                    "sim_assets": sim_assets,
-                    "cust_text": cust_text,
-                    "model_images": model_images,
-                    "workflow_signature": str(analysis_upload_signature),
-                }
-                _workflow_checkpoint_set("gorus_analysis", str(analysis_upload_signature), "analysis_source", {
-                    "analysis": analysis,
-                    "source_state": source_state_cached,
-                })
-                st.session_state.gorus_analysis = analysis
-                st.session_state.gorus_source = source_state_cached
-            st.session_state.gorus_markup_data = None
-            st.session_state.gorus_clean_data = None
-            st.session_state.gorus_amendment_decision = None
-            st.session_state.gorus_amendment_refine_revision = 0
-            st.session_state.gorus_final_spec_text = None
-            st.session_state.gorus_opinion_data = None
-            st.session_state.gorus_opinion_status = None
-            st.session_state.gorus_examiner_assessment = None
-            st.session_state.gorus_quality_report = None
-            st.session_state.gorus_opinion_json = None
-            st.session_state.gorus_revision_history = []
-            st.session_state.gorus_edit_revision = 0
-            progress.progress(100, text="Teknik analiz tamamlandı")
-        except Exception as exc:
-            st.exception(exc)
-
-    analysis = st.session_state.gorus_analysis
-    source_state = st.session_state.gorus_source
-    gorus_metric_context = ("gorus", str((source_state or {}).get("workflow_signature") or analysis_upload_signature or "gorus"))
-
-    ready_to_generate = False
-    final_spec_text = None
-    revision_status = ""
-    opinion_step = 3
-
-    if analysis and source_state:
-        st.success("Rapor ve savunma dokümanlarının teknik analizi tamamlandı.")
-        if analysis.get("analysis_summary"):
-            st.write(analysis.get("analysis_summary"))
-
-        issues = analysis.get("examiner_issues") or []
-        if issues:
-            st.markdown("**Raporda odaklanılması gereken hususlar:**")
-            for item in issues:
-                st.markdown(f"- {item}")
-
-        directions = analysis.get("defense_direction") or []
-        if directions:
-            st.markdown("**Önerilen savunma yönü:**")
-            for item in directions:
-                st.markdown(f"- {item}")
-
-        amendment_required = bool(analysis.get("amendment_required"))
-        if amendment_required:
-            st.warning("İlk analizde istem revizyonu gerekli görülüyor. Görüşe geçmeden önce bağımsız revizyon denetimi ve kullanıcı karar kapısı zorunludur.")
-            audit = analysis.get("amendment_audit") or {}
-            validate_amendment_audit(audit, analysis)
-
-            objections = analysis.get("examiner_objections") or []
-            if objections:
-                st.markdown("### Uzman itirazları")
-                for obj in objections:
-                    claims = ", ".join(str(x) for x in (obj.get("claim_numbers") or []))
-                    st.markdown(f"**{obj.get('id','')} — İstem(ler) {claims}:** {obj.get('issue','')}")
-
-            st.markdown("### Önerilen istem revizyonu")
-            if analysis.get("selection_reason"):
-                st.caption(str(analysis.get("selection_reason")))
-            for idx, row in enumerate(amendment_ui_rows(analysis), 1):
-                st.markdown(f"**Revizyon {idx} — İstem {row['claim_number']}**")
-                st.write(row.get("reason") or "")
-                st.markdown("**Uzman itirazı bağlantısı:** " + (", ".join(row.get("addresses") or []) or "—"))
-                st.markdown("**Mevcut lokal ifade:**")
-                st.code(row.get("old_text") or "", language=None)
-                st.markdown("**Önerilen lokal ifade:**")
-                st.code(row.get("new_text") or "", language=None)
-                st.markdown(f"**Edit modu:** `{row.get('edit_mode') or ''}`")
-                if row.get("direct_support"):
-                    st.markdown("**Doğrudan as-filed dayanak(lar):**")
-                    for ds in row.get("direct_support") or []:
-                        st.write(f"• Ek teknik özellik: {ds.get('added_feature','')}")
-                        st.code(str(ds.get("basis_quote", "")), language=None)
-                st.write(f"**Açıklık etkisi:** {row.get('clarity_effect') or '—'}")
-                st.write(f"**Kapsam etkisi:** {row.get('scope_effect') or '—'}")
-                st.write(f"**D-doküman / önceki teknik etkisi:** {row.get('prior_art_effect') or '—'}")
-                st.write(f"**Kalan risk:** {row.get('remaining_risk') or '—'}")
-                atomic = row.get("atomic_operations") or []
-                if atomic:
-                    with st.expander(f"Revizyon {idx} atomik farkı", expanded=False):
-                        for op in atomic:
-                            kind = str(op.get("op", "")).upper()
-                            old_piece = str(op.get("old_text", ""))
-                            new_piece = str(op.get("new_text", ""))
-                            st.code(f"{kind}: -{old_piece!r} +{new_piece!r}", language=None)
-
-            st.success("Bağımsız Amendment Auditor: PASS")
-            if audit.get("overall_assessment"):
-                st.caption(str(audit.get("overall_assessment")))
-
-            refine_rev = int(st.session_state.get("gorus_amendment_refine_revision") or 0)
-            with st.expander("Revizyon önerisine müdahale et", expanded=False):
-                with st.form(f"gorus_amendment_refine_form_{refine_rev}", clear_on_submit=True):
-                    refine_instruction = st.text_area(
-                        "Revizyon talimatı",
-                        placeholder="Örn. Mevcut istem kelimelerini silme; yalnız şu dayanaklı özelliği uygun yere ekle.",
-                        height=100,
-                    )
-                    refine_submit = st.form_submit_button("Revizyon önerisini yeniden değerlendir", use_container_width=True)
-                if refine_submit:
-                    if not refine_instruction.strip():
-                        st.error("Revizyon talimatını yazın.")
-                    else:
                         try:
-                            refine_progress = st.progress(0, text="Revizyon önerisi yeniden değerlendiriliyor...")
-                            revised_analysis = ask_json(
-                                _with_extra_instruction(gorus_revision_refine_prompt(
+                            validate_amendment_audit(amendment_audit, analysis)
+                        except Exception:
+                            progress.progress(63, text="Revizyon denetimi bulgularına göre öneri bir kez düzeltiliyor...")
+                            analysis = ask_json(
+                                _with_extra_instruction(gorus_amendment_repair_prompt(
+                                    report_text, spec_text, sim_text, cust_text, analysis, amendment_audit
+                                ), opinion_extra_instruction),
+                                images=model_images,
+                                metric_stage="İstem revizyonu düzeltme turu",
+                                metric_context=metric_context,
+                            )
+                            validate_gorus_analysis(analysis, spec_text, cust_text)
+                            amendment_audit = ask_json(
+                                _with_extra_instruction(gorus_amendment_audit_prompt(
+                                    report_text, spec_text, sim_text, cust_text, analysis
+                                ), opinion_extra_instruction),
+                                images=model_images,
+                                metric_stage="İstem revizyonu tekrar denetimi",
+                                metric_context=metric_context,
+                            )
+                            validate_amendment_audit(amendment_audit, analysis)
+                        analysis["amendment_audit"] = amendment_audit
+                    source_state_cached = {
+                        "report_type": report_type,
+                        "opinion_case_mode": opinion_case_mode,
+                        "language": opinion_language,
+                        "reference": reference,
+                        "opinion_reference": opinion_reference.strip(),
+                        "applicant_override": applicant_override.strip(),
+                        "output_name": output_name,
+                        "required_docs": required_docs,
+                        "extra_instruction": _normalize_extra_instruction(opinion_extra_instruction),
+                        "report_text": report_text,
+                        "spec_text": spec_text,
+                        "spec_name": spec_file.name,
+                        "spec_bytes": spec_bytes,
+                        "line_spec_name": line_spec_name,
+                        "line_spec_bytes": line_spec_bytes,
+                        "line_spec_user_word_export": bool(word_pdf_file is not None),
+                        "prior_text": prior_text,
+                        "sim_text": sim_text,
+                        "sim_assets": sim_assets,
+                        "cust_text": cust_text,
+                        "model_images": model_images,
+                        "workflow_signature": str(analysis_upload_signature),
+                    }
+                    _workflow_checkpoint_set("gorus_analysis", str(analysis_upload_signature), "analysis_source", {
+                        "analysis": analysis,
+                        "source_state": source_state_cached,
+                    })
+                    st.session_state.gorus_analysis = analysis
+                    st.session_state.gorus_source = source_state_cached
+                st.session_state.gorus_markup_data = None
+                st.session_state.gorus_clean_data = None
+                st.session_state.gorus_amendment_decision = None
+                st.session_state.gorus_amendment_refine_revision = 0
+                st.session_state.gorus_final_spec_text = None
+                st.session_state.gorus_opinion_data = None
+                st.session_state.gorus_opinion_status = None
+                st.session_state.gorus_examiner_assessment = None
+                st.session_state.gorus_quality_report = None
+                st.session_state.gorus_opinion_json = None
+                st.session_state.gorus_revision_history = []
+                st.session_state.gorus_edit_revision = 0
+                progress.progress(100, text="Teknik analiz tamamlandı")
+            except Exception as exc:
+                st.exception(exc)
+
+        analysis = st.session_state.gorus_analysis
+        source_state = st.session_state.gorus_source
+        gorus_metric_context = ("gorus", str((source_state or {}).get("workflow_signature") or analysis_upload_signature or "gorus"))
+
+        ready_to_generate = False
+        final_spec_text = None
+        revision_status = ""
+        opinion_step = 3
+
+        if analysis and source_state:
+            st.success("Rapor ve savunma dokümanlarının teknik analizi tamamlandı.")
+            if analysis.get("analysis_summary"):
+                st.write(analysis.get("analysis_summary"))
+
+            issues = analysis.get("examiner_issues") or []
+            if issues:
+                st.markdown("**Raporda odaklanılması gereken hususlar:**")
+                for item in issues:
+                    st.markdown(f"- {item}")
+
+            directions = analysis.get("defense_direction") or []
+            if directions:
+                st.markdown("**Önerilen savunma yönü:**")
+                for item in directions:
+                    st.markdown(f"- {item}")
+
+            amendment_required = bool(analysis.get("amendment_required"))
+            if amendment_required:
+                st.warning("İlk analizde istem revizyonu gerekli görülüyor. Görüşe geçmeden önce bağımsız revizyon denetimi ve kullanıcı karar kapısı zorunludur.")
+                audit = analysis.get("amendment_audit") or {}
+                validate_amendment_audit(audit, analysis)
+
+                objections = analysis.get("examiner_objections") or []
+                if objections:
+                    st.markdown("### Uzman itirazları")
+                    for obj in objections:
+                        claims = ", ".join(str(x) for x in (obj.get("claim_numbers") or []))
+                        st.markdown(f"**{obj.get('id','')} — İstem(ler) {claims}:** {obj.get('issue','')}")
+
+                st.markdown("### Önerilen istem revizyonu")
+                if analysis.get("selection_reason"):
+                    st.caption(str(analysis.get("selection_reason")))
+                for idx, row in enumerate(amendment_ui_rows(analysis), 1):
+                    st.markdown(f"**Revizyon {idx} — İstem {row['claim_number']}**")
+                    st.write(row.get("reason") or "")
+                    st.markdown("**Uzman itirazı bağlantısı:** " + (", ".join(row.get("addresses") or []) or "—"))
+                    st.markdown("**Mevcut lokal ifade:**")
+                    st.code(row.get("old_text") or "", language=None)
+                    st.markdown("**Önerilen lokal ifade:**")
+                    st.code(row.get("new_text") or "", language=None)
+                    st.markdown(f"**Edit modu:** `{row.get('edit_mode') or ''}`")
+                    if row.get("direct_support"):
+                        st.markdown("**Doğrudan as-filed dayanak(lar):**")
+                        for ds in row.get("direct_support") or []:
+                            st.write(f"• Ek teknik özellik: {ds.get('added_feature','')}")
+                            st.code(str(ds.get("basis_quote", "")), language=None)
+                    st.write(f"**Açıklık etkisi:** {row.get('clarity_effect') or '—'}")
+                    st.write(f"**Kapsam etkisi:** {row.get('scope_effect') or '—'}")
+                    st.write(f"**D-doküman / önceki teknik etkisi:** {row.get('prior_art_effect') or '—'}")
+                    st.write(f"**Kalan risk:** {row.get('remaining_risk') or '—'}")
+                    atomic = row.get("atomic_operations") or []
+                    if atomic:
+                        with st.expander(f"Revizyon {idx} atomik farkı", expanded=False):
+                            for op in atomic:
+                                kind = str(op.get("op", "")).upper()
+                                old_piece = str(op.get("old_text", ""))
+                                new_piece = str(op.get("new_text", ""))
+                                st.code(f"{kind}: -{old_piece!r} +{new_piece!r}", language=None)
+
+                st.success("Bağımsız Amendment Auditor: PASS")
+                if audit.get("overall_assessment"):
+                    st.caption(str(audit.get("overall_assessment")))
+
+                refine_rev = int(st.session_state.get("gorus_amendment_refine_revision") or 0)
+                with st.expander("Revizyon önerisine müdahale et", expanded=False):
+                    with st.form(f"gorus_amendment_refine_form_{refine_rev}", clear_on_submit=True):
+                        refine_instruction = st.text_area(
+                            "Revizyon talimatı",
+                            placeholder="Örn. Mevcut istem kelimelerini silme; yalnız şu dayanaklı özelliği uygun yere ekle.",
+                            height=100,
+                        )
+                        refine_submit = st.form_submit_button("Revizyon önerisini yeniden değerlendir", use_container_width=True)
+                    if refine_submit:
+                        if not refine_instruction.strip():
+                            st.error("Revizyon talimatını yazın.")
+                        else:
+                            try:
+                                refine_progress = st.progress(0, text="Revizyon önerisi yeniden değerlendiriliyor...")
+                                revised_analysis = ask_json(
+                                    _with_extra_instruction(gorus_revision_refine_prompt(
+                                        source_state["report_type"],
+                                        source_state["report_text"],
+                                        source_state["spec_text"],
+                                        source_state["prior_text"],
+                                        source_state["sim_text"],
+                                        source_state["cust_text"],
+                                        deepcopy(analysis),
+                                        refine_instruction.strip(),
+                                    ), source_state.get("extra_instruction", "")),
+                                    images=source_state.get("model_images") or [],
+                                    metric_stage="İstem revizyonu kullanıcı düzeltmesi",
+                                    metric_context=gorus_metric_context,
+                                )
+                                validate_gorus_analysis(revised_analysis, source_state["spec_text"], source_state.get("cust_text", ""))
+                                refine_progress.progress(55, text="Revize öneri bağımsız denetimden geçiriliyor...")
+                                revised_audit = ask_json(
+                                    _with_extra_instruction(gorus_amendment_audit_prompt(
+                                        source_state["report_text"], source_state["spec_text"],
+                                        source_state["sim_text"], source_state["cust_text"], revised_analysis
+                                    ), source_state.get("extra_instruction", "")),
+                                    images=source_state.get("model_images") or [],
+                                    metric_stage="İstem revizyonu kullanıcı düzeltmesi denetimi",
+                                    metric_context=gorus_metric_context,
+                                )
+                                validate_amendment_audit(revised_audit, revised_analysis)
+                                revised_analysis["amendment_audit"] = revised_audit
+                                st.session_state.gorus_analysis = revised_analysis
+                                st.session_state.gorus_amendment_decision = None
+                                st.session_state.gorus_markup_data = None
+                                st.session_state.gorus_clean_data = None
+                                st.session_state.gorus_final_spec_text = None
+                                st.session_state.gorus_opinion_data = None
+                                st.session_state.gorus_opinion_status = None
+                                st.session_state.gorus_amendment_refine_revision = refine_rev + 1
+                                refine_progress.progress(100, text="Yeni revizyon önerisi hazır")
+                                st.rerun()
+                            except Exception as exc:
+                                st.exception(exc)
+
+                decision = st.session_state.get("gorus_amendment_decision")
+                c1, c2 = st.columns(2)
+                if c1.button("Önerilen istem revizyonunu uygula", type="primary", use_container_width=True, key="gor_apply_amendment"):
+                    try:
+                        spec_name = str(source_state.get("spec_name") or "")
+                        raw = bytes(source_state.get("spec_bytes") or b"")
+                        suffix = Path(spec_name).suffix.lower()
+                        if suffix == ".doc":
+                            baseline_docx = legacy_doc_to_docx_bytes(raw, spec_name)
+                        elif suffix == ".docx":
+                            baseline_docx = raw
+                        else:
+                            raise ValueError("İstem revizyonu için kaynak tarifname Word (.doc/.docx) olmalıdır. PDF/TXT kaynak savunmada kullanılabilir ancak Track Changes üretilemez.")
+                        baseline_docx = prepare_review_baseline_docx(baseline_docx)
+                        validate_gorus_analysis(analysis, source_state["spec_text"], source_state.get("cust_text", ""))
+                        validate_amendment_audit(analysis.get("amendment_audit") or {}, analysis)
+                        markup, clean = build_claim_revision_pair(
+                            baseline_docx,
+                            analysis.get("amendments") or [],
+                            analysis.get("description_prior_art_updates") or [],
+                        )
+                        st.session_state.gorus_markup_data = markup
+                        st.session_state.gorus_clean_data = clean
+                        st.session_state.gorus_final_spec_text = docx_text(clean)
+                        st.session_state.gorus_amendment_decision = "apply"
+                        st.session_state.gorus_opinion_data = None
+                        st.session_state.gorus_opinion_status = None
+                        st.session_state.gorus_quality_report = None
+                        st.session_state.gorus_examiner_assessment = None
+                        st.session_state.gorus_opinion_json = None
+                        st.rerun()
+                    except Exception as exc:
+                        st.exception(exc)
+                if c2.button("Mevcut istemlerle devam et", use_container_width=True, key="gor_keep_current_claims"):
+                    st.session_state.gorus_amendment_decision = "current"
+                    st.session_state.gorus_markup_data = None
+                    st.session_state.gorus_clean_data = None
+                    st.session_state.gorus_final_spec_text = source_state["spec_text"]
+                    st.session_state.gorus_opinion_data = None
+                    st.session_state.gorus_opinion_status = None
+                    st.rerun()
+
+                decision = st.session_state.get("gorus_amendment_decision")
+                if decision == "apply" and st.session_state.gorus_markup_data and st.session_state.gorus_clean_data:
+                    st.markdown("### Onaylanan istem revizyonu dosyaları")
+                    compliant_download_button(
+                        "Track Changes tarifnameyi indir",
+                        data=st.session_state.gorus_markup_data,
+                        output_name=f"Düzenlenen_tarifname_track_changes_{source_state.get('reference') or 'XXXXXX'}.docx",
+                        default_name="Düzenlenen_tarifname_track_changes.docx",
+                        artifact_type="claim_amendment", checks={"atomic_plan": True, "amendment_integrity": True}, audit_sources=[source_state.get("spec_bytes") or source_state.get("spec_text")],
+                    )
+                    compliant_download_button(
+                        "Temiz tarifnameyi indir",
+                        data=st.session_state.gorus_clean_data,
+                        output_name=f"Düzenlenen_tarifname_temiz_{source_state.get('reference') or 'XXXXXX'}.docx",
+                        default_name="Düzenlenen_tarifname_temiz.docx",
+                        artifact_type="claim_amendment", checks={"atomic_plan": True, "amendment_integrity": True}, audit_sources=[source_state.get("spec_bytes") or source_state.get("spec_text")],
+                    )
+                    ready_to_generate = True
+                    final_spec_text = st.session_state.gorus_final_spec_text or docx_text(st.session_state.gorus_clean_data)
+                    revision_status = "Kullanıcı tarafından onaylanmış revize istem seti"
+                    opinion_step = 3
+                elif decision == "current":
+                    ready_to_generate = True
+                    final_spec_text = source_state["spec_text"]
+                    revision_status = "Kullanıcı revizyon önerisini görerek mevcut istem setiyle devam etti"
+                    opinion_step = 3
+                else:
+                    ready_to_generate = False
+                    st.info("Görüş oluşturulmadan önce istem revizyonu kararını verin.")
+            else:
+                st.info(analysis.get("no_amendment_reason") or "İlk analizde istem revizyonu gerekli görülmedi. Mevcut istemlerle görüş hazırlanacaktır.")
+                ready_to_generate = True
+                final_spec_text = source_state["spec_text"]
+                revision_status = "Mevcut istem seti üzerinden otomatik revizyonsuz görüş"
+                opinion_step = 3
+
+            if ready_to_generate and final_spec_text:
+                if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
+                    revised_pdf = st.file_uploader(
+                        "Son Markup tarifname Word'den dışa aktarılmış sayfa/satır PDF'si (zorunlu)",
+                        type=["pdf"], key="gor_revised_native_pdf",
+                    )
+                    if revised_pdf is None:
+                        st.warning("Nihai Markup Word'ün Microsoft Word PDF çıktısı olmadan fiziksel atıflı görüş üretilemez.")
+                        ready_to_generate = False
+                    else:
+                        source_state["revised_line_spec_name"] = revised_pdf.name
+                        source_state["revised_line_spec_bytes"] = revised_pdf.getvalue()
+                        source_state["revised_line_spec_user_word_export"] = True
+                        validate_word_origin_pdf_authority(
+                            "son_markup_tarifname.docx", bytes(st.session_state.gorus_markup_data),
+                            revised_pdf.name, revised_pdf.getvalue(), uploaded_by_user=True,
+                        )
+                if ready_to_generate and not (st.session_state.gorus_opinion_data and st.session_state.gorus_opinion_status == revision_status):
+                    try:
+                        progress = st.progress(0, text="Onaylı istem seti üzerinden görüş hazırlanıyor...")
+                        if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
+                            final_spec_bytes = st.session_state.gorus_markup_data
+                            final_spec_name = "son_markup_tarifname.docx"
+                        else:
+                            final_spec_bytes = source_state["spec_bytes"]
+                            final_spec_name = source_state["spec_name"]
+                        opinion_signature = _workflow_signature(
+                            "gorus_opinion",
+                            files=[(final_spec_name, final_spec_bytes),
+                                   (str(source_state.get("revised_line_spec_name") or source_state.get("line_spec_name") or ""),
+                                    bytes(source_state.get("revised_line_spec_bytes") or source_state.get("line_spec_bytes") or b""))],
+                            options={
+                                "analysis_signature": source_state.get("workflow_signature") or "",
+                                "revision_status": revision_status,
+                                "language": source_state.get("language") or "Türkçe",
+                                "reference": source_state.get("reference") or "",
+                                "analysis": analysis,
+                            },
+                        )
+                        cached_final_bundle = _workflow_checkpoint_get("gorus_opinion", opinion_signature, "final_bundle")
+                        if cached_final_bundle is not None:
+                            st.session_state.gorus_opinion_data = cached_final_bundle["data"]
+                            st.session_state.gorus_opinion_json = deepcopy(cached_final_bundle["opinion"])
+                            st.session_state.gorus_opinion_status = revision_status
+                            st.session_state.gorus_quality_report = cached_final_bundle["quality_report"]
+                            st.session_state.gorus_examiner_assessment = cached_final_bundle["examiner_assessment"]
+                            progress.progress(100, text="Görüş son başarılı checkpoint'ten geri yüklendi")
+                            st.rerun()
+
+                        cached_audited_opinion = _workflow_checkpoint_get("gorus_opinion", opinion_signature, "audited_opinion")
+                        if cached_audited_opinion is not None:
+                            opinion = deepcopy(cached_audited_opinion["opinion"])
+                        else:
+                            opinion = ask_json(
+                                _with_extra_instruction(gorus_prompt(
                                     source_state["report_type"],
+                                    source_state["reference"],
                                     source_state["report_text"],
-                                    source_state["spec_text"],
+                                    final_spec_text,
                                     source_state["prior_text"],
                                     source_state["sim_text"],
                                     source_state["cust_text"],
-                                    deepcopy(analysis),
-                                    refine_instruction.strip(),
+                                    preanalysis=analysis,
+                                    revision_status=revision_status,
+                                    output_language=source_state.get("language") or "Türkçe",
+                                    applicant_override=source_state.get("applicant_override") or "",
+                                    required_documents=source_state.get("required_docs") or [],
                                 ), source_state.get("extra_instruction", "")),
                                 images=source_state.get("model_images") or [],
-                                metric_stage="İstem revizyonu kullanıcı düzeltmesi",
-                                metric_context=gorus_metric_context,
-                            )
-                            validate_gorus_analysis(revised_analysis, source_state["spec_text"], source_state.get("cust_text", ""))
-                            refine_progress.progress(55, text="Revize öneri bağımsız denetimden geçiriliyor...")
-                            revised_audit = ask_json(
-                                _with_extra_instruction(gorus_amendment_audit_prompt(
-                                    source_state["report_text"], source_state["spec_text"],
-                                    source_state["sim_text"], source_state["cust_text"], revised_analysis
-                                ), source_state.get("extra_instruction", "")),
-                                images=source_state.get("model_images") or [],
-                                metric_stage="İstem revizyonu kullanıcı düzeltmesi denetimi",
-                                metric_context=gorus_metric_context,
-                            )
-                            validate_amendment_audit(revised_audit, revised_analysis)
-                            revised_analysis["amendment_audit"] = revised_audit
-                            st.session_state.gorus_analysis = revised_analysis
-                            st.session_state.gorus_amendment_decision = None
-                            st.session_state.gorus_markup_data = None
-                            st.session_state.gorus_clean_data = None
-                            st.session_state.gorus_final_spec_text = None
-                            st.session_state.gorus_opinion_data = None
-                            st.session_state.gorus_opinion_status = None
-                            st.session_state.gorus_amendment_refine_revision = refine_rev + 1
-                            refine_progress.progress(100, text="Yeni revizyon önerisi hazır")
-                            st.rerun()
-                        except Exception as exc:
-                            st.exception(exc)
-
-            decision = st.session_state.get("gorus_amendment_decision")
-            c1, c2 = st.columns(2)
-            if c1.button("Önerilen istem revizyonunu uygula", type="primary", use_container_width=True, key="gor_apply_amendment"):
-                try:
-                    spec_name = str(source_state.get("spec_name") or "")
-                    raw = bytes(source_state.get("spec_bytes") or b"")
-                    suffix = Path(spec_name).suffix.lower()
-                    if suffix == ".doc":
-                        baseline_docx = legacy_doc_to_docx_bytes(raw, spec_name)
-                    elif suffix == ".docx":
-                        baseline_docx = raw
-                    else:
-                        raise ValueError("İstem revizyonu için kaynak tarifname Word (.doc/.docx) olmalıdır. PDF/TXT kaynak savunmada kullanılabilir ancak Track Changes üretilemez.")
-                    baseline_docx = prepare_review_baseline_docx(baseline_docx)
-                    validate_gorus_analysis(analysis, source_state["spec_text"], source_state.get("cust_text", ""))
-                    validate_amendment_audit(analysis.get("amendment_audit") or {}, analysis)
-                    markup, clean = build_claim_revision_pair(
-                        baseline_docx,
-                        analysis.get("amendments") or [],
-                        analysis.get("description_prior_art_updates") or [],
-                    )
-                    st.session_state.gorus_markup_data = markup
-                    st.session_state.gorus_clean_data = clean
-                    st.session_state.gorus_final_spec_text = docx_text(clean)
-                    st.session_state.gorus_amendment_decision = "apply"
-                    st.session_state.gorus_opinion_data = None
-                    st.session_state.gorus_opinion_status = None
-                    st.session_state.gorus_quality_report = None
-                    st.session_state.gorus_examiner_assessment = None
-                    st.session_state.gorus_opinion_json = None
-                    st.rerun()
-                except Exception as exc:
-                    st.exception(exc)
-            if c2.button("Mevcut istemlerle devam et", use_container_width=True, key="gor_keep_current_claims"):
-                st.session_state.gorus_amendment_decision = "current"
-                st.session_state.gorus_markup_data = None
-                st.session_state.gorus_clean_data = None
-                st.session_state.gorus_final_spec_text = source_state["spec_text"]
-                st.session_state.gorus_opinion_data = None
-                st.session_state.gorus_opinion_status = None
-                st.rerun()
-
-            decision = st.session_state.get("gorus_amendment_decision")
-            if decision == "apply" and st.session_state.gorus_markup_data and st.session_state.gorus_clean_data:
-                st.markdown("### Onaylanan istem revizyonu dosyaları")
-                compliant_download_button(
-                    "Track Changes tarifnameyi indir",
-                    data=st.session_state.gorus_markup_data,
-                    output_name=f"Düzenlenen_tarifname_track_changes_{source_state.get('reference') or 'XXXXXX'}.docx",
-                    default_name="Düzenlenen_tarifname_track_changes.docx",
-                    artifact_type="claim_amendment", checks={"atomic_plan": True, "amendment_integrity": True},
-                )
-                compliant_download_button(
-                    "Temiz tarifnameyi indir",
-                    data=st.session_state.gorus_clean_data,
-                    output_name=f"Düzenlenen_tarifname_temiz_{source_state.get('reference') or 'XXXXXX'}.docx",
-                    default_name="Düzenlenen_tarifname_temiz.docx",
-                    artifact_type="claim_amendment", checks={"atomic_plan": True, "amendment_integrity": True},
-                )
-                ready_to_generate = True
-                final_spec_text = st.session_state.gorus_final_spec_text or docx_text(st.session_state.gorus_clean_data)
-                revision_status = "Kullanıcı tarafından onaylanmış revize istem seti"
-                opinion_step = 3
-            elif decision == "current":
-                ready_to_generate = True
-                final_spec_text = source_state["spec_text"]
-                revision_status = "Kullanıcı revizyon önerisini görerek mevcut istem setiyle devam etti"
-                opinion_step = 3
-            else:
-                ready_to_generate = False
-                st.info("Görüş oluşturulmadan önce istem revizyonu kararını verin.")
-        else:
-            st.info(analysis.get("no_amendment_reason") or "İlk analizde istem revizyonu gerekli görülmedi. Mevcut istemlerle görüş hazırlanacaktır.")
-            ready_to_generate = True
-            final_spec_text = source_state["spec_text"]
-            revision_status = "Mevcut istem seti üzerinden otomatik revizyonsuz görüş"
-            opinion_step = 3
-
-        if ready_to_generate and final_spec_text:
-            if not (st.session_state.gorus_opinion_data and st.session_state.gorus_opinion_status == revision_status):
-                try:
-                    progress = st.progress(0, text="Onaylı istem seti üzerinden görüş hazırlanıyor...")
-                    if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
-                        final_spec_bytes = st.session_state.gorus_markup_data
-                        final_spec_name = "son_markup_tarifname.docx"
-                    else:
-                        final_spec_bytes = source_state["spec_bytes"]
-                        final_spec_name = source_state["spec_name"]
-                    opinion_signature = _workflow_signature(
-                        "gorus_opinion",
-                        files=[(final_spec_name, final_spec_bytes)],
-                        options={
-                            "analysis_signature": source_state.get("workflow_signature") or "",
-                            "revision_status": revision_status,
-                            "language": source_state.get("language") or "Türkçe",
-                            "reference": source_state.get("reference") or "",
-                            "analysis": analysis,
-                        },
-                    )
-                    cached_final_bundle = _workflow_checkpoint_get("gorus_opinion", opinion_signature, "final_bundle")
-                    if cached_final_bundle is not None:
-                        st.session_state.gorus_opinion_data = cached_final_bundle["data"]
-                        st.session_state.gorus_opinion_json = deepcopy(cached_final_bundle["opinion"])
-                        st.session_state.gorus_opinion_status = revision_status
-                        st.session_state.gorus_quality_report = cached_final_bundle["quality_report"]
-                        st.session_state.gorus_examiner_assessment = cached_final_bundle["examiner_assessment"]
-                        progress.progress(100, text="Görüş son başarılı checkpoint'ten geri yüklendi")
-                        st.rerun()
-
-                    cached_audited_opinion = _workflow_checkpoint_get("gorus_opinion", opinion_signature, "audited_opinion")
-                    if cached_audited_opinion is not None:
-                        opinion = deepcopy(cached_audited_opinion["opinion"])
-                    else:
-                        opinion = ask_json(
-                            _with_extra_instruction(gorus_prompt(
-                                source_state["report_type"],
-                                source_state["reference"],
-                                source_state["report_text"],
-                                final_spec_text,
-                                source_state["prior_text"],
-                                source_state["sim_text"],
-                                source_state["cust_text"],
-                                preanalysis=analysis,
-                                revision_status=revision_status,
-                                output_language=source_state.get("language") or "Türkçe",
-                                applicant_override=source_state.get("applicant_override") or "",
-                                required_documents=source_state.get("required_docs") or [],
-                            ), source_state.get("extra_instruction", "")),
-                            images=source_state.get("model_images") or [],
-                            metric_stage="Görüş taslağı",
-                            metric_context=gorus_metric_context,
-                        )
-                        if source_state.get("applicant_override"):
-                            opinion["applicant"] = source_state["applicant_override"]
-                        opinion["reference"] = source_state.get("reference") or ""
-                        validate_revision_amendment_section(
-                            opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
-                        )
-                        validate_quotes(opinion, final_spec_text)
-                        validate_opinion_against_raw_sources(
-                            opinion, source_state["report_text"], final_spec_text,
-                            source_state["prior_text"], source_state["sim_text"], source_state["cust_text"],
-                            allowed_documents=source_state.get("required_docs"),
-                            preanalysis=analysis,
-                        )
-                        progress.progress(58, text="Ham kaynaklara karşı bağımsız ikinci okuma yapılıyor...")
-                        quality_audit = ask_json(
-                            _with_extra_instruction(gorus_quality_audit_prompt(
-                                source_state["report_text"], final_spec_text, source_state["prior_text"],
-                                source_state["sim_text"], source_state["cust_text"], analysis, opinion,
-                            ), source_state.get("extra_instruction", "")),
-                            images=source_state.get("model_images") or [],
-                            metric_stage="Görüş ikinci okuma kalite denetimi",
-                            metric_context=gorus_metric_context,
-                        )
-                        try:
-                            validate_ai_quality_audit(quality_audit)
-                        except Exception:
-                            progress.progress(68, text="İkinci okuma bulgularına göre taslak bir kez düzeltiliyor...")
-                            opinion = ask_json(
-                                _with_extra_instruction(gorus_repair_prompt(
-                                    source_state["report_text"], final_spec_text, source_state["prior_text"],
-                                    source_state["sim_text"], source_state["cust_text"], analysis, opinion, quality_audit,
-                                ), source_state.get("extra_instruction", "")),
-                                images=source_state.get("model_images") or [],
-                                metric_stage="Görüş kalite düzeltme turu",
+                                metric_stage="Görüş taslağı",
                                 metric_context=gorus_metric_context,
                             )
                             if source_state.get("applicant_override"):
@@ -10543,90 +10650,61 @@ elif work_type == "Görüş hazırlama":
                                 allowed_documents=source_state.get("required_docs"),
                                 preanalysis=analysis,
                             )
+                            progress.progress(58, text="Ham kaynaklara karşı bağımsız ikinci okuma yapılıyor...")
                             quality_audit = ask_json(
                                 _with_extra_instruction(gorus_quality_audit_prompt(
                                     source_state["report_text"], final_spec_text, source_state["prior_text"],
                                     source_state["sim_text"], source_state["cust_text"], analysis, opinion,
                                 ), source_state.get("extra_instruction", "")),
                                 images=source_state.get("model_images") or [],
-                                metric_stage="Görüş ikinci okuma tekrar denetimi",
+                                metric_stage="Görüş ikinci okuma kalite denetimi",
                                 metric_context=gorus_metric_context,
                             )
-                            validate_ai_quality_audit(quality_audit)
-                        _workflow_checkpoint_set("gorus_opinion", opinion_signature, "audited_opinion", {"opinion": deepcopy(opinion)})
-                    # Sayfa/satır numaraları modelden alınmaz. Markup üretildiyse TEK otorite kullanıcıya
-                    # verilecek son Markup Word dosyasının fiziksel render'ıdır; clean/orijinal sürüm kullanılmaz.
-                    progress.progress(86, text="Word kalite kapıları ve bağımsız uzman perspektifi paralel çalıştırılıyor...")
-                    # v5.4.64: these two final operations depend on the same already-audited opinion but
-                    # not on each other. Run them concurrently without changing prompts or gates.
-                    gated_opinion = deepcopy(opinion)
-                    examiner_opinion = deepcopy(opinion)
-                    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pa-gorus-final") as pool:
-                        word_future = pool.submit(
-                            build_and_gate_gorus_opinion,
-                            gated_opinion,
-                            final_spec_name,
-                            final_spec_bytes,
-                            source_state,
-                        )
-                        examiner_future = pool.submit(
-                            ask_json,
-                            gorus_examiner_persuasion_prompt(
-                                source_state["report_text"], final_spec_text, source_state["sim_text"], examiner_opinion
-                            ),
-                            images=source_state.get("model_images") or [],
-                            metric_stage="Görüş bağımsız uzman ikna değerlendirmesi",
-                            metric_context=gorus_metric_context,
-                        )
-                        data = word_future.result()
-                        examiner_assessment = examiner_future.result()
-                    opinion = gated_opinion
-                    validate_examiner_persuasion_assessment(examiner_assessment)
-
-                    # If the examiner simulation remains weak/medium and sources permit, make one bounded
-                    # technical-strengthening pass, then rerun ALL gates and the final examiner simulation.
-                    if (
-                        int(examiner_assessment.get("persuasion_probability", 0)) < 75
-                        and bool(examiner_assessment.get("can_strengthen_without_new_matter", False))
-                    ):
-                        progress.progress(94, text="Yüksek öncelikli teknik katkı ve ilgili savunma bir kez güçlendiriliyor...")
-                        opinion = ask_json(
-                            _with_extra_instruction(gorus_examiner_strengthen_prompt(
-                                source_state["report_text"], final_spec_text, source_state["prior_text"],
-                                source_state["sim_text"], source_state["cust_text"], analysis, opinion,
-                                examiner_assessment,
-                            ), source_state.get("extra_instruction", "")),
-                            images=source_state.get("model_images") or [],
-                            metric_stage="Görüş teknik güçlendirme turu",
-                            metric_context=gorus_metric_context,
-                        )
-                        if source_state.get("applicant_override"):
-                            opinion["applicant"] = source_state["applicant_override"]
-                        opinion["reference"] = source_state.get("reference") or ""
-                        validate_revision_amendment_section(
-                            opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
-                        )
-                        validate_quotes(opinion, final_spec_text)
-                        validate_opinion_against_raw_sources(
-                            opinion, source_state["report_text"], final_spec_text,
-                            source_state["prior_text"], source_state["sim_text"], source_state["cust_text"],
-                            allowed_documents=source_state.get("required_docs"),
-                            preanalysis=analysis,
-                        )
-                        strengthened_audit = ask_json(
-                            _with_extra_instruction(gorus_quality_audit_prompt(
-                                source_state["report_text"], final_spec_text, source_state["prior_text"],
-                                source_state["sim_text"], source_state["cust_text"], analysis, opinion,
-                            ), source_state.get("extra_instruction", "")),
-                            images=source_state.get("model_images") or [],
-                            metric_stage="Görüş güçlendirme kalite denetimi",
-                            metric_context=gorus_metric_context,
-                        )
-                        validate_ai_quality_audit(strengthened_audit)
-                        progress.progress(98, text="Güçlendirilmiş görüşün Word kapıları ve nihai uzman perspektifi paralel çalıştırılıyor...")
+                            try:
+                                validate_ai_quality_audit(quality_audit)
+                            except Exception:
+                                progress.progress(68, text="İkinci okuma bulgularına göre taslak bir kez düzeltiliyor...")
+                                opinion = ask_json(
+                                    _with_extra_instruction(gorus_repair_prompt(
+                                        source_state["report_text"], final_spec_text, source_state["prior_text"],
+                                        source_state["sim_text"], source_state["cust_text"], analysis, opinion, quality_audit,
+                                    ), source_state.get("extra_instruction", "")),
+                                    images=source_state.get("model_images") or [],
+                                    metric_stage="Görüş kalite düzeltme turu",
+                                    metric_context=gorus_metric_context,
+                                )
+                                if source_state.get("applicant_override"):
+                                    opinion["applicant"] = source_state["applicant_override"]
+                                opinion["reference"] = source_state.get("reference") or ""
+                                validate_revision_amendment_section(
+                                    opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
+                                )
+                                validate_quotes(opinion, final_spec_text)
+                                validate_opinion_against_raw_sources(
+                                    opinion, source_state["report_text"], final_spec_text,
+                                    source_state["prior_text"], source_state["sim_text"], source_state["cust_text"],
+                                    allowed_documents=source_state.get("required_docs"),
+                                    preanalysis=analysis,
+                                )
+                                quality_audit = ask_json(
+                                    _with_extra_instruction(gorus_quality_audit_prompt(
+                                        source_state["report_text"], final_spec_text, source_state["prior_text"],
+                                        source_state["sim_text"], source_state["cust_text"], analysis, opinion,
+                                    ), source_state.get("extra_instruction", "")),
+                                    images=source_state.get("model_images") or [],
+                                    metric_stage="Görüş ikinci okuma tekrar denetimi",
+                                    metric_context=gorus_metric_context,
+                                )
+                                validate_ai_quality_audit(quality_audit)
+                            _workflow_checkpoint_set("gorus_opinion", opinion_signature, "audited_opinion", {"opinion": deepcopy(opinion)})
+                        # Sayfa/satır numaraları modelden alınmaz. Markup üretildiyse TEK otorite kullanıcıya
+                        # verilecek son Markup Word dosyasının fiziksel render'ıdır; clean/orijinal sürüm kullanılmaz.
+                        progress.progress(86, text="Word kalite kapıları ve bağımsız uzman perspektifi paralel çalıştırılıyor...")
+                        # v5.4.64: these two final operations depend on the same already-audited opinion but
+                        # not on each other. Run them concurrently without changing prompts or gates.
                         gated_opinion = deepcopy(opinion)
                         examiner_opinion = deepcopy(opinion)
-                        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pa-gorus-strengthened") as pool:
+                        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pa-gorus-final") as pool:
                             word_future = pool.submit(
                                 build_and_gate_gorus_opinion,
                                 gated_opinion,
@@ -10640,720 +10718,794 @@ elif work_type == "Görüş hazırlama":
                                     source_state["report_text"], final_spec_text, source_state["sim_text"], examiner_opinion
                                 ),
                                 images=source_state.get("model_images") or [],
-                            metric_stage="Görüş bağımsız uzman ikna değerlendirmesi",
-                            metric_context=gorus_metric_context,
+                                metric_stage="Görüş bağımsız uzman ikna değerlendirmesi",
+                                metric_context=gorus_metric_context,
                             )
                             data = word_future.result()
                             examiner_assessment = examiner_future.result()
                         opinion = gated_opinion
                         validate_examiner_persuasion_assessment(examiner_assessment)
 
-                    st.session_state.gorus_opinion_data = data
-                    st.session_state.gorus_opinion_json = deepcopy(opinion)
-                    st.session_state.gorus_opinion_status = revision_status
-                    st.session_state.gorus_quality_report = build_gorus_quality_report()
-                    st.session_state.gorus_examiner_assessment = examiner_assessment
-                    _workflow_checkpoint_set("gorus_opinion", opinion_signature, "final_bundle", {
-                        "data": data,
-                        "opinion": deepcopy(opinion),
-                        "quality_report": st.session_state.gorus_quality_report,
-                        "examiner_assessment": examiner_assessment,
-                    })
-                    progress.progress(100, text="Görüş metni, kalite kapıları ve uzman-perspektifi değerlendirmesi hazır")
-                except Exception as exc:
-                    st.exception(exc)
-
-        if st.session_state.gorus_opinion_data and st.session_state.gorus_opinion_status == revision_status:
-            st.success("Görüş metni oluşturuldu ve kalite kapılarının tamamı geçti.")
-            qr = st.session_state.get("gorus_quality_report") or {}
-            if qr.get("checks"):
-                with st.expander("Çıktı kalite kontrolü", expanded=True):
-                    for check in qr.get("checks") or []:
-                        st.write(f"✅ {check.get('name','')}")
-            ea = st.session_state.get("gorus_examiner_assessment") or {}
-            if not ea:
-                st.error("Bağımsız uzman ikna oranı bulunamadı; görüş teslim kapısı nedeniyle Word indirilemez.")
-                st.stop()
-            if ea:
-                score = int(ea.get("persuasion_probability", 0))
-                st.markdown("### Bağımsız uzman perspektifi")
-                st.metric("Mevcut uzman itirazını geri çektirme olasılığı (tahmini)", f"%{score}")
-                st.caption("Bu yüzde genel kalite puanı veya hukuki garanti değildir, mevcut itiraz ve kaynaklar üzerinden yapılan bağımsız uzman-perspektifi tahminidir.")
-                if ea.get("likely_examiner_response"):
-                    st.write("**Uzmanın muhtemel cevabı:**", ea.get("likely_examiner_response"))
-                if ea.get("strongest_points"):
-                    st.write("**En ikna edici teknik noktalar:**")
-                    for item in ea.get("strongest_points") or []:
-                        st.write(f"• {item}")
-                if ea.get("remaining_risks"):
-                    st.write("**İtirazın sürmesine yol açabilecek kalan riskler:**")
-                    for item in ea.get("remaining_risks") or []:
-                        st.write(f"• {item}")
-                if ea.get("technical_difference_focus"):
-                    st.write("**Teknik farkta daha da güçlendirilebilecek noktalar:**")
-                    for item in ea.get("technical_difference_focus") or []:
-                        st.write(f"• {item}")
-
-            _show_gorus_ai_metrics(str(source_state.get("workflow_signature") or analysis_upload_signature or "gorus"))
-
-            current_opinion = st.session_state.get("gorus_opinion_json") or {}
-            if current_opinion:
-                st.markdown("### Görüşü revize et")
-                st.caption("Word dosyasını inceledikten sonra değiştirilmesini istediğiniz yerleri doğal dille yazabilirsiniz. Yalnız talep ettiğiniz kapsam değiştirilir ve yeni Word dosyası bütün kalite kapılarından yeniden geçirilir.")
-
-                for item in st.session_state.get("gorus_revision_history") or []:
-                    with st.chat_message("user"):
-                        st.write(item.get("request", ""))
-                    with st.chat_message("assistant"):
-                        st.write(item.get("result", "Revizyon uygulandı ve Word yeniden oluşturuldu."))
-
-                with st.form("gorus_revision_chat_form", clear_on_submit=True):
-                    revision_request = st.text_area(
-                        "Revizyon talebiniz",
-                        placeholder="Örn. D1 bölümünde ilk iki paragrafı birleştir. 'Bu farklardan' diye başlayan cümleyi önceki paragrafın devamına al. D2 bölümünü biraz kısalt.",
-                        height=120,
-                    )
-                    apply_revision = st.form_submit_button("Talebi uygula ve Word'ü yeniden oluştur", use_container_width=True)
-
-                if apply_revision:
-                    if not revision_request.strip():
-                        st.warning("Revizyon talebinizi yazın.")
-                    else:
-                        try:
-                            revision_progress = st.progress(0, text="Revizyon talebi mevcut görüşe uygulanıyor...")
-                            revised_opinion = ask_json(
-                                gorus_user_revision_prompt(
+                        # If the examiner simulation remains weak/medium and sources permit, make one bounded
+                        # technical-strengthening pass, then rerun ALL gates and the final examiner simulation.
+                        if (
+                            int(examiner_assessment.get("persuasion_probability", 0)) < 75
+                            and bool(examiner_assessment.get("can_strengthen_without_new_matter", False))
+                        ):
+                            progress.progress(94, text="Yüksek öncelikli teknik katkı ve ilgili savunma bir kez güçlendiriliyor...")
+                            opinion = ask_json(
+                                _with_extra_instruction(gorus_examiner_strengthen_prompt(
                                     source_state["report_text"], final_spec_text, source_state["prior_text"],
-                                    source_state["sim_text"], source_state["cust_text"], analysis,
-                                    deepcopy(current_opinion), revision_request.strip(),
-                                ),
+                                    source_state["sim_text"], source_state["cust_text"], analysis, opinion,
+                                    examiner_assessment,
+                                ), source_state.get("extra_instruction", "")),
                                 images=source_state.get("model_images") or [],
-                                metric_stage="Görüş kullanıcı revizyonu",
+                                metric_stage="Görüş teknik güçlendirme turu",
                                 metric_context=gorus_metric_context,
                             )
                             if source_state.get("applicant_override"):
-                                revised_opinion["applicant"] = source_state["applicant_override"]
-                            revised_opinion["reference"] = source_state.get("reference") or ""
+                                opinion["applicant"] = source_state["applicant_override"]
+                            opinion["reference"] = source_state.get("reference") or ""
                             validate_revision_amendment_section(
-                                revised_opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
+                                opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
                             )
-                            validate_quotes(revised_opinion, final_spec_text)
+                            validate_quotes(opinion, final_spec_text)
                             validate_opinion_against_raw_sources(
-                                revised_opinion, source_state["report_text"], final_spec_text,
+                                opinion, source_state["report_text"], final_spec_text,
                                 source_state["prior_text"], source_state["sim_text"], source_state["cust_text"],
                                 allowed_documents=source_state.get("required_docs"),
                                 preanalysis=analysis,
                             )
-                            revision_progress.progress(55, text="Revize görüş için bağımsız ikinci okuma yapılıyor...")
-                            revision_audit = ask_json(
+                            strengthened_audit = ask_json(
                                 _with_extra_instruction(gorus_quality_audit_prompt(
                                     source_state["report_text"], final_spec_text, source_state["prior_text"],
-                                    source_state["sim_text"], source_state["cust_text"], analysis, revised_opinion,
+                                    source_state["sim_text"], source_state["cust_text"], analysis, opinion,
                                 ), source_state.get("extra_instruction", "")),
                                 images=source_state.get("model_images") or [],
-                                metric_stage="Görüş kullanıcı revizyonu kalite denetimi",
+                                metric_stage="Görüş güçlendirme kalite denetimi",
                                 metric_context=gorus_metric_context,
                             )
-                            validate_ai_quality_audit(revision_audit)
-                            if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
-                                revision_spec_bytes = st.session_state.gorus_markup_data
-                                revision_spec_name = "son_markup_tarifname.docx"
-                            else:
-                                revision_spec_bytes = source_state["spec_bytes"]
-                                revision_spec_name = source_state["spec_name"]
-                            revision_progress.progress(78, text="Revize Word kapıları ve uzman-perspektifi paralel çalıştırılıyor...")
-                            gated_revised_opinion = deepcopy(revised_opinion)
-                            examiner_revised_opinion = deepcopy(revised_opinion)
-                            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pa-gorus-user-rev") as pool:
+                            validate_ai_quality_audit(strengthened_audit)
+                            progress.progress(98, text="Güçlendirilmiş görüşün Word kapıları ve nihai uzman perspektifi paralel çalıştırılıyor...")
+                            gated_opinion = deepcopy(opinion)
+                            examiner_opinion = deepcopy(opinion)
+                            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pa-gorus-strengthened") as pool:
                                 word_future = pool.submit(
                                     build_and_gate_gorus_opinion,
-                                    gated_revised_opinion,
-                                    revision_spec_name,
-                                    revision_spec_bytes,
+                                    gated_opinion,
+                                    final_spec_name,
+                                    final_spec_bytes,
                                     source_state,
                                 )
                                 examiner_future = pool.submit(
                                     ask_json,
                                     gorus_examiner_persuasion_prompt(
-                                        source_state["report_text"], final_spec_text, source_state["sim_text"], examiner_revised_opinion
+                                        source_state["report_text"], final_spec_text, source_state["sim_text"], examiner_opinion
                                     ),
                                     images=source_state.get("model_images") or [],
-                            metric_stage="Görüş bağımsız uzman ikna değerlendirmesi",
-                            metric_context=gorus_metric_context,
-                                )
-                                revised_data = word_future.result()
-                                revised_examiner = examiner_future.result()
-                            revised_opinion = gated_revised_opinion
-                            validate_examiner_persuasion_assessment(revised_examiner)
-                            st.session_state.gorus_opinion_json = deepcopy(revised_opinion)
-                            st.session_state.gorus_opinion_data = revised_data
-                            st.session_state.gorus_quality_report = build_gorus_quality_report()
-                            st.session_state.gorus_examiner_assessment = revised_examiner
-                            st.session_state.gorus_revision_history = [
-                                *(st.session_state.get("gorus_revision_history") or []),
-                                {"request": revision_request.strip(), "result": "Talep uygulandı. Kalite kapıları yeniden geçti ve Word güncellendi."},
-                            ]
-                            st.session_state.gorus_edit_revision = int(st.session_state.get("gorus_edit_revision") or 0) + 1
-                            revision_progress.progress(100, text="Revize görüş hazır")
-                            st.rerun()
-                        except Exception as exc:
-                            st.exception(exc)
-
-                edit_revision = int(st.session_state.get("gorus_edit_revision") or 0)
-                with st.expander("Metni doğrudan düzenle (isteğe bağlı)", expanded=False):
-                    st.caption("Kaynak alıntıları kilitlidir. Giriş ve model tarafından yazılan savunma/sonuç paragraflarını doğrudan değiştirebilirsiniz. Kaydettiğiniz metin yine tüm kalite kapılarından geçer.")
-                    with st.form(f"gorus_direct_edit_form_{edit_revision}"):
-                        manual_intro = st.text_area("Giriş", value=str(current_opinion.get("intro", "")), height=120, key=f"gor_manual_intro_{edit_revision}")
-                        manual_section_values = {}
-                        for sec_index, sec in enumerate(current_opinion.get("sections") or []):
-                            label = str(sec.get("label", f"D{sec_index+1}"))
-                            st.markdown(f"**{label} bölümü**")
-                            block_values = {}
-                            for block_index, block in enumerate(sec.get("blocks") or []):
-                                if str(block.get("type", "paragraph")).lower() == "quote":
-                                    st.text_area(
-                                        f"{label} kaynak alıntısı {block_index+1} (kilitli)",
-                                        value=str(block.get("text", "")),
-                                        height=90,
-                                        disabled=True,
-                                        key=f"gor_manual_quote_{edit_revision}_{sec_index}_{block_index}",
-                                    )
-                                else:
-                                    block_values[block_index] = st.text_area(
-                                        f"{label} açıklama paragrafı {block_index+1}",
-                                        value=str(block.get("text", "")),
-                                        height=120,
-                                        key=f"gor_manual_block_{edit_revision}_{sec_index}_{block_index}",
-                                    )
-                            novelty_value = st.text_area(
-                                f"{label} yenilik değerlendirmesi",
-                                value="\n\n".join(sec.get("novelty_paragraphs") or []),
-                                height=150,
-                                key=f"gor_manual_novelty_{edit_revision}_{sec_index}",
-                            )
-                            inventive_value = st.text_area(
-                                f"{label} buluş basamağı değerlendirmesi",
-                                value="\n\n".join(sec.get("inventive_step_paragraphs") or []),
-                                height=190,
-                                key=f"gor_manual_inventive_{edit_revision}_{sec_index}",
-                            )
-                            manual_section_values[sec_index] = {
-                                "blocks": block_values,
-                                "novelty": novelty_value,
-                                "inventive": inventive_value,
-                            }
-                        combined = current_opinion.get("combined_assessment") or {}
-                        manual_combined = st.text_area(
-                            "Birlikte değerlendirme",
-                            value="\n\n".join(combined.get("paragraphs") or []),
-                            height=260,
-                            key="gor_manual_combined",
-                        )
-                        manual_conclusion = st.text_area(
-                            "Sonuç",
-                            value="\n\n".join(current_opinion.get("conclusion") or []),
-                            height=170,
-                            key="gor_manual_conclusion",
-                        )
-                        save_manual = st.form_submit_button("Elle düzenlenen metni uygula ve Word'ü yeniden oluştur", use_container_width=True)
-
-                    if save_manual:
-                        try:
-                            edited_opinion = deepcopy(current_opinion)
-                            edited_opinion["intro"] = manual_intro.strip()
-                            for sec_index, values in manual_section_values.items():
-                                sec = edited_opinion["sections"][sec_index]
-                                for block_index, text_value in values["blocks"].items():
-                                    sec["blocks"][block_index]["text"] = text_value.strip()
-                                sec["novelty_paragraphs"] = split_manual_opinion_paragraphs(values["novelty"])
-                                sec["inventive_step_paragraphs"] = split_manual_opinion_paragraphs(values["inventive"])
-                            edited_opinion.setdefault("combined_assessment", {})["paragraphs"] = split_manual_opinion_paragraphs(manual_combined)
-                            edited_opinion["conclusion"] = split_manual_opinion_paragraphs(manual_conclusion)
-                            if source_state.get("applicant_override"):
-                                edited_opinion["applicant"] = source_state["applicant_override"]
-                            edited_opinion["reference"] = source_state.get("reference") or ""
-                            validate_revision_amendment_section(
-                                edited_opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
-                            )
-                            validate_quotes(edited_opinion, final_spec_text)
-                            validate_opinion_against_raw_sources(
-                                edited_opinion, source_state["report_text"], final_spec_text,
-                                source_state["prior_text"], source_state["sim_text"], source_state["cust_text"],
-                                allowed_documents=source_state.get("required_docs"),
-                                preanalysis=analysis,
-                            )
-                            manual_audit = ask_json(
-                                _with_extra_instruction(gorus_quality_audit_prompt(
-                                    source_state["report_text"], final_spec_text, source_state["prior_text"],
-                                    source_state["sim_text"], source_state["cust_text"], analysis, edited_opinion,
-                                ), source_state.get("extra_instruction", "")),
-                                images=source_state.get("model_images") or [],
-                                metric_stage="Görüş manuel düzenleme kalite denetimi",
+                                metric_stage="Görüş bağımsız uzman ikna değerlendirmesi",
                                 metric_context=gorus_metric_context,
-                            )
-                            validate_ai_quality_audit(manual_audit)
-                            if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
-                                manual_spec_bytes = st.session_state.gorus_markup_data
-                                manual_spec_name = "son_markup_tarifname.docx"
-                            else:
-                                manual_spec_bytes = source_state["spec_bytes"]
-                                manual_spec_name = source_state["spec_name"]
-                            gated_edited_opinion = deepcopy(edited_opinion)
-                            examiner_edited_opinion = deepcopy(edited_opinion)
-                            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pa-gorus-manual-rev") as pool:
-                                word_future = pool.submit(
-                                    build_and_gate_gorus_opinion,
-                                    gated_edited_opinion,
-                                    manual_spec_name,
-                                    manual_spec_bytes,
-                                    source_state,
                                 )
-                                examiner_future = pool.submit(
-                                    ask_json,
-                                    gorus_examiner_persuasion_prompt(
-                                        source_state["report_text"], final_spec_text, source_state["sim_text"], examiner_edited_opinion
-                                    ),
-                                    images=source_state.get("model_images") or [],
-                            metric_stage="Görüş bağımsız uzman ikna değerlendirmesi",
-                            metric_context=gorus_metric_context,
-                                )
-                                edited_data = word_future.result()
-                                edited_examiner = examiner_future.result()
-                            edited_opinion = gated_edited_opinion
-                            validate_examiner_persuasion_assessment(edited_examiner)
-                            st.session_state.gorus_opinion_json = deepcopy(edited_opinion)
-                            st.session_state.gorus_opinion_data = edited_data
-                            st.session_state.gorus_quality_report = build_gorus_quality_report()
-                            st.session_state.gorus_examiner_assessment = edited_examiner
-                            st.session_state.gorus_revision_history = [
-                                *(st.session_state.get("gorus_revision_history") or []),
-                                {"request": "Metin doğrudan düzenleme ekranından güncellendi.", "result": "Elle düzenlenen metin kalite kapılarından geçti ve Word yeniden oluşturuldu."},
-                            ]
-                            st.session_state.gorus_edit_revision = int(st.session_state.get("gorus_edit_revision") or 0) + 1
-                            st.rerun()
-                        except Exception as exc:
-                            st.exception(exc)
+                                data = word_future.result()
+                                examiner_assessment = examiner_future.result()
+                            opinion = gated_opinion
+                            validate_examiner_persuasion_assessment(examiner_assessment)
 
-            # v5.4.75: indirme anında bütün bağlayıcı görüş kapıları SON KEZ yeniden çalışır.
-            _delivery_opinion = deepcopy(st.session_state.gorus_opinion_json or {})
-            _delivery_spec_text = final_spec_text or source_state.get("spec_text") or ""
-            validate_opinion_reference_binding(_delivery_opinion, source_state.get("reference") or "")
-            validate_mandatory_spec_basis_coverage(_delivery_opinion)
-            if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
-                _delivery_final_spec_name = "son_markup_tarifname.docx"
-                _delivery_final_spec_bytes = bytes(st.session_state.gorus_markup_data)
-                _delivery_authority_name, _delivery_authority_bytes = prepare_line_reference_source(
-                    _delivery_final_spec_name, _delivery_final_spec_bytes
-                )
-                validate_line_reference_authority(_delivery_final_spec_name, _delivery_authority_name)
-            else:
-                _delivery_final_spec_name = str(source_state.get("spec_name") or "")
-                _delivery_authority_name = str(source_state.get("line_spec_name") or _delivery_final_spec_name)
-                _delivery_authority_bytes = source_state.get("line_spec_bytes") or source_state.get("spec_bytes") or b""
-                validate_line_reference_authority(_delivery_final_spec_name, _delivery_authority_name)
-            _delivery_line_index = build_page_line_index(_delivery_authority_name, _delivery_authority_bytes)
-            validate_quote_locations_against_spec(
-                _delivery_opinion, _delivery_authority_name, _delivery_authority_bytes,
-                source_state.get("language") or "Türkçe", page_line_index=_delivery_line_index,
-            )
-            validate_revision_amendment_section(_delivery_opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize"))
-            validate_quotes(_delivery_opinion, _delivery_spec_text)
-            validate_opinion_against_raw_sources(
-                _delivery_opinion, source_state.get("report_text") or "", _delivery_spec_text,
-                source_state.get("prior_text") or "", source_state.get("sim_text") or "", source_state.get("cust_text") or "",
-                allowed_documents=source_state.get("required_docs"), preanalysis=analysis,
-            )
-            _delivery_sections = {str(sec.get("label", "")).upper(): sec for sec in _delivery_opinion.get("sections") or []}
-            _delivery_figure_labels = [
-                str(d.get("label", "")) for d in _delivery_opinion.get("cited_documents") or []
-                if bool(_delivery_sections.get(str(d.get("label", "")).upper(), {}).get("use_figure", False))
-            ]
-            validate_gorus_template_fidelity(st.session_state.gorus_opinion_data, GORUS_TEMPLATE, _delivery_opinion, _delivery_figure_labels)
-            validate_gorus_docx_content_flow(st.session_state.gorus_opinion_data)
-            render_gorus_docx_smoke_test(st.session_state.gorus_opinion_data)
-            validate_examiner_persuasion_assessment(st.session_state.gorus_examiner_assessment or {})
-            compliant_download_button(
-                "Word görüş metnini indir", data=st.session_state.gorus_opinion_data,
-                output_name=source_state.get("output_name") or output_name,
-                default_name="Response Letter.docx" if _english_spec(source_state.get("language") or opinion_language) else "Görüş Metni.docx",
-                artifact_type="gorus",
-                checks={"raw_sources": True, "quotes": True, "exact_physical_lines": True, "reference_binding": True, "spec_basis_coverage": True, "template": True, "content_flow": True, "render": True, "examiner": True},
-                type="primary", use_container_width=True,
-            )
-
-# ARAŞTIRMA
-elif work_type == "Tip 3 - Ön araştırma raporu":
-    st.subheader("Tip 3 - Ön araştırma raporu")
-    c1, c2 = st.columns(2)
-    with c1:
-        bbf = st.file_uploader("BBF dosyası", type=["docx", "doc", "pdf", "txt"], key="res_bbf")
-        reference = st.text_input("DP referans numarası", value="")
-    with c2:
-        output_name = st.text_input("Çıktı dosyasının adı", value="Ön_Araştırma_Raporu_XXXXXX.docx")
-        cutoff = st.date_input("Araştırma kesim tarihi", value=date.today())
-
-    research_extra_instruction_input = st.text_area(
-        "Ek Talimat (varsa)",
-        max_chars=MAX_EXTRA_INSTRUCTION_CHARS,
-        height=90,
-        key="res_extra_instruction",
-        help="Yalnız bu ön araştırma çalışmasına özel kısa yönlendirme. Repo kuralları, kaynaklar ve kalite kapıları önceliklidir.",
-    )
-    st.caption("Bu çalışmaya özel kısa not. En fazla 500 karakter; repo kurallarını veya kalite kapılarını geçersiz kılamaz.")
-
-    for key, default in {
-        "top10_result": None,
-        "research_bbf_text": None,
-        "research_cutoff": None,
-        "research_selection": None,
-        "research_user_images": [],
-        "research_extra_instruction": "",
-    }.items():
-        if key not in st.session_state:
-            st.session_state[key] = default
-
-    if st.button("1. Global araştırmayı yap ve en benzer 10 dokümanı bul", type="primary", use_container_width=True):
-        if bbf is None:
-            st.error("BBF yükleyin.")
-        elif not reference.strip():
-            st.error("DP referans numarasını girin.")
-        else:
-            try:
-                progress = st.progress(0, text="BBF okunuyor ve teknik çekirdek çıkarılıyor...")
-                bbf_text = extract_text_from_asset(UploadedAsset(bbf.name, bbf.getvalue(), bbf.type))
-                cutoff_text = cutoff.strftime("%d.%m.%Y")
-                research_extra_instruction = _normalize_extra_instruction(research_extra_instruction_input)
-                st.session_state.research_extra_instruction = research_extra_instruction
-                progress.progress(20, text="Çok turlu global patent araştırması başlatılıyor...")
-                top10 = run_top10_research_pipeline(
-                    bbf_text,
-                    cutoff_text,
-                    research_extra_instruction,
-                    progress_callback=lambda value, message: progress.progress(value, text=message),
-                )
-                docs = top10.get("documents") or []
-                st.session_state.top10_result = top10
-                st.session_state.research_bbf_text = bbf_text
-                st.session_state.research_cutoff = cutoff_text
-                st.session_state.research_selection = None
-                st.session_state.research_user_images = []
-                progress.progress(100, text="Araştırma tamamlandı")
-            except Exception as exc:
-                st.exception(exc)
-
-    if st.session_state.top10_result:
-        st.success("En benzer 10 doküman bulundu.")
-        docs = st.session_state.top10_result.get("documents") or []
-        totalpatent_query = st.session_state.top10_result.get("totalpatent_query") or (
-            "Totalpatent/Espaenet sorgusu: " + " or ".join(str(d.get("publication_number", "")) for d in docs)
-        )
-        st.code(totalpatent_query, language=None)
-        rows = [{
-            "Sıra": d.get("rank"), "Yayın no": d.get("publication_number"), "Başlık": d.get("title"),
-            "Tarih": d.get("date"), "Yakınlık": d.get("relevance_score"),
-            "Yeniliği bozar mı?": "Evet" if d.get("novelty_destroying") else "Hayır",
-        } for d in docs]
-        st.dataframe(rows, use_container_width=True, hide_index=True)
-        st.caption(f"Önerilen D1: {st.session_state.top10_result.get('proposed_d1','')} | Önerilen D2: {st.session_state.top10_result.get('proposed_d2','') or '-'}")
-
-        own_docs = st.radio("Sizin araştırdığınız benzer dokümanlar var mı?", ["Hayır", "Evet"], horizontal=True)
-        user_files = []
-        if own_docs == "Evet":
-            user_files = st.file_uploader("Sizin bulduğunuz benzer dokümanlar", type=["pdf", "zip", "docx", "doc", "txt", "png", "jpg", "jpeg", "webp"], accept_multiple_files=True, key="res_user_docs")
-
-        if st.button("2. Kullanıcı dokümanlarını incele ve nihai D1/D2'yi belirle", type="primary", use_container_width=True):
-            if own_docs == "Evet" and not user_files:
-                st.error("Benzer dokümanları yükleyin.")
-            else:
-                try:
-                    progress = st.progress(0, text="Kullanıcı dokümanları inceleniyor...")
-                    user_assets = assets_from_uploads(user_files)
-                    user_text, user_images = combine_asset_text("KULLANICI BENZER DOKÜMANI", user_assets)
-                    progress.progress(45, text="10+ dokümanları ve nihai D1/D2 belirleniyor...")
-                    selection = ask_json(_with_extra_instruction(final_selection_prompt(
-                        st.session_state.research_bbf_text,
-                        st.session_state.top10_result,
-                        user_text,
-                    ), st.session_state.get("research_extra_instruction", "")), images=user_images, web_search=True)
-                    validate_research_selection(selection)
-                    st.session_state.research_selection = selection
-                    st.session_state.research_user_images = user_images
-                    progress.progress(100, text="Teknik değerlendirme tamamlandı")
-                except Exception as exc:
-                    st.exception(exc)
-
-        selection = st.session_state.research_selection
-        if selection:
-            additional_query = str(selection.get("additional_query") or "").strip()
-            if additional_query:
-                st.code(additional_query, language=None)
-            elif own_docs == "Evet":
-                st.caption("10+ olarak eklenecek yeterince ilgili kullanıcı dokümanı belirlenmedi.")
-
-            d1_note = selection.get("d1_change_note") or (
-                "D1 değişti." if selection.get("d1_changed") else "D1 değişmedi."
-            )
-            d2_note = selection.get("d2_change_note") or (
-                "D2 değişti." if selection.get("d2_changed") else "D2 değişmedi."
-            )
-            st.write(f"**{d1_note}**")
-            st.write(f"**{d2_note}**")
-            st.success(f"Nihai D1: {selection.get('d1',{}).get('number','')} | Nihai D2: {(selection.get('d2') or {}).get('number','-')}")
-            st.info(selection.get("technical_opinion") or f"Bence buluş basamağı {'var' if selection.get('inventive_step_result') == 'sağlanır' else 'yok'}.")
-
-            st.markdown("#### 3. Nihai D1/D2 özgün patent dokümanları")
-            d1_info = selection.get("d1") or {}
-            d2_info = selection.get("d2") or None
-            d1_source_upload = st.file_uploader(
-                f"Nihai D1 özgün patent dosyasını yükleyin ({d1_info.get('number','D1')})",
-                type=["pdf", "docx", "doc"], key="res_final_d1_source"
-            )
-            d2_source_upload = None
-            if d2_info:
-                d2_source_upload = st.file_uploader(
-                    f"Nihai D2 özgün patent dosyasını yükleyin ({d2_info.get('number','D2')})",
-                    type=["pdf", "docx", "doc"], key="res_final_d2_source"
-                )
-
-            original_patent_assets = []
-            originals_ready = False
-            required_sources_present = d1_source_upload is not None and (not d2_info or d2_source_upload is not None)
-            if required_sources_present:
-                try:
-                    d1_asset = UploadedAsset(d1_source_upload.name, d1_source_upload.getvalue(), d1_source_upload.type)
-                    validate_research_original_patent_asset(d1_asset, d1_info, "D1")
-                    original_patent_assets.append(d1_asset)
-                    if d2_info and d2_source_upload is not None:
-                        d2_asset = UploadedAsset(d2_source_upload.name, d2_source_upload.getvalue(), d2_source_upload.type)
-                        validate_research_original_patent_asset(d2_asset, d2_info, "D2")
-                        original_patent_assets.append(d2_asset)
-                    originals_ready = True
-                    st.success("Nihai D1/D2 özgün patent kaynakları doğrulandı.")
-                except Exception as exc:
-                    st.error(str(exc))
-            else:
-                st.info("Rapor sonuç modu ve Word üretiminden önce nihai D1 ve varsa D2 özgün patent dosyalarını yükleyin.")
-
-            if originals_ready:
-                decision_mode = st.selectbox(
-                    "Rapor sonucunu nasıl oluşturayım?",
-                    ["Otomatik belirle", "Buluş basamağı var", "Buluş basamağı yok"],
-                    help="Bu seçim ancak 10+, nihai D1/D2, sistem kanaati ve özgün D1/D2 kaynakları doğrulandıktan sonra yapılır.",
-                )
-
-                if st.button("4. Ön Araştırma Raporunu oluştur", type="primary", use_container_width=True):
-                    try:
-                        final_selection = deepcopy(selection)
-                        if decision_mode == "Buluş basamağı var":
-                            final_selection["inventive_step_result"] = "sağlanır"
-                        elif decision_mode == "Buluş basamağı yok":
-                            final_selection["inventive_step_result"] = "sağlanmaz"
-                        if final_selection.get("d1"):
-                            final_selection["d1"]["abstract_source"] = "user-file"
-                        if final_selection.get("d2"):
-                            final_selection["d2"]["abstract_source"] = "user-file"
-                        progress = st.progress(0, text="Yenilik ve buluş basamağı raporu hazırlanıyor...")
-                        report = ask_json(_with_extra_instruction(report_drafting_prompt(
-                            st.session_state.research_bbf_text,
-                            st.session_state.top10_result,
-                            final_selection,
-                            reference,
-                            st.session_state.research_cutoff or cutoff.strftime("%d.%m.%Y"),
-                            decision_mode,
-                        ), st.session_state.get("research_extra_instruction", "")))
-                        validate_report_against_selection(report, final_selection)
-                        validate_research_report_language(report)
-                        progress.progress(55, text="Tip 3 ikinci-okuma kalite kapısı çalıştırılıyor...")
-                        quality_audit = ask_json(_with_extra_instruction(research_quality_audit_prompt(
-                            st.session_state.research_bbf_text, report, final_selection, decision_mode
-                        ), st.session_state.get("research_extra_instruction", "")))
-                        progress.progress(75, text="Bağlayıcı Word şablonu ve teslim kapıları çalıştırılıyor...")
-                        figure_fallbacks = [research_original_patent_figure_fallback(asset) for asset in original_patent_assets]
-                        data = build_and_gate_tip3_report(report, final_selection, quality_audit, figure_fallbacks=figure_fallbacks)
-                        progress.progress(100, text="Tüm kalite kapıları geçti")
-                        st.info(f"Yenilik: {final_selection.get('novelty_result','')} | Buluş basamağı: {final_selection.get('inventive_step_result','')}")
-                        effective_output_name = output_name.replace("XXXXXX", reference.strip()) if reference.strip() else output_name
-                        validate_research_docx_delivery(data)
-                        render_research_docx_smoke_test(data)
-                        compliant_download_button(
-                            "Word raporunu indir", data=data, output_name=effective_output_name,
-                            default_name="Ön_Araştırma_Raporu.docx", artifact_type="tip3",
-                            checks={"delivery": True, "render": True}, type="primary",
-                        )
+                        st.session_state.gorus_opinion_data = data
+                        st.session_state.gorus_opinion_json = deepcopy(opinion)
+                        st.session_state.gorus_opinion_status = revision_status
+                        st.session_state.gorus_quality_report = build_gorus_quality_report()
+                        st.session_state.gorus_examiner_assessment = examiner_assessment
+                        _workflow_checkpoint_set("gorus_opinion", opinion_signature, "final_bundle", {
+                            "data": data,
+                            "opinion": deepcopy(opinion),
+                            "quality_report": st.session_state.gorus_quality_report,
+                            "examiner_assessment": examiner_assessment,
+                        })
+                        progress.progress(100, text="Görüş metni, kalite kapıları ve uzman-perspektifi değerlendirmesi hazır")
                     except Exception as exc:
                         st.exception(exc)
 
-# ARAŞTIRMA GÜNCELLEME
-else:
-    st.subheader("Araştırma güncelleme - Tip 3")
-    st.caption("İlk araştırma konusu ile revize araştırma konusu karşılaştırılır; ilk rapordaki D1/D2 dikkate alınarak yeni araştırma yapılır ve nihai rapor standart Tip 3 Ön Araştırma Raporu formatında oluşturulur.")
+            if st.session_state.gorus_opinion_data and st.session_state.gorus_opinion_status == revision_status:
+                st.success("Görüş metni oluşturuldu ve kalite kapılarının tamamı geçti.")
+                qr = st.session_state.get("gorus_quality_report") or {}
+                if qr.get("checks"):
+                    with st.expander("Çıktı kalite kontrolü", expanded=True):
+                        for check in qr.get("checks") or []:
+                            st.write(f"✅ {check.get('name','')}")
+                ea = st.session_state.get("gorus_examiner_assessment") or {}
+                if not ea:
+                    st.error("Bağımsız uzman ikna oranı bulunamadı; görüş teslim kapısı nedeniyle Word indirilemez.")
+                    st.stop()
+                if ea:
+                    score = int(ea.get("persuasion_probability", 0))
+                    st.markdown("### Bağımsız uzman perspektifi")
+                    st.metric("Mevcut uzman itirazını geri çektirme olasılığı (tahmini)", f"%{score}")
+                    st.caption("Bu yüzde genel kalite puanı veya hukuki garanti değildir, mevcut itiraz ve kaynaklar üzerinden yapılan bağımsız uzman-perspektifi tahminidir.")
+                    if ea.get("likely_examiner_response"):
+                        st.write("**Uzmanın muhtemel cevabı:**", ea.get("likely_examiner_response"))
+                    if ea.get("strongest_points"):
+                        st.write("**En ikna edici teknik noktalar:**")
+                        for item in ea.get("strongest_points") or []:
+                            st.write(f"• {item}")
+                    if ea.get("remaining_risks"):
+                        st.write("**İtirazın sürmesine yol açabilecek kalan riskler:**")
+                        for item in ea.get("remaining_risks") or []:
+                            st.write(f"• {item}")
+                    if ea.get("technical_difference_focus"):
+                        st.write("**Teknik farkta daha da güçlendirilebilecek noktalar:**")
+                        for item in ea.get("technical_difference_focus") or []:
+                            st.write(f"• {item}")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        first_bbf = st.file_uploader("1. İlk BBF", type=["docx", "doc", "pdf", "txt"], key="upd_first_bbf")
-        revised_bbf = st.file_uploader("2. Revize BBF", type=["docx", "doc", "pdf", "txt"], key="upd_revised_bbf")
-        prior_report = st.file_uploader("3. İlk Ön Araştırma Raporu", type=["pdf", "docx", "doc", "txt"], key="upd_prior_report")
-    with c2:
-        update_reference = st.text_input("DP referans numarası", value="", key="upd_reference")
-        update_output_name = st.text_input("Çıktı dosyasının adı", value="Ön_Araştırma_Raporu_XXXXXX_rev.docx", key="upd_output_name")
-        update_cutoff = st.date_input("Araştırma kesim tarihi", value=date.today(), key="upd_cutoff")
+                _show_gorus_ai_metrics(str(source_state.get("workflow_signature") or analysis_upload_signature or "gorus"))
 
-    for key, default in {
-        "update_analysis": None,
-        "update_research": None,
-        "update_first_text": None,
-        "update_revised_text": None,
-        "update_prior_report_text": None,
-        "update_prior_report_asset": None,
-    }.items():
-        if key not in st.session_state:
-            st.session_state[key] = default
+                current_opinion = st.session_state.get("gorus_opinion_json") or {}
+                if current_opinion:
+                    st.markdown("### Görüşü revize et")
+                    st.caption("Word dosyasını inceledikten sonra değiştirilmesini istediğiniz yerleri doğal dille yazabilirsiniz. Yalnız talep ettiğiniz kapsam değiştirilir ve yeni Word dosyası bütün kalite kapılarından yeniden geçirilir.")
 
-    if st.button("1. Farkları ve teknik katkıyı analiz et", type="primary", use_container_width=True):
-        if first_bbf is None:
-            st.error("İlk BBF dosyasını yükleyin.")
-        elif revised_bbf is None:
-            st.error("Revize BBF dosyasını yükleyin.")
-        elif prior_report is None:
-            st.error("İlk Ön Araştırma Raporunu yükleyin.")
-        else:
-            try:
-                progress = st.progress(0, text="İlk araştırma konusu okunuyor...")
-                first_asset = UploadedAsset(first_bbf.name, first_bbf.getvalue(), first_bbf.type)
-                revised_asset = UploadedAsset(revised_bbf.name, revised_bbf.getvalue(), revised_bbf.type)
-                report_asset = UploadedAsset(prior_report.name, prior_report.getvalue(), prior_report.type)
-                progress.progress(25, text="İlk BBF, revize BBF ve önceki rapor paralel olarak okunuyor...")
-                first_text, revised_text, report_text = extract_asset_texts_parallel(
-                    [first_asset, revised_asset, report_asset]
+                    for item in st.session_state.get("gorus_revision_history") or []:
+                        with st.chat_message("user"):
+                            st.write(item.get("request", ""))
+                        with st.chat_message("assistant"):
+                            st.write(item.get("result", "Revizyon uygulandı ve Word yeniden oluşturuldu."))
+
+                    with st.form("gorus_revision_chat_form", clear_on_submit=True):
+                        revision_request = st.text_area(
+                            "Revizyon talebiniz",
+                            placeholder="Örn. D1 bölümünde ilk iki paragrafı birleştir. 'Bu farklardan' diye başlayan cümleyi önceki paragrafın devamına al. D2 bölümünü biraz kısalt.",
+                            height=120,
+                        )
+                        apply_revision = st.form_submit_button("Talebi uygula ve Word'ü yeniden oluştur", use_container_width=True)
+
+                    if apply_revision:
+                        if not revision_request.strip():
+                            st.warning("Revizyon talebinizi yazın.")
+                        else:
+                            try:
+                                revision_progress = st.progress(0, text="Revizyon talebi mevcut görüşe uygulanıyor...")
+                                revised_opinion = ask_json(
+                                    gorus_user_revision_prompt(
+                                        source_state["report_text"], final_spec_text, source_state["prior_text"],
+                                        source_state["sim_text"], source_state["cust_text"], analysis,
+                                        deepcopy(current_opinion), revision_request.strip(),
+                                    ),
+                                    images=source_state.get("model_images") or [],
+                                    metric_stage="Görüş kullanıcı revizyonu",
+                                    metric_context=gorus_metric_context,
+                                )
+                                if source_state.get("applicant_override"):
+                                    revised_opinion["applicant"] = source_state["applicant_override"]
+                                revised_opinion["reference"] = source_state.get("reference") or ""
+                                validate_revision_amendment_section(
+                                    revised_opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
+                                )
+                                validate_quotes(revised_opinion, final_spec_text)
+                                validate_opinion_against_raw_sources(
+                                    revised_opinion, source_state["report_text"], final_spec_text,
+                                    source_state["prior_text"], source_state["sim_text"], source_state["cust_text"],
+                                    allowed_documents=source_state.get("required_docs"),
+                                    preanalysis=analysis,
+                                )
+                                revision_progress.progress(55, text="Revize görüş için bağımsız ikinci okuma yapılıyor...")
+                                revision_audit = ask_json(
+                                    _with_extra_instruction(gorus_quality_audit_prompt(
+                                        source_state["report_text"], final_spec_text, source_state["prior_text"],
+                                        source_state["sim_text"], source_state["cust_text"], analysis, revised_opinion,
+                                    ), source_state.get("extra_instruction", "")),
+                                    images=source_state.get("model_images") or [],
+                                    metric_stage="Görüş kullanıcı revizyonu kalite denetimi",
+                                    metric_context=gorus_metric_context,
+                                )
+                                validate_ai_quality_audit(revision_audit)
+                                if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
+                                    revision_spec_bytes = st.session_state.gorus_markup_data
+                                    revision_spec_name = "son_markup_tarifname.docx"
+                                else:
+                                    revision_spec_bytes = source_state["spec_bytes"]
+                                    revision_spec_name = source_state["spec_name"]
+                                revision_progress.progress(78, text="Revize Word kapıları ve uzman-perspektifi paralel çalıştırılıyor...")
+                                gated_revised_opinion = deepcopy(revised_opinion)
+                                examiner_revised_opinion = deepcopy(revised_opinion)
+                                with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pa-gorus-user-rev") as pool:
+                                    word_future = pool.submit(
+                                        build_and_gate_gorus_opinion,
+                                        gated_revised_opinion,
+                                        revision_spec_name,
+                                        revision_spec_bytes,
+                                        source_state,
+                                    )
+                                    examiner_future = pool.submit(
+                                        ask_json,
+                                        gorus_examiner_persuasion_prompt(
+                                            source_state["report_text"], final_spec_text, source_state["sim_text"], examiner_revised_opinion
+                                        ),
+                                        images=source_state.get("model_images") or [],
+                                metric_stage="Görüş bağımsız uzman ikna değerlendirmesi",
+                                metric_context=gorus_metric_context,
+                                    )
+                                    revised_data = word_future.result()
+                                    revised_examiner = examiner_future.result()
+                                revised_opinion = gated_revised_opinion
+                                validate_examiner_persuasion_assessment(revised_examiner)
+                                st.session_state.gorus_opinion_json = deepcopy(revised_opinion)
+                                st.session_state.gorus_opinion_data = revised_data
+                                st.session_state.gorus_quality_report = build_gorus_quality_report()
+                                st.session_state.gorus_examiner_assessment = revised_examiner
+                                st.session_state.gorus_revision_history = [
+                                    *(st.session_state.get("gorus_revision_history") or []),
+                                    {"request": revision_request.strip(), "result": "Talep uygulandı. Kalite kapıları yeniden geçti ve Word güncellendi."},
+                                ]
+                                st.session_state.gorus_edit_revision = int(st.session_state.get("gorus_edit_revision") or 0) + 1
+                                revision_progress.progress(100, text="Revize görüş hazır")
+                                st.rerun()
+                            except Exception as exc:
+                                st.exception(exc)
+
+                    edit_revision = int(st.session_state.get("gorus_edit_revision") or 0)
+                    with st.expander("Metni doğrudan düzenle (isteğe bağlı)", expanded=False):
+                        st.caption("Kaynak alıntıları kilitlidir. Giriş ve model tarafından yazılan savunma/sonuç paragraflarını doğrudan değiştirebilirsiniz. Kaydettiğiniz metin yine tüm kalite kapılarından geçer.")
+                        with st.form(f"gorus_direct_edit_form_{edit_revision}"):
+                            manual_intro = st.text_area("Giriş", value=str(current_opinion.get("intro", "")), height=120, key=f"gor_manual_intro_{edit_revision}")
+                            manual_section_values = {}
+                            for sec_index, sec in enumerate(current_opinion.get("sections") or []):
+                                label = str(sec.get("label", f"D{sec_index+1}"))
+                                st.markdown(f"**{label} bölümü**")
+                                block_values = {}
+                                for block_index, block in enumerate(sec.get("blocks") or []):
+                                    if str(block.get("type", "paragraph")).lower() == "quote":
+                                        st.text_area(
+                                            f"{label} kaynak alıntısı {block_index+1} (kilitli)",
+                                            value=str(block.get("text", "")),
+                                            height=90,
+                                            disabled=True,
+                                            key=f"gor_manual_quote_{edit_revision}_{sec_index}_{block_index}",
+                                        )
+                                    else:
+                                        block_values[block_index] = st.text_area(
+                                            f"{label} açıklama paragrafı {block_index+1}",
+                                            value=str(block.get("text", "")),
+                                            height=120,
+                                            key=f"gor_manual_block_{edit_revision}_{sec_index}_{block_index}",
+                                        )
+                                novelty_value = st.text_area(
+                                    f"{label} yenilik değerlendirmesi",
+                                    value="\n\n".join(sec.get("novelty_paragraphs") or []),
+                                    height=150,
+                                    key=f"gor_manual_novelty_{edit_revision}_{sec_index}",
+                                )
+                                inventive_value = st.text_area(
+                                    f"{label} buluş basamağı değerlendirmesi",
+                                    value="\n\n".join(sec.get("inventive_step_paragraphs") or []),
+                                    height=190,
+                                    key=f"gor_manual_inventive_{edit_revision}_{sec_index}",
+                                )
+                                manual_section_values[sec_index] = {
+                                    "blocks": block_values,
+                                    "novelty": novelty_value,
+                                    "inventive": inventive_value,
+                                }
+                            combined = current_opinion.get("combined_assessment") or {}
+                            manual_combined = st.text_area(
+                                "Birlikte değerlendirme",
+                                value="\n\n".join(combined.get("paragraphs") or []),
+                                height=260,
+                                key="gor_manual_combined",
+                            )
+                            manual_conclusion = st.text_area(
+                                "Sonuç",
+                                value="\n\n".join(current_opinion.get("conclusion") or []),
+                                height=170,
+                                key="gor_manual_conclusion",
+                            )
+                            save_manual = st.form_submit_button("Elle düzenlenen metni uygula ve Word'ü yeniden oluştur", use_container_width=True)
+
+                        if save_manual:
+                            try:
+                                edited_opinion = deepcopy(current_opinion)
+                                edited_opinion["intro"] = manual_intro.strip()
+                                for sec_index, values in manual_section_values.items():
+                                    sec = edited_opinion["sections"][sec_index]
+                                    for block_index, text_value in values["blocks"].items():
+                                        sec["blocks"][block_index]["text"] = text_value.strip()
+                                    sec["novelty_paragraphs"] = split_manual_opinion_paragraphs(values["novelty"])
+                                    sec["inventive_step_paragraphs"] = split_manual_opinion_paragraphs(values["inventive"])
+                                edited_opinion.setdefault("combined_assessment", {})["paragraphs"] = split_manual_opinion_paragraphs(manual_combined)
+                                edited_opinion["conclusion"] = split_manual_opinion_paragraphs(manual_conclusion)
+                                if source_state.get("applicant_override"):
+                                    edited_opinion["applicant"] = source_state["applicant_override"]
+                                edited_opinion["reference"] = source_state.get("reference") or ""
+                                validate_revision_amendment_section(
+                                    edited_opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize")
+                                )
+                                validate_quotes(edited_opinion, final_spec_text)
+                                validate_opinion_against_raw_sources(
+                                    edited_opinion, source_state["report_text"], final_spec_text,
+                                    source_state["prior_text"], source_state["sim_text"], source_state["cust_text"],
+                                    allowed_documents=source_state.get("required_docs"),
+                                    preanalysis=analysis,
+                                )
+                                manual_audit = ask_json(
+                                    _with_extra_instruction(gorus_quality_audit_prompt(
+                                        source_state["report_text"], final_spec_text, source_state["prior_text"],
+                                        source_state["sim_text"], source_state["cust_text"], analysis, edited_opinion,
+                                    ), source_state.get("extra_instruction", "")),
+                                    images=source_state.get("model_images") or [],
+                                    metric_stage="Görüş manuel düzenleme kalite denetimi",
+                                    metric_context=gorus_metric_context,
+                                )
+                                validate_ai_quality_audit(manual_audit)
+                                if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
+                                    manual_spec_bytes = st.session_state.gorus_markup_data
+                                    manual_spec_name = "son_markup_tarifname.docx"
+                                else:
+                                    manual_spec_bytes = source_state["spec_bytes"]
+                                    manual_spec_name = source_state["spec_name"]
+                                gated_edited_opinion = deepcopy(edited_opinion)
+                                examiner_edited_opinion = deepcopy(edited_opinion)
+                                with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pa-gorus-manual-rev") as pool:
+                                    word_future = pool.submit(
+                                        build_and_gate_gorus_opinion,
+                                        gated_edited_opinion,
+                                        manual_spec_name,
+                                        manual_spec_bytes,
+                                        source_state,
+                                    )
+                                    examiner_future = pool.submit(
+                                        ask_json,
+                                        gorus_examiner_persuasion_prompt(
+                                            source_state["report_text"], final_spec_text, source_state["sim_text"], examiner_edited_opinion
+                                        ),
+                                        images=source_state.get("model_images") or [],
+                                metric_stage="Görüş bağımsız uzman ikna değerlendirmesi",
+                                metric_context=gorus_metric_context,
+                                    )
+                                    edited_data = word_future.result()
+                                    edited_examiner = examiner_future.result()
+                                edited_opinion = gated_edited_opinion
+                                validate_examiner_persuasion_assessment(edited_examiner)
+                                st.session_state.gorus_opinion_json = deepcopy(edited_opinion)
+                                st.session_state.gorus_opinion_data = edited_data
+                                st.session_state.gorus_quality_report = build_gorus_quality_report()
+                                st.session_state.gorus_examiner_assessment = edited_examiner
+                                st.session_state.gorus_revision_history = [
+                                    *(st.session_state.get("gorus_revision_history") or []),
+                                    {"request": "Metin doğrudan düzenleme ekranından güncellendi.", "result": "Elle düzenlenen metin kalite kapılarından geçti ve Word yeniden oluşturuldu."},
+                                ]
+                                st.session_state.gorus_edit_revision = int(st.session_state.get("gorus_edit_revision") or 0) + 1
+                                st.rerun()
+                            except Exception as exc:
+                                st.exception(exc)
+
+                # v5.4.75: indirme anında bütün bağlayıcı görüş kapıları SON KEZ yeniden çalışır.
+                _delivery_opinion = deepcopy(st.session_state.gorus_opinion_json or {})
+                _delivery_spec_text = final_spec_text or source_state.get("spec_text") or ""
+                validate_opinion_reference_binding(_delivery_opinion, source_state.get("reference") or "")
+                validate_mandatory_spec_basis_coverage(_delivery_opinion)
+                if revision_status.startswith("Kullanıcı tarafından onaylanmış revize") and st.session_state.gorus_markup_data:
+                    _delivery_final_spec_name = "son_markup_tarifname.docx"
+                    _delivery_final_spec_bytes = bytes(st.session_state.gorus_markup_data)
+                    _delivery_authority_name = str(source_state.get("revised_line_spec_name") or "")
+                    _delivery_authority_bytes = bytes(source_state.get("revised_line_spec_bytes") or b"")
+                    validate_word_origin_pdf_authority(
+                        _delivery_final_spec_name, _delivery_final_spec_bytes,
+                        _delivery_authority_name, _delivery_authority_bytes,
+                        uploaded_by_user=bool(source_state.get("revised_line_spec_user_word_export")),
+                    )
+                    validate_line_reference_authority(_delivery_final_spec_name, _delivery_authority_name)
+                else:
+                    _delivery_final_spec_name = str(source_state.get("spec_name") or "")
+                    _delivery_authority_name = str(source_state.get("line_spec_name") or _delivery_final_spec_name)
+                    _delivery_authority_bytes = source_state.get("line_spec_bytes") or source_state.get("spec_bytes") or b""
+                    validate_word_origin_pdf_authority(
+                        _delivery_final_spec_name, bytes(source_state.get("spec_bytes") or b""),
+                        _delivery_authority_name, bytes(_delivery_authority_bytes),
+                        uploaded_by_user=bool(source_state.get("line_spec_user_word_export")),
+                    )
+                    validate_line_reference_authority(_delivery_final_spec_name, _delivery_authority_name)
+                _delivery_line_index = build_page_line_index(_delivery_authority_name, _delivery_authority_bytes)
+                validate_quote_locations_against_spec(
+                    _delivery_opinion, _delivery_authority_name, _delivery_authority_bytes,
+                    source_state.get("language") or "Türkçe", page_line_index=_delivery_line_index,
                 )
-                progress.progress(65, text="Teknik farklar ve katkılar karşılaştırılıyor...")
-                analysis = ask_json(research_update_analysis_prompt(first_text, revised_text, report_text))
-                st.session_state.update_analysis = analysis
-                st.session_state.update_research = None
-                st.session_state.update_first_text = first_text
-                st.session_state.update_revised_text = revised_text
-                st.session_state.update_prior_report_text = report_text
-                st.session_state.update_prior_report_asset = report_asset
-                progress.progress(100, text="Fark analizi tamamlandı")
-            except Exception as exc:
-                st.exception(exc)
-
-    if st.session_state.update_analysis:
-        analysis = st.session_state.update_analysis
-        st.markdown("### Fark analizi")
-        diff_rows = []
-        for i, d in enumerate(analysis.get("differences") or [], 1):
-            diff_rows.append({
-                "No": i,
-                "İlk araştırma konusu": d.get("old", ""),
-                "Revize araştırma konusu": d.get("new", ""),
-                "Teknik katkı": d.get("technical_contribution", ""),
-                "Teknik etki": d.get("technical_effect", ""),
-                "İlk D1/D2 karşısındaki etkisi": d.get("effect_against_prior_d1_d2", ""),
-            })
-        if diff_rows:
-            st.dataframe(diff_rows, use_container_width=True, hide_index=True)
-        st.write(f"**İlk rapordaki D1:** {(analysis.get('prior_d1') or {}).get('number','-')}  |  **D2:** {(analysis.get('prior_d2') or {}).get('number','-')}")
-        st.info(analysis.get("preliminary_opinion", ""))
-
-        if st.button("2. Revize konu için yeni patent araştırmasını yap", type="primary", use_container_width=True):
-            try:
-                progress = st.progress(0, text="Revize teknik farklara göre global araştırma yapılıyor...")
-                research = ask_json(
-                    research_update_search_prompt(
-                        st.session_state.update_revised_text or "",
-                        st.session_state.update_prior_report_text or "",
-                        analysis,
-                        update_cutoff.strftime("%d.%m.%Y"),
-                    ),
-                    web_search=True,
+                validate_revision_amendment_section(_delivery_opinion, revision_status.startswith("Kullanıcı tarafından onaylanmış revize"))
+                validate_quotes(_delivery_opinion, _delivery_spec_text)
+                validate_opinion_against_raw_sources(
+                    _delivery_opinion, source_state.get("report_text") or "", _delivery_spec_text,
+                    source_state.get("prior_text") or "", source_state.get("sim_text") or "", source_state.get("cust_text") or "",
+                    allowed_documents=source_state.get("required_docs"), preanalysis=analysis,
                 )
-                docs = research.get("documents") or []
-                if len(docs) != 10:
-                    raise ValueError(f"Araştırma güncellemede tam 10 doğrulanmış doküman beklenirken {len(docs)} doküman döndü. Araştırmayı tekrar çalıştırın.")
-                temp_selection = {
-                    "d1": research.get("d1") or {},
-                    "d2": research.get("d2"),
-                    "comparison_rows_d1": research.get("comparison_rows_d1") or [],
-                    "comparison_rows_d2": research.get("comparison_rows_d2") or [],
-                }
-                validate_research_selection(temp_selection)
-                st.session_state.update_research = research
-                progress.progress(100, text="Yeni araştırma tamamlandı")
-            except Exception as exc:
-                st.exception(exc)
+                _delivery_sections = {str(sec.get("label", "")).upper(): sec for sec in _delivery_opinion.get("sections") or []}
+                _delivery_figure_labels = [
+                    str(d.get("label", "")) for d in _delivery_opinion.get("cited_documents") or []
+                    if bool(_delivery_sections.get(str(d.get("label", "")).upper(), {}).get("use_figure", False))
+                ]
+                validate_gorus_template_fidelity(st.session_state.gorus_opinion_data, GORUS_TEMPLATE, _delivery_opinion, _delivery_figure_labels)
+                validate_gorus_docx_content_flow(st.session_state.gorus_opinion_data)
+                render_gorus_docx_smoke_test(st.session_state.gorus_opinion_data)
+                validate_examiner_persuasion_assessment(st.session_state.gorus_examiner_assessment or {})
+                compliant_download_button(
+                    "Word görüş metnini indir", data=st.session_state.gorus_opinion_data,
+                    output_name=source_state.get("output_name") or output_name,
+                    default_name="Response Letter.docx" if _english_spec(source_state.get("language") or opinion_language) else "Görüş Metni.docx",
+                    artifact_type="gorus",
+                    checks={"raw_sources": True, "quotes": True, "exact_physical_lines": True, "word_origin_pdf": True, "reference_binding": True, "spec_basis_coverage": True, "template": True, "content_flow": True, "render": True, "examiner": True}, audit_sources=[source_state.get("spec_bytes") or source_state.get("spec_text"), source_state.get("report_text")],
+                    type="primary", use_container_width=True,
+                )
 
-    if st.session_state.update_research:
-        research = st.session_state.update_research
-        st.markdown("### Yeni araştırma sonucu")
-        new_docs = research.get("new_documents") or []
-        if new_docs:
-            st.write("**İlk raporda bulunmayan yeni yakın dokümanlar:**")
-            st.dataframe([
-                {
-                    "Yayın no": d.get("number", ""),
-                    "Başlık": d.get("title", ""),
-                    "Tarih": d.get("date", ""),
-                    "Teknik ilgisi": d.get("technical_relevance", ""),
-                }
-                for d in new_docs
-            ], use_container_width=True, hide_index=True)
-        else:
-            st.caption("İlk rapordaki dokümanlardan daha yakın yeni bir doküman tespit edilmedi.")
+    # ARAŞTIRMA
+    elif work_type == "Tip 3 - Ön araştırma raporu":
+        st.subheader("Tip 3 - Ön araştırma raporu")
+        c1, c2 = st.columns(2)
+        with c1:
+            bbf = st.file_uploader("BBF dosyası", type=["docx", "doc", "pdf", "txt"], key="res_bbf")
+            reference = st.text_input("DP referans numarası", value="")
+        with c2:
+            output_name = st.text_input("Çıktı dosyasının adı", value="Ön_Araştırma_Raporu_XXXXXX.docx")
+            cutoff = st.date_input("Araştırma kesim tarihi", value=date.today())
 
-        st.code(research.get("totalpatent_query", ""), language=None)
-        st.write(f"**Önerilen nihai D1:** {(research.get('d1') or {}).get('number','-')}  |  **D2:** {(research.get('d2') or {}).get('number','-')}")
-        st.write(f"**Yenilik ön sonucu:** {research.get('novelty_result','-')}  |  **Buluş basamağı ön sonucu:** {research.get('inventive_step_result','-')}")
-        st.info(research.get("technical_opinion", ""))
-
-        recommended = "Buluş basamağı sağlanmıyor" if str(research.get("inventive_step_result", "")).strip() == "sağlanmaz" else "Buluş basamağı sağlanıyor"
-        update_decision = st.radio(
-            "Raporu hangi sonuçla hazırlayayım?",
-            ["Buluş basamağı sağlanıyor", "Buluş basamağı sağlanmıyor"],
-            index=1 if recommended == "Buluş basamağı sağlanmıyor" else 0,
-            horizontal=True,
-            key="upd_decision",
+        research_extra_instruction_input = st.text_area(
+            "Ek Talimat (varsa)",
+            max_chars=MAX_EXTRA_INSTRUCTION_CHARS,
+            height=90,
+            key="res_extra_instruction",
+            help="Yalnız bu ön araştırma çalışmasına özel kısa yönlendirme. Repo kuralları, kaynaklar ve kalite kapıları önceliklidir.",
         )
-        st.caption(f"Sistem önerisi: {recommended}")
+        st.caption("Bu çalışmaya özel kısa not. En fazla 500 karakter; repo kurallarını veya kalite kapılarını geçersiz kılamaz.")
 
-        if st.button("3. Ön Araştırma Raporunu oluştur", type="primary", use_container_width=True):
-            if not update_reference.strip():
+        for key, default in {
+            "top10_result": None,
+            "research_bbf_text": None,
+            "research_cutoff": None,
+            "research_selection": None,
+            "research_user_images": [],
+            "research_extra_instruction": "",
+        }.items():
+            if key not in st.session_state:
+                st.session_state[key] = default
+
+        if st.button("1. Global araştırmayı yap ve en benzer 10 dokümanı bul", type="primary", use_container_width=True):
+            if bbf is None:
+                st.error("BBF yükleyin.")
+            elif not reference.strip():
                 st.error("DP referans numarasını girin.")
             else:
                 try:
-                    progress = st.progress(0, text="Standart Tip 3 rapor metni hazırlanıyor...")
-                    report = ask_json(
-                        research_update_report_prompt(
-                            st.session_state.update_revised_text or "",
-                            st.session_state.update_prior_report_text or "",
-                            st.session_state.update_analysis or {},
-                            research,
-                            update_reference.strip(),
-                            update_cutoff.strftime("%d.%m.%Y"),
-                            update_decision,
-                        )
+                    progress = st.progress(0, text="BBF okunuyor ve teknik çekirdek çıkarılıyor...")
+                    bbf_text = extract_text_from_asset(UploadedAsset(bbf.name, bbf.getvalue(), bbf.type))
+                    cutoff_text = cutoff.strftime("%d.%m.%Y")
+                    research_extra_instruction = _normalize_extra_instruction(research_extra_instruction_input)
+                    st.session_state.research_extra_instruction = research_extra_instruction
+                    progress.progress(20, text="Çok turlu global patent araştırması başlatılıyor...")
+                    top10 = run_top10_research_pipeline(
+                        bbf_text,
+                        cutoff_text,
+                        research_extra_instruction,
+                        progress_callback=lambda value, message: progress.progress(value, text=message),
                     )
-                    update_selection = {"d1": research.get("d1"), "d2": research.get("d2")}
-                    validate_report_against_selection(report, update_selection)
-                    validate_research_report_language(report)
-                    progress.progress(45, text="Tip 3 ikinci-okuma kalite kapısı çalıştırılıyor...")
-                    quality_audit = ask_json(research_quality_audit_prompt(
-                        st.session_state.update_revised_text or "", report, update_selection, update_decision
-                    ))
-                    progress.progress(60, text="D1/D2 özgün patent şekilleri temin ediliyor...")
-                    fallbacks = _report_pdf_fallback_figures(st.session_state.update_prior_report_asset)
-                    progress.progress(80, text="Bağlayıcı Ön Araştırma Raporu şablonu ve teslim kapıları çalıştırılıyor...")
-                    data = build_and_gate_tip3_report(report, update_selection, quality_audit, figure_fallbacks=fallbacks)
-                    progress.progress(100, text="Tüm kalite kapıları geçti")
-                    effective_output = update_output_name.replace("XXXXXX", update_reference.strip())
-                    st.success("Güncelleme raporu standart Ön Araştırma Raporu formatında oluşturuldu.")
-                    validate_research_docx_delivery(data)
-                    render_research_docx_smoke_test(data)
-                    compliant_download_button(
-                        "Word raporunu indir", data=data, output_name=effective_output,
-                        default_name="Ön_Araştırma_Raporu_rev.docx", artifact_type="tip3_update",
-                        checks={"delivery": True, "render": True}, type="primary", use_container_width=True,
-                    )
+                    docs = top10.get("documents") or []
+                    st.session_state.top10_result = top10
+                    st.session_state.research_bbf_text = bbf_text
+                    st.session_state.research_cutoff = cutoff_text
+                    st.session_state.research_selection = None
+                    st.session_state.research_user_images = []
+                    progress.progress(100, text="Araştırma tamamlandı")
                 except Exception as exc:
                     st.exception(exc)
+
+        if st.session_state.top10_result:
+            st.success("En benzer 10 doküman bulundu.")
+            docs = st.session_state.top10_result.get("documents") or []
+            totalpatent_query = st.session_state.top10_result.get("totalpatent_query") or (
+                "Totalpatent/Espaenet sorgusu: " + " or ".join(str(d.get("publication_number", "")) for d in docs)
+            )
+            st.code(totalpatent_query, language=None)
+            rows = [{
+                "Sıra": d.get("rank"), "Yayın no": d.get("publication_number"), "Başlık": d.get("title"),
+                "Tarih": d.get("date"), "Yakınlık": d.get("relevance_score"),
+                "Yeniliği bozar mı?": "Evet" if d.get("novelty_destroying") else "Hayır",
+            } for d in docs]
+            st.dataframe(rows, use_container_width=True, hide_index=True)
+            st.caption(f"Önerilen D1: {st.session_state.top10_result.get('proposed_d1','')} | Önerilen D2: {st.session_state.top10_result.get('proposed_d2','') or '-'}")
+
+            own_docs = st.radio("Sizin araştırdığınız benzer dokümanlar var mı?", ["Hayır", "Evet"], horizontal=True)
+            user_files = []
+            if own_docs == "Evet":
+                user_files = st.file_uploader("Sizin bulduğunuz benzer dokümanlar", type=["pdf", "zip", "docx", "doc", "txt", "png", "jpg", "jpeg", "webp"], accept_multiple_files=True, key="res_user_docs")
+
+            if st.button("2. Kullanıcı dokümanlarını incele ve nihai D1/D2'yi belirle", type="primary", use_container_width=True):
+                if own_docs == "Evet" and not user_files:
+                    st.error("Benzer dokümanları yükleyin.")
+                else:
+                    try:
+                        progress = st.progress(0, text="Kullanıcı dokümanları inceleniyor...")
+                        user_assets = assets_from_uploads(user_files)
+                        user_text, user_images = combine_asset_text("KULLANICI BENZER DOKÜMANI", user_assets)
+                        progress.progress(45, text="10+ dokümanları ve nihai D1/D2 belirleniyor...")
+                        selection = ask_json(_with_extra_instruction(final_selection_prompt(
+                            st.session_state.research_bbf_text,
+                            st.session_state.top10_result,
+                            user_text,
+                        ), st.session_state.get("research_extra_instruction", "")), images=user_images, web_search=True)
+                        validate_research_selection(selection)
+                        st.session_state.research_selection = selection
+                        st.session_state.research_user_images = user_images
+                        progress.progress(100, text="Teknik değerlendirme tamamlandı")
+                    except Exception as exc:
+                        st.exception(exc)
+
+            selection = st.session_state.research_selection
+            if selection:
+                additional_query = str(selection.get("additional_query") or "").strip()
+                if additional_query:
+                    st.code(additional_query, language=None)
+                elif own_docs == "Evet":
+                    st.caption("10+ olarak eklenecek yeterince ilgili kullanıcı dokümanı belirlenmedi.")
+
+                d1_note = selection.get("d1_change_note") or (
+                    "D1 değişti." if selection.get("d1_changed") else "D1 değişmedi."
+                )
+                d2_note = selection.get("d2_change_note") or (
+                    "D2 değişti." if selection.get("d2_changed") else "D2 değişmedi."
+                )
+                st.write(f"**{d1_note}**")
+                st.write(f"**{d2_note}**")
+                st.success(f"Nihai D1: {selection.get('d1',{}).get('number','')} | Nihai D2: {(selection.get('d2') or {}).get('number','-')}")
+                st.info(selection.get("technical_opinion") or f"Bence buluş basamağı {'var' if selection.get('inventive_step_result') == 'sağlanır' else 'yok'}.")
+
+                st.markdown("#### 3. Nihai D1/D2 özgün patent dokümanları")
+                d1_info = selection.get("d1") or {}
+                d2_info = selection.get("d2") or None
+                d1_source_upload = st.file_uploader(
+                    f"Nihai D1 özgün patent dosyasını yükleyin ({d1_info.get('number','D1')})",
+                    type=["pdf", "docx", "doc"], key="res_final_d1_source"
+                )
+                d2_source_upload = None
+                if d2_info:
+                    d2_source_upload = st.file_uploader(
+                        f"Nihai D2 özgün patent dosyasını yükleyin ({d2_info.get('number','D2')})",
+                        type=["pdf", "docx", "doc"], key="res_final_d2_source"
+                    )
+
+                original_patent_assets = []
+                originals_ready = False
+                required_sources_present = d1_source_upload is not None and (not d2_info or d2_source_upload is not None)
+                if required_sources_present:
+                    try:
+                        d1_asset = UploadedAsset(d1_source_upload.name, d1_source_upload.getvalue(), d1_source_upload.type)
+                        validate_research_original_patent_asset(d1_asset, d1_info, "D1")
+                        original_patent_assets.append(d1_asset)
+                        if d2_info and d2_source_upload is not None:
+                            d2_asset = UploadedAsset(d2_source_upload.name, d2_source_upload.getvalue(), d2_source_upload.type)
+                            validate_research_original_patent_asset(d2_asset, d2_info, "D2")
+                            original_patent_assets.append(d2_asset)
+                        originals_ready = True
+                        st.success("Nihai D1/D2 özgün patent kaynakları doğrulandı.")
+                    except Exception as exc:
+                        st.error(str(exc))
+                else:
+                    st.info("Rapor sonuç modu ve Word üretiminden önce nihai D1 ve varsa D2 özgün patent dosyalarını yükleyin.")
+
+                if originals_ready:
+                    decision_mode = st.selectbox(
+                        "Rapor sonucunu nasıl oluşturayım?",
+                        ["Otomatik belirle", "Buluş basamağı var", "Buluş basamağı yok"],
+                        help="Bu seçim ancak 10+, nihai D1/D2, sistem kanaati ve özgün D1/D2 kaynakları doğrulandıktan sonra yapılır.",
+                    )
+
+                    if st.button("4. Ön Araştırma Raporunu oluştur", type="primary", use_container_width=True):
+                        try:
+                            final_selection = deepcopy(selection)
+                            if decision_mode == "Buluş basamağı var":
+                                final_selection["inventive_step_result"] = "sağlanır"
+                            elif decision_mode == "Buluş basamağı yok":
+                                final_selection["inventive_step_result"] = "sağlanmaz"
+                            if final_selection.get("d1"):
+                                final_selection["d1"]["abstract_source"] = "user-file"
+                            if final_selection.get("d2"):
+                                final_selection["d2"]["abstract_source"] = "user-file"
+                            progress = st.progress(0, text="Yenilik ve buluş basamağı raporu hazırlanıyor...")
+                            report = ask_json(_with_extra_instruction(report_drafting_prompt(
+                                st.session_state.research_bbf_text,
+                                st.session_state.top10_result,
+                                final_selection,
+                                reference,
+                                st.session_state.research_cutoff or cutoff.strftime("%d.%m.%Y"),
+                                decision_mode,
+                            ), st.session_state.get("research_extra_instruction", "")))
+                            validate_report_against_selection(report, final_selection)
+                            validate_research_report_language(report)
+                            progress.progress(55, text="Tip 3 ikinci-okuma kalite kapısı çalıştırılıyor...")
+                            quality_audit = ask_json(_with_extra_instruction(research_quality_audit_prompt(
+                                st.session_state.research_bbf_text, report, final_selection, decision_mode
+                            ), st.session_state.get("research_extra_instruction", "")))
+                            progress.progress(75, text="Bağlayıcı Word şablonu ve teslim kapıları çalıştırılıyor...")
+                            figure_fallbacks = [research_original_patent_figure_fallback(asset) for asset in original_patent_assets]
+                            data = build_and_gate_tip3_report(report, final_selection, quality_audit, figure_fallbacks=figure_fallbacks)
+                            progress.progress(100, text="Tüm kalite kapıları geçti")
+                            st.info(f"Yenilik: {final_selection.get('novelty_result','')} | Buluş basamağı: {final_selection.get('inventive_step_result','')}")
+                            effective_output_name = output_name.replace("XXXXXX", reference.strip()) if reference.strip() else output_name
+                            validate_research_docx_delivery(data)
+                            render_research_docx_smoke_test(data)
+                            compliant_download_button(
+                                "Word raporunu indir", data=data, output_name=effective_output_name,
+                                default_name="Ön_Araştırma_Raporu.docx", artifact_type="tip3",
+                                checks={"delivery": True, "render": True}, audit_sources=[bbf], type="primary",
+                            )
+                        except Exception as exc:
+                            st.exception(exc)
+
+    # ARAŞTIRMA GÜNCELLEME
+    else:
+        st.subheader("Araştırma güncelleme - Tip 3")
+        st.caption("İlk araştırma konusu ile revize araştırma konusu karşılaştırılır; ilk rapordaki D1/D2 dikkate alınarak yeni araştırma yapılır ve nihai rapor standart Tip 3 Ön Araştırma Raporu formatında oluşturulur.")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            first_bbf = st.file_uploader("1. İlk BBF", type=["docx", "doc", "pdf", "txt"], key="upd_first_bbf")
+            revised_bbf = st.file_uploader("2. Revize BBF", type=["docx", "doc", "pdf", "txt"], key="upd_revised_bbf")
+            prior_report = st.file_uploader("3. İlk Ön Araştırma Raporu", type=["pdf", "docx", "doc", "txt"], key="upd_prior_report")
+        with c2:
+            update_reference = st.text_input("DP referans numarası", value="", key="upd_reference")
+            update_output_name = st.text_input("Çıktı dosyasının adı", value="Ön_Araştırma_Raporu_XXXXXX_rev.docx", key="upd_output_name")
+            update_cutoff = st.date_input("Araştırma kesim tarihi", value=date.today(), key="upd_cutoff")
+
+        for key, default in {
+            "update_analysis": None,
+            "update_research": None,
+            "update_first_text": None,
+            "update_revised_text": None,
+            "update_prior_report_text": None,
+            "update_prior_report_asset": None,
+        }.items():
+            if key not in st.session_state:
+                st.session_state[key] = default
+
+        if st.button("1. Farkları ve teknik katkıyı analiz et", type="primary", use_container_width=True):
+            if first_bbf is None:
+                st.error("İlk BBF dosyasını yükleyin.")
+            elif revised_bbf is None:
+                st.error("Revize BBF dosyasını yükleyin.")
+            elif prior_report is None:
+                st.error("İlk Ön Araştırma Raporunu yükleyin.")
+            else:
+                try:
+                    progress = st.progress(0, text="İlk araştırma konusu okunuyor...")
+                    first_asset = UploadedAsset(first_bbf.name, first_bbf.getvalue(), first_bbf.type)
+                    revised_asset = UploadedAsset(revised_bbf.name, revised_bbf.getvalue(), revised_bbf.type)
+                    report_asset = UploadedAsset(prior_report.name, prior_report.getvalue(), prior_report.type)
+                    progress.progress(25, text="İlk BBF, revize BBF ve önceki rapor paralel olarak okunuyor...")
+                    first_text, revised_text, report_text = extract_asset_texts_parallel(
+                        [first_asset, revised_asset, report_asset]
+                    )
+                    progress.progress(65, text="Teknik farklar ve katkılar karşılaştırılıyor...")
+                    analysis = ask_json(research_update_analysis_prompt(first_text, revised_text, report_text))
+                    st.session_state.update_analysis = analysis
+                    st.session_state.update_research = None
+                    st.session_state.update_first_text = first_text
+                    st.session_state.update_revised_text = revised_text
+                    st.session_state.update_prior_report_text = report_text
+                    st.session_state.update_prior_report_asset = report_asset
+                    progress.progress(100, text="Fark analizi tamamlandı")
+                except Exception as exc:
+                    st.exception(exc)
+
+        if st.session_state.update_analysis:
+            analysis = st.session_state.update_analysis
+            st.markdown("### Fark analizi")
+            diff_rows = []
+            for i, d in enumerate(analysis.get("differences") or [], 1):
+                diff_rows.append({
+                    "No": i,
+                    "İlk araştırma konusu": d.get("old", ""),
+                    "Revize araştırma konusu": d.get("new", ""),
+                    "Teknik katkı": d.get("technical_contribution", ""),
+                    "Teknik etki": d.get("technical_effect", ""),
+                    "İlk D1/D2 karşısındaki etkisi": d.get("effect_against_prior_d1_d2", ""),
+                })
+            if diff_rows:
+                st.dataframe(diff_rows, use_container_width=True, hide_index=True)
+            st.write(f"**İlk rapordaki D1:** {(analysis.get('prior_d1') or {}).get('number','-')}  |  **D2:** {(analysis.get('prior_d2') or {}).get('number','-')}")
+            st.info(analysis.get("preliminary_opinion", ""))
+
+            if st.button("2. Revize konu için yeni patent araştırmasını yap", type="primary", use_container_width=True):
+                try:
+                    progress = st.progress(0, text="Revize teknik farklara göre global araştırma yapılıyor...")
+                    research = ask_json(
+                        research_update_search_prompt(
+                            st.session_state.update_revised_text or "",
+                            st.session_state.update_prior_report_text or "",
+                            analysis,
+                            update_cutoff.strftime("%d.%m.%Y"),
+                        ),
+                        web_search=True,
+                    )
+                    docs = research.get("documents") or []
+                    if len(docs) != 10:
+                        raise ValueError(f"Araştırma güncellemede tam 10 doğrulanmış doküman beklenirken {len(docs)} doküman döndü. Araştırmayı tekrar çalıştırın.")
+                    temp_selection = {
+                        "d1": research.get("d1") or {},
+                        "d2": research.get("d2"),
+                        "comparison_rows_d1": research.get("comparison_rows_d1") or [],
+                        "comparison_rows_d2": research.get("comparison_rows_d2") or [],
+                    }
+                    validate_research_selection(temp_selection)
+                    st.session_state.update_research = research
+                    progress.progress(100, text="Yeni araştırma tamamlandı")
+                except Exception as exc:
+                    st.exception(exc)
+
+        if st.session_state.update_research:
+            research = st.session_state.update_research
+            st.markdown("### Yeni araştırma sonucu")
+            new_docs = research.get("new_documents") or []
+            if new_docs:
+                st.write("**İlk raporda bulunmayan yeni yakın dokümanlar:**")
+                st.dataframe([
+                    {
+                        "Yayın no": d.get("number", ""),
+                        "Başlık": d.get("title", ""),
+                        "Tarih": d.get("date", ""),
+                        "Teknik ilgisi": d.get("technical_relevance", ""),
+                    }
+                    for d in new_docs
+                ], use_container_width=True, hide_index=True)
+            else:
+                st.caption("İlk rapordaki dokümanlardan daha yakın yeni bir doküman tespit edilmedi.")
+
+            st.code(research.get("totalpatent_query", ""), language=None)
+            st.write(f"**Önerilen nihai D1:** {(research.get('d1') or {}).get('number','-')}  |  **D2:** {(research.get('d2') or {}).get('number','-')}")
+            st.write(f"**Yenilik ön sonucu:** {research.get('novelty_result','-')}  |  **Buluş basamağı ön sonucu:** {research.get('inventive_step_result','-')}")
+            st.info(research.get("technical_opinion", ""))
+
+            recommended = "Buluş basamağı sağlanmıyor" if str(research.get("inventive_step_result", "")).strip() == "sağlanmaz" else "Buluş basamağı sağlanıyor"
+            update_decision = st.radio(
+                "Raporu hangi sonuçla hazırlayayım?",
+                ["Buluş basamağı sağlanıyor", "Buluş basamağı sağlanmıyor"],
+                index=1 if recommended == "Buluş basamağı sağlanmıyor" else 0,
+                horizontal=True,
+                key="upd_decision",
+            )
+            st.caption(f"Sistem önerisi: {recommended}")
+
+            if st.button("3. Ön Araştırma Raporunu oluştur", type="primary", use_container_width=True):
+                if not update_reference.strip():
+                    st.error("DP referans numarasını girin.")
+                else:
+                    try:
+                        progress = st.progress(0, text="Standart Tip 3 rapor metni hazırlanıyor...")
+                        report = ask_json(
+                            research_update_report_prompt(
+                                st.session_state.update_revised_text or "",
+                                st.session_state.update_prior_report_text or "",
+                                st.session_state.update_analysis or {},
+                                research,
+                                update_reference.strip(),
+                                update_cutoff.strftime("%d.%m.%Y"),
+                                update_decision,
+                            )
+                        )
+                        update_selection = {"d1": research.get("d1"), "d2": research.get("d2")}
+                        validate_report_against_selection(report, update_selection)
+                        validate_research_report_language(report)
+                        progress.progress(45, text="Tip 3 ikinci-okuma kalite kapısı çalıştırılıyor...")
+                        quality_audit = ask_json(research_quality_audit_prompt(
+                            st.session_state.update_revised_text or "", report, update_selection, update_decision
+                        ))
+                        progress.progress(60, text="D1/D2 özgün patent şekilleri temin ediliyor...")
+                        fallbacks = _report_pdf_fallback_figures(st.session_state.update_prior_report_asset)
+                        progress.progress(80, text="Bağlayıcı Ön Araştırma Raporu şablonu ve teslim kapıları çalıştırılıyor...")
+                        data = build_and_gate_tip3_report(report, update_selection, quality_audit, figure_fallbacks=fallbacks)
+                        progress.progress(100, text="Tüm kalite kapıları geçti")
+                        effective_output = update_output_name.replace("XXXXXX", update_reference.strip())
+                        st.success("Güncelleme raporu standart Ön Araştırma Raporu formatında oluşturuldu.")
+                        validate_research_docx_delivery(data)
+                        render_research_docx_smoke_test(data)
+                        compliant_download_button(
+                            "Word raporunu indir", data=data, output_name=effective_output,
+                            default_name="Ön_Araştırma_Raporu_rev.docx", artifact_type="tip3_update",
+                            checks={"delivery": True, "render": True}, audit_sources=[st.session_state.update_revised_text, st.session_state.update_prior_report_text], type="primary", use_container_width=True,
+                        )
+                    except Exception as exc:
+                        st.exception(exc)
 

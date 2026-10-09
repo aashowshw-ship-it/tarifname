@@ -7,8 +7,8 @@ from rules import APP_VERSION, RULESET_VERSION, TARIFNAME_RULES
 
 
 def test_versions_and_two_line_rule_are_binding():
-    assert APP_VERSION == "v5.4.84"
-    assert RULESET_VERSION == "2026-10-07.v76"
+    assert APP_VERSION == "v5.4.87"
+    assert RULESET_VERSION == "2026-10-09.v79"
     low = TARIFNAME_RULES.casefold()
     assert "en az iki fiziksel satır" in low
     assert "yalnız buluş adından" in low

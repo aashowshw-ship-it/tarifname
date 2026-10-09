@@ -24,8 +24,8 @@ def base_analysis():
     }
 
 def test_version_and_direct_support_rule():
-    assert APP_VERSION == "v5.4.84"
-    assert RULESET_VERSION == "2026-10-07.v76"
+    assert APP_VERSION == "v5.4.87"
+    assert RULESET_VERSION == "2026-10-09.v79"
     low = GORUS_RULES.casefold()
     assert "dolaylı" in low and "direct_support" in low and "doğrudan" in low
 

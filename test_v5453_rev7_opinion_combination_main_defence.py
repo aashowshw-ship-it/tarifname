@@ -80,8 +80,8 @@ def _opinion():
 
 
 def test_rev7_rules_make_combination_the_main_defence():
-    assert APP_VERSION == "v5.4.84"
-    assert RULESET_VERSION == "2026-10-07.v76"
+    assert APP_VERSION == "v5.4.87"
+    assert RULESET_VERSION == "2026-10-09.v79"
     low = GORUS_RULES.casefold()
     for phrase in [
         "asıl ve en ikna edici",

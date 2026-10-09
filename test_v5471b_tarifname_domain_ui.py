@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parent
 
 
 def test_release_is_v5472_and_domain_rule_is_binding():
-    assert APP_VERSION == "v5.4.84"
-    assert RULESET_VERSION == "2026-10-07.v76"
+    assert APP_VERSION == "v5.4.87"
+    assert RULESET_VERSION == "2026-10-09.v79"
     assert "6V. BULUŞ ALANI OTOMATİK SINIFLANDIRMA KURALI" in TARIFNAME_RULES
     assert INVENTION_DOMAINS == (
         "Elektrik-Elektronik / Yazılım",
@@ -36,8 +36,8 @@ def test_tarifname_ui_uses_reference_number_and_auto_domain_notice():
     tariff_ui = app[tariff_start:tariff_end]
     assert 'st.text_input("Referans Numarası"' in tariff_ui
     assert 'st.text_input("DP referans numarası"' not in tariff_ui
-    assert 'st.info(f"**Buluş alanı belirlendi:** {invention_domain}")' in tariff_ui
-    assert 'validate_invention_domain(extracted)' in tariff_ui
+    assert 'st.info(f"**Buluş alanı belirlendi:** {invention_domain}")' in app  # background pipeline retains domain gate
+    assert 'validate_invention_domain(extracted)' in app  # background pipeline retains domain gate
 
 
 def test_extraction_prompt_requires_exact_three_way_domain_in_both_cores():

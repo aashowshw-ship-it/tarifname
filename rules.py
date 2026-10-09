@@ -5,9 +5,11 @@ import re
 import zipfile
 from urllib.parse import unquote
 
-APP_VERSION = "v5.4.84"
-RULESET_VERSION = "2026-10-07.v76"
+APP_VERSION = "v5.4.87"
+RULESET_VERSION = "2026-10-09.v79"
 
+# v5.4.87 — Tüm iş akışlarında imzalı ve dosya SHA-256 kimliğine bağlı bağımsız ikinci teslim denetimi.
+# v5.4.86 — Word kökenli tarifnamede bağımsız Microsoft Word PDF otoritesi; LibreOffice render satır kayması FAIL-CLOSED.
 # v5.4.84 — Şekil-türü ayrımı ve fonksiyonel diyagram orta-yol kuralı.
 # Fiziksel/yapısal unsur çizimlerinde tek fiziksel unsur/çağrı = tek referans kuralı aynen sürer. Buna karşılık
 # sistem mimarisi, veri akışı ve karar/işlem akışı gibi fonksiyonel diyagramlarda anlaşılabilirlik için kaynak
@@ -66,7 +68,7 @@ FINAL_COMPLIANCE_REQUIRED_CHECKS = {
         "element_step_language", "formula_format", "how_test", "claim_clarity", "render",
     ),
     "figures": ("references", "structure", "render"),
-    "gorus": ("raw_sources", "quotes", "spec_basis_coverage", "reference_binding", "exact_physical_lines", "template", "content_flow", "render", "examiner"),
+    "gorus": ("raw_sources", "quotes", "spec_basis_coverage", "reference_binding", "exact_physical_lines", "word_origin_pdf", "template", "content_flow", "render", "examiner"),
     "tarifname_update": ("update_result",),
     "claim_amendment": ("atomic_plan", "amendment_integrity"),
     "figure_update": ("render",),
@@ -140,6 +142,7 @@ def final_compliance_gate(
     output_name: str,
     default_name: str,
     checks: dict | None = None,
+    audit_receipt: dict | None = None,
 ) -> str:
     """Single fail-closed final gate for every user-downloadable Word artifact.
 
@@ -169,6 +172,10 @@ def final_compliance_gate(
         raise ValueError("Nihai uyumluluk kapısı: Tip 3 dosya adında boşluk kullanılamaz; underscore düzeni zorunludur.")
     if kind in {"tarifname_update", "claim_amendment"}:
         _validate_destek_patent_review_authors(data)
+    # Must be signed by a fresh independent source + final OOXML audit.
+    # Raw True values never make an output eligible for delivery on their own.
+    from release_evidence import verify_delivery_evidence
+    verify_delivery_evidence(audit_receipt, kind, data, filename, receipts)
     return filename
 
 EXTRA_CONTROLS_NOTICE = "EKSTRA KONTROLLER YAPILDI"
@@ -551,7 +558,7 @@ G-0. İŞE ÖZEL EK TALİMAT: Arayüzdeki `Ek Talimat (varsa)` en fazla 500 kara
 21A. GÖRÜŞ WORD DAYANAK BİÇİMİ fail-closed ve deterministiktir. Tarifname dayanağının bulunduğu paragrafta alıntıdan ÖNCEKİ teknik savunma + standart `Tarifnamede sayfa/satır ... belirtilmiştir:` girişi NORMAL yazı ağırlığında olmalıdır. Sayfa/satır giriş kısmı NORMAL yazıdır. Yalnız dış `“...”` tırnakları arasındaki birebir tarifname pasajı KALIN olmalıdır. Alıntıdan sonra aynı paragrafta savunma devam ediyorsa bu devam metni yeniden NORMAL olmalıdır. Paragraf stilinden veya karakter stilinden kalınlık miras alınarak normal bölümlerin kalın görünmesi, alıntının normal görünmesi, tüm paragrafın tek kalın run olması veya tüm paragrafın tek normal run olması kalite kapısında FAIL sayılır ve Word indirmesi açılmaz. Ayrıca görüş gövdesindeki teknik savunma paragrafları başlık/şekil başlığı/D-bibliyografisi/kapanış dışında tamamen kalın olamaz.
 21B. Birebir tarifname alıntısı anlamlı bir cümle veya kaynakta açıkça başlayan bir madde/list item sınırından başlamak zorundadır. Önceki cümlenin yalnız son yüklemini veya devam parçasını alıntının başına taşıyan `“oluşturmaktadır. Bu buluş...”` benzeri kopuk başlangıçlar YASAKTIR. Alıntı seçimi fiziksel sayfa/satır indeksinde önceki görünür karakter kontrol edilerek doğrulanır: başlangıç dosya/paragraph/list başlangıcı, madde işareti veya cümle sonu noktalamasından sonra değilse kalite kapısı FAIL verir. Gerekirse alıntının başlangıcı geriye doğru genişletilerek tam cümle veya tam madde başlangıcı alınır ve fiziksel sayfa/satır konumu buna göre yeniden hesaplanır.
 21C. ESAS SAVUNMA DAYANAKSIZ KALAMAZ. Her X dokümanı için kurulan esas savunmada en az bir birebir tarifname `quote` bloğu zorunludur. Gerçek Y/kombinasyon itirazında her ayrı `Birlikte Değerlendirildiğinde` grubunda en az bir birebir tarifname dayanağı zorunludur. Bireysel Y bölümü objektif tanıtım olarak kalır. Esas savunmada hiç tarifname quote'u yoksa veya zorunlu savunma grubunda dayanak yoksa Word üretimi FAIL-CLOSED durur.
-21D. FİZİKSEL SATIR SINIRI TAM EŞLEŞMEDİR. Sayfa/satır atfında başlangıç, alıntının ilk karakterinin bulunduğu gerçek fiziksel satır; bitiş, alıntının son karakterinin bulunduğu gerçek fiziksel satırdır. Yaklaşık satır, paragraf başlangıcı, en yakın anchor veya varsayılan satır aralığı kullanılamaz. Basılı 5/10/15... satır numaralarından fiziksel grid deterministik kurulamazsa tahmini `17.5 pt` vb. fallback YASAKTIR ve çıktı bloke edilir. DOC/DOCX/TXT kaynak için kullanıcıdan ayrıca doğrulama PDF'si istenmez. Tarifname PDF ise doğrudan kullanılır; Word/DOC/DOCX/TXT ise uygulama aynı yüklenen dosyayı arka planda PDF'ye çevirir ve sayfa/satır indeksini bu iç PDF üzerinden kurar. Revizyon varsa iç PDF mutlaka revize nihai dosyadan yeniden üretilir; eski kaynak yeniden kullanılmaz. Gerçek fiziksel satır gridinin deterministik çözülemediği durumda kalite kapısı FAIL-CLOSED durur.
+21D. FİZİKSEL SATIR SINIRI TAM EŞLEŞMEDİR. Sayfa/satır atfında başlangıç, alıntının ilk karakterinin bulunduğu gerçek fiziksel satır; bitiş, alıntının son karakterinin bulunduğu gerçek fiziksel satırdır. Yaklaşık satır, paragraf başlangıcı, en yakın anchor veya varsayılan satır aralığı kullanılamaz. Basılı 5/10/15... satır numaralarından fiziksel grid deterministik kurulamazsa tahmini `17.5 pt` vb. fallback YASAKTIR ve çıktı bloke edilir. Tarifname PDF ise orijinal basılı PDF doğrudan kullanılır. DOC/DOCX kaynakta LibreOffice ile otomatik üretilen PDF, Microsoft Word fiziksel sayfa/satır düzenini kanıtlayamayacağından kaynak otoritesi OLAMAZ. Kullanıcı aynı nihai DOC/DOCX'i Microsoft Word'de PDF olarak dışa aktararak yüklemelidir; kaynak dosya ile PDF metin eşleşmesi ve PDF üzerindeki basılı 5/10/15... fiziksel işaretler ayrı doğrulanır. İstem revizyonu varsa SON MARKUP DOCX'ten Word ile dışa aktarılmış ayrıca nihai PDF zorunludur; eski/orijinal veya Clean PDF geçersizdir. Otomatik +/-1/+/-2 satır kaydırması yasaktır. PDF eksikliği/uyuşmazlığı FAIL-CLOSED sonucu doğurur. TXT için uygulama iç PDF üretimi korunur. Gerçek fiziksel satır gridinin deterministik çözülemediği durumda kalite kapısı FAIL-CLOSED durur.
 21E. GÖRÜŞ REFERANS AYRIMI ZORUNLUDUR. `Ana dosya referansı` Word metadata tablosundaki `Referans` değerinin tek kaynağıdır. `Görüş referansı` yalnız kullanıcıya teslim edilen görüş Word dosyasının adında kullanılır. Görüş referansı hiçbir koşulda Word içindeki `Referans` alanına yazılamaz. Nihai kapıda JSON/Word referansı ana dosya referansıyla birebir aynı değilse indirme açılmaz.
 22. Tırnak içindeki tarifname pasajı kaynak metinde kelimesi kelimesine bulunmalıdır. Alıntı kesilmez, sadeleştirilmez, sözcük eklenip çıkarılmaz. Sayfa/satır atfı ile alıntı metninin gerçek konumu ve anlamlı başlangıç sınırı kalite kapısında yeniden doğrulanır.
 23. Tarifname dayanağı, desteklediği teknik savunmanın DOĞAL DEVAMI olarak aynı paragrafta verilir. `Tarifname sayfa ...` diye tek başına başlayan ayrı bir paragraf oluşturulmaz. Aynı şekilde `Bu teknik farkın sağladığı teknik etki...`, `Bu teknik etki esas alındığında...`, `Buna göre objektif teknik problem...` gibi önceki cümlenin doğrudan devamı olan ifadeler gereksiz yeni paragrafa bölünmez.
