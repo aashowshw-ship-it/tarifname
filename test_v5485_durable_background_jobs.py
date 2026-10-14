@@ -75,7 +75,7 @@ class WorkerIntegrationTest(unittest.TestCase):
                 fake=types.ModuleType('app')
                 from rules import final_compliance_gate, FINAL_COMPLIANCE_REQUIRED_CHECKS
                 fake.final_compliance_gate=final_compliance_gate
-                # v5.4.90: The historical template includes an old boilerplate `yönelik`
+                # v5.4.91: The historical template includes an old boilerplate `yönelik`
                 # phrase. Keep the binding template file unchanged; use a compliant
                 # generated-document fixture when testing worker delivery.
                 from docx import Document

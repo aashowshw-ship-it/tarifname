@@ -40,8 +40,8 @@ def printed_pdf(first_line):
 
 
 def test_versions_and_rules():
-    assert APP_VERSION == 'v5.4.90'
-    assert RULESET_VERSION == '2026-10-14.v82'
+    assert APP_VERSION == 'v5.4.91'
+    assert RULESET_VERSION == '2026-10-14.v83'
     assert 'word_origin_pdf' in FINAL_COMPLIANCE_REQUIRED_CHECKS['gorus']
 
 

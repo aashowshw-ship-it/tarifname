@@ -1,8 +1,7 @@
 Belge_Kararina_Itiraz_182885_Ornek.docx
-CHANGELOG_v5.4.87.md
-CHANGELOG_v5.4.88.md
 CHANGELOG_v5.4.89.md
 CHANGELOG_v5.4.90.md
+CHANGELOG_v5.4.91.md
 Dockerfile
 Gorus_metni_696809_template.docx
 On_Arastirma_Raporu_181612_template.docx
@@ -93,6 +92,7 @@ test_v5486_word_layout_authority.py
 test_v5487_all_workflows_delivery_evidence.py
 test_v5489_tip3_mandatory_checks.py
 test_v5490_belge_itiraz.py
+test_v5491_objection_ui_auto.py
 tip3_hard_gates.py
 validators.py
 word_math.py

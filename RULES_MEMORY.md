@@ -989,3 +989,11 @@ Türkçe dinamik metinde bariz ek ve yazım hataları deterministik olarak engel
 - Uzmanın ayrı filtreli sıcaklık sensörü kartı gibi kararına dayanak yaptığı spesifik ayrımlar doğrudan cevaplanır. Yenilik/tek kaynak analizi ile buluş basamağı/problem–çözüm / birden çok önceki teknik analizi karıştırılmaz. Metin üçüncü şahsa prosedür tavsiyesi gibi değil, itiraz sahibi vekilinin gerekçeli iddiası olarak yazılır. Karar gerekçesine somut teknik itiraz kurulur. Delil dışı kesin iddia veya aşırı genelleme FAIL.
 - **Zorunlu teslim kapıları** `source_verification`, `legal_route`, `chronology`, `claims_verbatim`, `evidence_publication`, `evidence_quotes`, `claim_matrix`, `minus_resolution`, `inventive_step`, `dependent_claims`, `independent_second_review`, `template_fixed_text`, `word_visual_render`. Eksik veya NOT_RUN dahil tüm olumsuzluklar FAIL. Son bağımsız makbuz kaynak baytlarının ve son DOCX'in SHA-256'sına bağlıdır. Her indirme `compliant_download_button` ve `final_compliance_gate` üzerinden yürür. Müşteriye sunulacak çıktı adı `Belge Kararına Karşı İtiraz_<DP>.docx` URL kodlaması olmadan.
 - Olumsuz senaryolar (eksik kaynak, yanlış hukuk yolu, hatalı istem/alıntı, eksi karşılıksız, delil kamuya erişim kanıtı eksik, Word görünüm bozuk, ikinci inceleme başarısız) indirmeyi durdurur. Semantik uzman denetimi bir hukukî kesinlik garantisi değildir. PDF render otomatik görünüm kontrolünün elle tüm sayfaların incelenmesinin yerini almadığı açık tutulur.
+
+
+### 2026-10-14.v83 — Belge kararına karşı itiraz kaynak-öncelikli arayüz
+- İş türleri ayrıdır: itiraz seçilince araştırma güncelleme bileşenleri görünmez.
+- İtirazda istem 1 ve toplam istem sayısı sorulmaz. Resmî PDF/DOCX İSTEMLER bölümünden ayrıştırılır, ham metin teyitsizse FAIL.
+- Resmî başvuru, belge kararı, inceleme ve araştırma raporu ayrı yüklenir. Önceki üçüncü kişi görüşü ve karşı görüş de ayrı kaynaktır; yoksa kullanıcı açıkça belirtir.
+- Delil tarih/kamuya açıklık/özgün sayfa/şekil bilgileri önce kaynaklardan ve doğrulanabilir kamusal kayıttan araştırılır. Kamuya erişim kanıtı ile kapaktaki telif yılı eşit kabul edilmez. Otomatik bulunamayan alanlar ayrıca sorulur. Kaynağa uymayan alıntı veya yanıt FAIL verir.
+- Eski UI, şablonlar ve diğer iş türleri korunur.

@@ -1,4 +1,13 @@
-# Patent Atölyesi v5.4.90
+# Patent Atölyesi v5.4.91
+
+
+## v5.4.91 / 2026-10-14.v83 — Belge itirazı arayüzü, otomatik istem ve delil okuması
+
+- `Belge kararına karşı itiraz` seçildiğinde Araştırma Güncelleme sayfasının aşağıda açılmasına neden olan koşulsuz `else`, yalnız `Araştırma güncelleme - Tip 3` için açık `elif` oldu.
+- Bağımsız İstem 1 yapıştırma ve Toplam İstem Sayısı girişleri kaldırıldı. İstemler, resmî patent/faydalı model PDF veya DOCX'in İSTEMLER bölümünden otomatik çıkarılır. Numaralandırma, kaynak bölümü ve eksik istemlerde FAIL verilir.
+- Başvuru tarifnamesi/istemleri, belge kararı, inceleme raporu ve araştırma raporu ayrı zorunlu yükleme alanlarına ayrıldı. Önceki üçüncü kişi görüşü ve karşı görüş ayrı istenir; gerçekten yoksa açık yokluk beyanı alınır.
+- Her delil için manuel `Belge | tarih | erişim kanıtı | sayfa/bölüm/şekil | PDF sayfa` metin kutusu kaldırıldı. İlk analiz modeli özgün kaynakları ve çevrimiçi tarihli kanıtları tarar, dosya ismini/alıntıyı kaynağa karşı doğrular. Tarih, özgün kaynak yeri veya kamuya açıklık kanıtı bulunamazsa eksik gösterilir ve yalnız bu nokta kullanıcıdan istenir. Belirsiz kanıt PASS sayılmaz.
+- İşlem `1. Kaynak analizi` ve `2. Doğrula ve Word üret` olarak iki aşamalıdır. Yükleme dosyaları değişirse önceki analiz geçersiz olur. 13 teslim kalite kapısı, örnek Word'ün sabit hukuk metinleri ve eski iş türleri korunur.
 
 ## v5.4.90 / 2026-10-14.v82 — Belge kararına karşı itiraz (yeni iş türü)
 

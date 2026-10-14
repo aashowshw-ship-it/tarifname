@@ -5,8 +5,8 @@ import re
 import zipfile
 from urllib.parse import unquote
 
-APP_VERSION = "v5.4.90"
-RULESET_VERSION = "2026-10-14.v82"
+APP_VERSION = "v5.4.91"
+RULESET_VERSION = "2026-10-14.v83"
 
 # v5.4.87 — Tüm iş akışlarında imzalı ve dosya SHA-256 kimliğine bağlı bağımsız ikinci teslim denetimi.
 # v5.4.86 — Word kökenli tarifnamede bağımsız Microsoft Word PDF otoritesi; LibreOffice render satır kayması FAIL-CLOSED.

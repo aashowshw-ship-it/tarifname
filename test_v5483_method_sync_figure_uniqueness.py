@@ -7,8 +7,8 @@ ROOT = Path(__file__).resolve().parent
 
 
 def test_version_bumped():
-    assert APP_VERSION == "v5.4.90"
-    assert RULESET_VERSION == "2026-10-14.v82"
+    assert APP_VERSION == "v5.4.91"
+    assert RULESET_VERSION == "2026-10-14.v83"
 
 
 def test_method_flow_refs_are_unique_and_ordered():

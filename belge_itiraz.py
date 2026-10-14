@@ -23,6 +23,135 @@ REQUIRED = ('source_verification','legal_route','chronology','claims_verbatim','
             'dependent_claims','independent_second_review','template_fixed_text','word_visual_render')
 
 
+
+def _flat(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def extract_claims_from_application(filename: str, file_bytes: bytes) -> list[str]:
+    """Resmî istem sayfalarını doğrudan kullanıcı yüklemesinden okur.
+
+    PDF'deki marj satır numaralarını ve başlık sayfa numaralarını çıkarır;
+    istem metninin TEKNİK kelimelerini değiştirmez. Belirsizlikte FAIL verir.
+    """
+    suffix=Path(filename).suffix.lower()
+    if suffix=='.pdf':
+        try:
+            import fitz
+            pdf=fitz.open(stream=file_bytes,filetype='pdf')
+            pages=[page.get_text('text') for page in pdf]
+        except Exception as exc:
+            raise ValueError('Resmî istem PDF metni okunamıyor (FAIL).') from exc
+    elif suffix=='.docx':
+        doc=Document(io.BytesIO(file_bytes))
+        pages=['\n'.join(p.text for p in doc.paragraphs)]
+    else:
+        raise ValueError('İstemler için okunabilir özgün PDF veya DOCX gereklidir (FAIL).')
+    claim_pages=[]
+    started=False
+    for text in pages:
+        if not started and re.search(r'(?im)^\s*(?:İSTEMLER|CLAIMS)\s*$',text):
+            started=True
+        if started:
+            claim_pages.append(text)
+            if re.search(r'(?im)^\s*(?:TARİFNAME|DESCRIPTION|ÖZET|ABSTRACT)\s*$',text):
+                break
+    if not claim_pages:
+        raise ValueError('Resmî başvuruda İSTEMLER/CLAIMS bölümü bulunamadı (FAIL).')
+    raw='\n'.join(claim_pages)
+    raw=re.split(r'(?im)^\s*(?:TARİFNAME|DESCRIPTION|ÖZET|ABSTRACT)\s*$',raw, maxsplit=1)[0]
+    raw=re.sub(r'(?m)^\s*(?:İSTEMLER|CLAIMS)\s*$', '\n',raw)
+    # Sadece tek başına basılmış satır ve sayfa numaraları kaldırılır.
+    raw=re.sub(r'(?m)^\s*\d{1,2}\s*$', '',raw)
+    matches=list(re.finditer(r'(?m)^\s*(\d{1,3})\.\s+(?=[A-Za-zÇĞİÖŞÜçğıöşü])',raw))
+    if not matches or int(matches[0].group(1))!=1:
+        raise ValueError('Özgün istem numaraları güvenilir biçimde ayrıştırılamadı (FAIL).')
+    claims=[]
+    for i,m in enumerate(matches):
+        number=int(m.group(1))
+        if number!=i+1:
+            raise ValueError('İstem numaralarında boşluk/atlama belirlendi (FAIL).')
+        chunk=raw[m.end():matches[i+1].start() if i+1<len(matches) else len(raw)]
+        # Son istemden sonra kaynak bir sonraki bölüme geçebilir.
+        chunk=re.split(r'(?im)^\s*(?:TARİFNAME|DESCRIPTION|ÖZET|ABSTRACT)\s*$',chunk)[0]
+        chunk=_flat(chunk)
+        if len(chunk)<35:
+            raise ValueError('Kısa veya eksik istem metni, kaynaktan teyit edilemedi (FAIL).')
+        claims.append(chunk)
+    if not claims:
+        raise ValueError('Başvuru istemleri boş (FAIL).')
+    return claims
+
+
+def verify_evidence_proposal(proposals: list[dict], texts: dict[str,str], *, require_complete: bool=False) -> list[dict]:
+    """LLM bulguları asla kaynakla doğrulanmadan kanıt olarak kabul edilmez.
+
+    Yayım kanıtı metni kaynaktan veya tarihli/URL'li bağımsız dış kanıttan gelir.
+    İnternet araması tarafından döndürülen URL uzman incelemesinde ayrıca sorgulanmalıdır.
+    """
+    if not isinstance(proposals,list):
+        raise ValueError('Delil envanteri bulunamadı (FAIL).')
+    mapping={}
+    for obj in proposals:
+        if not isinstance(obj,dict): continue
+        name=str(obj.get('name','')).strip()
+        if name in mapping or name not in texts:
+            raise ValueError('Delil adı eşleşmiyor veya mükerrer (FAIL).')
+        mapping[name]=obj
+    if set(mapping)!=set(texts):
+        raise ValueError('Deliller tam dosya adıyla birebir eşleşmiyor (FAIL).')
+    verified=[]
+    for name,source in texts.items():
+        item=mapping[name]
+        quote=_flat(item.get('quoted_text',''))
+        if len(quote)<18 or quote not in _flat(source):
+            raise ValueError(name+' özgün alıntısı kaynakta birebir bulunamadı (FAIL).')
+        source_locator=str(item.get('source_locator','')).strip()
+        date=str(item.get('date','')).strip()
+        publication_proof=str(item.get('publication_proof','')).strip()
+        # Kapaktaki tek başına telif yılı kamuya erişim tarihi değildir.
+        if re.fullmatch(r'(?:©|copyright|telif(?: hakkı)?)\s*[:©]?\s*\d{4}',publication_proof,re.I):
+            publication_proof=''
+        # Üreticinin kapak yılı, yayın tarihiyle eşit varsayılmaz; somut erişim izi aranır.
+        if publication_proof and not re.search(r'https?://|web\.archive\.org|\b(?:EP|WO|US|CN|TR)\s*\d{5,}\b|resm[iî]\s+(?:patent|bülten)',publication_proof,re.I):
+            publication_proof=''
+        # Tarih boş kaynaktan serbestçe türetilemez.
+        years=re.findall(r'(?<!\d)(?:19|20)\d{2}(?!\d)',date)
+        if years and not any(yr in source for yr in years):
+            date=''
+        # Somut şekil atıfları kaynakta gerçekten görünmelidir.
+        fig_ids=re.findall(r'(?i)(?:figure|fig\.|şekil)\s*(\d+(?:[-–]\d+)?)',source_locator)
+        for fig_id in fig_ids:
+            pattern=r'(?i)(?:figure|fig\.|şekil)\s*'+re.escape(fig_id).replace(r'\-',r'[-–]')
+            if not re.search(pattern,source):
+                raise ValueError(name+' kaynakta geçmeyen şekil numarası içeriyor (FAIL): '+fig_id)
+        figure_page=item.get('figure_page') or 0
+        try: figure_page=int(figure_page)
+        except (TypeError,ValueError): raise ValueError(name+' özgün görsel sayfa numarası hatalı (FAIL).')
+        if figure_page<0: raise ValueError(name+' görsel sayfası negatif olamaz (FAIL).')
+        row={'name':name,'date':date,'publication_proof':publication_proof,
+             'source_locator':source_locator,'quoted_text':quote,'figure_page':figure_page}
+        if require_complete and not all(row.get(key) for key in ('date','publication_proof','source_locator')):
+            raise ValueError(name+' delil tarihi, kamuya erişim veya kaynak konumu eksik (FAIL).')
+        verified.append(row)
+    return verified
+
+
+
+def validate_pdf_figure_page(source_locator: str, page_text: str) -> bool:
+    """Teknik atıfta geçen şekil seçilen özgün PDF sayfasında olmalıdır."""
+    refs=re.findall(r'(?i)(?:figure|fig\.|şekil)\s*(\d+(?:[-–]\d+)?)',source_locator)
+    for ref in refs:
+        pattern=r'(?i)(?:figure|fig\.|şekil)\s*'+re.escape(ref).replace(r'\-',r'[-–]')
+        if not re.search(pattern,page_text):
+            raise ValueError('Seçilen PDF sayfasında atıf yapılan özgün şekil bulunamadı (FAIL): '+ref)
+    return True
+
+
+def missing_evidence_fields(items: list[dict]) -> dict[str,list[str]]:
+    return {r['name']:[k for k in ('date','publication_proof','source_locator') if not str(r.get(k,'')).strip()]
+            for r in items if any(not str(r.get(k,'')).strip() for k in ('date','publication_proof','source_locator'))}
+
 def check_stage(patent_kind, status, gazette_date, claim_count, evidence, submitted, audit):
     """FAIL-closed: nobody can mark an absent stage completed with a checkbox alone."""
     if patent_kind not in ('Patent','Faydalı model'):
@@ -34,7 +163,7 @@ def check_stage(patent_kind, status, gazette_date, claim_count, evidence, submit
     if gazette_date and not re.fullmatch(r'\d{2}\.\d{2}\.\d{4}',gazette_date):
         raise ValueError('Bülten tarihi biçimi hatalı (FAIL).')
     if not isinstance(claim_count,int) or claim_count < 1:
-        raise ValueError('İstem sayısı ve istem kaynağı gerekli (FAIL).')
+        raise ValueError('Özgün istemler kaynaktan otomatik çıkarılamadı (FAIL).')
     if not evidence or not isinstance(evidence,list):
         raise ValueError('En az bir tarihli gerçek delil eksik (FAIL).')
     if not submitted or not isinstance(submitted,dict):

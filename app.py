@@ -9766,114 +9766,185 @@ if os.getenv("PATENT_WORKER_MODE") != "1":
         horizontal=True,
     )
 
-    # BELGE KARARINA KARŞI İTİRAZ: yeni, ayrı, kaynak-kilitli akış.
+    # BELGE KARARINA KARŞI İTİRAZ: ayrı işlem, iki aşamalı kaynak incelemesi.
     if work_type == "Belge kararına karşı itiraz":
-        from belge_itiraz import check_stage, validate_analysis, make_docx, REQUIRED
+        from belge_itiraz import (
+            check_stage, validate_analysis, make_docx, REQUIRED,
+            extract_claims_from_application, verify_evidence_proposal,
+            missing_evidence_fields, validate_pdf_figure_page,
+        )
         st.subheader("Belge kararına karşı itiraz")
-        st.caption("182885 REV4 yalnız biçim ve sabit hukuk metni örneğidir. Yeni dosyanın istemleri, olayları ve delilleri önceki dosyadan devralınmaz.")
-        ref=st.text_input("DP itiraz referansı",key="obj_ref")
-        patent_kind=st.selectbox("Koruma türü",["Patent","Faydalı model"],key="obj_kind")
-        status=st.selectbox("Kararın aşaması",["Belge kararı verildi, yayımlanmadı","Belge kararı yayımlandı","Belge verildi / diğer aşama"],key="obj_status")
-        official_gazette=st.text_input("Resmî Patent Bülteni yayım tarihi (biliniyorsa, isteğe bağlı)",key="obj_gazette")
+        st.caption("182885 REV4 yalnız sabit hukuk metni ve Word yerleşim örneğidir. Yeni başvurunun teknik içeriği örnekten alınmaz.")
+        ref=st.text_input("DP itiraz referansı", key="obj_ref")
+        patent_kind=st.selectbox("Koruma türü", ["Patent","Faydalı model"],key="obj_kind")
+        status=st.selectbox("Kararın aşaması", ["Belge kararı verildi, yayımlanmadı","Belge kararı yayımlandı","Belge verildi / diğer aşama"],key="obj_status")
+        official_gazette=st.text_input("Resmî Patent Bülteni yayım tarihi (biliniyorsa)",key="obj_gazette")
         app_no=st.text_input("İtiraz konusu başvuru numarası",key="obj_app_no")
         holder=st.text_input("Başvuru sahibi",key="obj_holder")
         opponent=st.text_input("İtiraz eden",key="obj_opponent")
-        claimed=st.text_area("Bağımsız İstem 1 — özgün başvurudan birebir yapıştır (zorunlu)",height=155,key="obj_claim1")
-        claim_count=st.number_input("Toplam istem sayısı",min_value=1,value=1,key="obj_claim_count")
+        st.markdown("**Resmî dosya ve yazışmalar — her evrak ayrı yüklenir**")
+        official_spec=st.file_uploader("1. Başvurunun resmî tarifnamesi ve istemleri (zorunlu)",type=["pdf","docx"],key="obj_official_spec")
+        official_decision=st.file_uploader("2. Patent verilmesine ilişkin karar / bildirim (zorunlu)",type=["pdf","docx","doc"],key="obj_official_decision")
+        official_exam=st.file_uploader("3. İnceleme raporu (zorunlu)",type=["pdf","docx","doc"],key="obj_official_exam")
+        official_search=st.file_uploader("4. Araştırma raporu (zorunlu)",type=["pdf","docx","doc"],key="obj_official_search")
+        no_prev=st.checkbox("Dosyada önceki üçüncü kişi görüşü bulunmuyor",key="obj_no_prev")
+        previous_opinion=st.file_uploader("5. Önceki üçüncü kişi görüşü (mevcutsa)",type=["pdf","docx","doc"],key="obj_previous",disabled=no_prev)
+        no_counter=st.checkbox("Dosyada başvuru sahibinin karşı görüşü bulunmuyor",key="obj_no_counter")
+        counter_opinion=st.file_uploader("6. Başvuru sahibinin karşı görüşü / savunması (mevcutsa)",type=["pdf","docx","doc"],key="obj_counter",disabled=no_counter)
         chronology_uploads=st.file_uploader("TÜRKPATENT kronoloji ekran görüntüleri (varsa)",type=["png","jpg","jpeg"],accept_multiple_files=True,key="obj_chronology_png")
-        source_files=st.file_uploader("Başvurunun resmî tarifnamesi/istemleri, belge kararı, inceleme ve araştırma raporu, önceki görüşler ve karşı görüş (zorunlu)",type=["pdf","docx","doc"],accept_multiple_files=True,key="obj_sources")
-        evidence_files=st.file_uploader("Sunulan önceki teknik delilleri — özgün tarihli PDF/DOCX (zorunlu)",type=["pdf","docx","doc"],accept_multiple_files=True,key="obj_evidence")
-        dates_and_bases=st.text_area("Her delilin yayın/kamuya erişim kanıtı ve özgün kaynak yeri (Ek sırasıyla; her satır: Belge adı | tarih | kamuya erişim kanıtı | sayfa/bölüm/şekil | görselin PDF sayfa numarası)",height=150,key="obj_evidence_dates")
+        evidence_files=st.file_uploader("İtirazda kullanılacak özgün önceki teknik delilleri",type=["pdf","docx","doc"],accept_multiple_files=True,key="obj_evidence")
+        customer_technical=st.file_uploader("Ek müşteri teknik açıklamaları / tarihli kamuya erişim kanıtları (varsa)",type=["pdf","docx","doc","txt"],accept_multiple_files=True,key="obj_customer_technical")
         user_extra=st.text_area("Ek talep (varsa)",key="obj_extra",height=95)
-        if patent_kind == "Faydalı model":
-            st.warning("Faydalı model belgesi verilmişse patentlerdeki SMK 99 yolu kullanılamaz. Uygun hukuki yol belirlenmeden teslim kapısı FAIL verir.")
-        st.info("Zorunlu kapılar: hukuki yol, özgün istem, yayım kanıtı, istem D1 +/- tablosu, her eksiye dayanak, tam özgün alıntı, bağımsız ikinci inceleme, sabit hukuk metni, Word render.")
-        if st.button("Kaynakları analiz et ve itirazı oluştur",type="primary",key="obj_generate"):
+        if patent_kind=="Faydalı model":
+            st.warning("Belgesi verilmiş faydalı modele SMK 99 patent itirazı uygulanamaz. Hukukî yol doğrulanmadan Word teslimi yapılmaz.")
+        st.caption("İstemler ve istem sayısı resmî başvurudan otomatik çıkarılır. Delil tarihleri, kamuya erişim kanıtları ve sayfa/şekil konumları öncelikle kaynaklardan araştırılır. Yalnız doğrulanamayan bilgiler ayrıca istenir.")
+
+        required_sources=(official_spec,official_decision,official_exam,official_search)
+        auxiliary_sources=([previous_opinion] if previous_opinion else [])+([counter_opinion] if counter_opinion else [])+(customer_technical or [])
+        def _obj_signature():
+            pieces=[z for z in list(required_sources)+auxiliary_sources+list(evidence_files or []) if z is not None]
+            return hashlib.sha256(b''.join(hashlib.sha256(z.getvalue()).digest()+z.name.encode() for z in pieces)).hexdigest()
+        if st.button("1. Resmî evrakları, istemleri ve delilleri analiz et",type="primary",key="obj_analyse"):
             try:
-                if not all([ref.strip(),app_no.strip(),holder.strip(),opponent.strip(),claimed.strip(),source_files,evidence_files]):
-                    raise ValueError("Başvuru/itiraz kimliği, özgün istem ve resmî kaynaklar eksik (FAIL).")
-                if patent_kind == "Faydalı model":
-                    raise ValueError("Faydalı model hukukî yol sınıflandırması tamamlanmadı. Patent belgesi itiraz metni otomatik kullanılamaz (FAIL).")
-                if not dates_and_bases.strip():
-                    raise ValueError("Delillerin ayrı ayrı yayım/kamuya erişim ve sayfa/şekil bilgileri eksik (FAIL).")
-                assets=assets_from_uploads(source_files)
+                if not all([ref.strip(),app_no.strip(),holder.strip(),opponent.strip()]):
+                    raise ValueError("DP, başvuru numarası ve taraf bilgileri eksik (FAIL).")
+                if not all(required_sources):
+                    raise ValueError("Resmî başvuru, karar, inceleme ve araştırma raporu ayrı ayrı yüklenmelidir (FAIL).")
+                if not (previous_opinion or no_prev):
+                    raise ValueError("Önceki üçüncü kişi görüşünü yükleyin veya bulunmadığını işaretleyin (FAIL).")
+                if not (counter_opinion or no_counter):
+                    raise ValueError("Karşı görüşü yükleyin veya bulunmadığını işaretleyin (FAIL).")
+                if not evidence_files:
+                    raise ValueError("En az bir özgün önceki teknik delili gerekli (FAIL).")
+                if patent_kind=="Faydalı model":
+                    raise ValueError("Faydalı model belge kararı için uygulanabilir hukuki yol doğrulanmadı (FAIL).")
+                source_assets=assets_from_uploads(list(required_sources)+auxiliary_sources)
                 ev_assets=assets_from_uploads(evidence_files)
-                source_text='\n'.join(f'[RESMÎ KAYNAK {a.name}]\n'+extract_text_from_asset(a)[:65000] for a in assets)
-                ev_text={a.name:extract_text_from_asset(a)[:85000] for a in ev_assets}
-                if not source_text.strip() or any(not v.strip() for v in ev_text.values()):
-                    raise ValueError("Kaynakların özgün metni okunamadı (FAIL).")
-                norm=lambda t:re.sub(r'\s+',' ',t or '').strip()
-                if norm(claimed) not in norm(source_text):
-                    raise ValueError('İstem 1 kullanıcı aktarımı resmî yüklenen kaynakta birebir bulunamadı (FAIL).')
-                meta={}
-                for line in dates_and_bases.splitlines():
-                    parts=[x.strip() for x in line.split('|')]
-                    if len(parts) in (4,5):
-                        meta[parts[0]]=dict(date=parts[1],publication_proof=parts[2],source_locator=parts[3],figure_page=int(parts[4]) if len(parts)==5 and parts[4].isdigit() else 0)
-                if any(a.name not in meta or not all(meta[a.name].values()) for a in ev_assets):
-                    raise ValueError("Her delil için ayrı `Dosya adı | tarih | kamuya açıklık | bölüm/şekil` satırı zorunlu (FAIL).")
-                evidence=[]
-                for a in ev_assets:
-                    evidence.append(dict(name=a.name,**meta[a.name],quoted_text=''))
-                question=f"""182885 tipi belge kararına itiraz için BAĞIMSIZ dosya analizi oluştur. Çıktı JSON: claim_1_verbatim (aşağıdaki birebir metni aynen koy), chronology (tarih ve işlem listesi), claim_matrix (claim 1 tüm kelime grupları KAYIPSIZ: feature, status +/−, d1_basis, other_evidence, legal_consequence; eksi karşılıksızsa FAIL), examiner_rebuttal (dizgi), evidence_sections (anahtar = yüklenen delilin TAM dosya adı, değer = o belgeye ilişkin en az 230 kelimelik özgün kaynak temelli detaylı metin), evidence_quotes (anahtar dosya adı, değer birebir özgün alıntı), objective_technical_problem, motivation_to_combine, dependent_claims (dizi), overall_conclusion. Gereksiz yenilik genel açıklaması veya müşteri notu ekleme. Her alıntı SADECE verilen ham kaynakta birebir bulunsun. D1'de olmayan bir unsur varmış gibi yazma. Faydalı model değil patent. İstem teknik ifadeleri birebir, kaynaklar sayfa/şekil ayrımıyla, somut motivasyonla gerekçelendir. Her özgün delili ayrı işle. Kaynaksız iddia ve buluş basamağına ilişkin teknik sıçrama YASAK.
- İTİRAZ REFERANSI {ref}; DOSYA {app_no}; MÜŞTERİ İSTEĞİ {user_extra}
- İSTEM 1:
-{claimed}
- RESMİ DOSYALAR:
-{source_text[:155000]}
- DELİLLER:
-""" + '\n'.join(f'[{k}]\n{v}' for k,v in ev_text.items())[:190000]
-                analysis=ask_json(question)
-                quotes=analysis.get('evidence_quotes',{})
-                for row in evidence:
-                    quote=str(quotes.get(row['name'],'')).strip()
-                    if len(quote)<18 or quote not in ev_text[row['name']]:
-                        raise ValueError(row['name']+' özgün alıntısı kaynakta birebir bulunmadı (FAIL).')
-                    row['quoted_text']=quote
-                validate_analysis(analysis,evidence,claimed,'Patent')
-                audit_question=f"""Bu raporu BAĞIMSIZ ikinci patent uzmanı gibi değerlendir. İlk modelin savunmasını kabul etmek zorunda değilsin. Eksik delil, yanlış kanıt, asılsız artı, karşılıksız eksi, buluş basamağı motivasyonu veya istem uyumsuzluğu varsa PASS verme. Yalnız JSON: {{"overall_pass":bool,"findings":["..."],"checks":{{"claim_matrix":bool,"minus_resolution":bool,"inventive_step":bool,"evidence_quotes":bool,"chronology":bool,"dependent_claims":bool}}}}
-ORİJİNAL İSTEM:{claimed}
-RAPOR:{str(analysis)[:150000]}
-ÖZGÜN DELİLLER:{str(ev_text)[:160000]}"""
-                review=ask_json(audit_question)
-                if review.get('overall_pass') is not True or any(review.get('checks',{}).get(k) is not True for k in ('claim_matrix','minus_resolution','inventive_step','evidence_quotes','chronology','dependent_claims')):
-                    raise ValueError('Bağımsız ikinci inceleme FAIL: '+str(review.get('findings',[])))
-                figure_data={}
-                if fitz is None:raise ValueError('Özgün PDF şekillerinin kontrolü için PyMuPDF eksik (FAIL).')
-                for a in ev_assets:
-                    n=meta[a.name].get('figure_page',0)
-                    if n:
-                        if not a.name.lower().endswith('.pdf'):
-                            raise ValueError(a.name+' görseli yalnız özgün PDF içinden alınabilir (FAIL).')
-                        with fitz.open(stream=a.data,filetype='pdf') as pdf:
-                            if n<1 or n>pdf.page_count:raise ValueError(a.name+' şekil sayfası geçersiz (FAIL).')
-                            figure_data[a.name]=pdf[n-1].get_pixmap(matrix=fitz.Matrix(1.65,1.65)).tobytes('png')
-                if not figure_data:
-                    raise ValueError('İtirazın kaynakla birebir özgün şekil/sayfa kanıtı eksik (FAIL): delil satırında beşinci alana PDF sayfa numarası girin.')
-                chronology_pics=[(x.name,x.getvalue()) for x in (chronology_uploads or [])]
-                data=make_docx(ref.strip(),app_no,holder,opponent,date.today().strftime('%d.%m.%Y'),analysis,evidence,claimed,figure_bytes=figure_data,chronology_images=chronology_pics)
-                # Reopen final OOXML and render full document before PASS.
-                doc=Document(io.BytesIO(data))
-                if any(p.text.strip()=='' for p in doc.paragraphs[:2]):
-                    raise ValueError('Word ilk sayfa yapısı bozuk (FAIL).')
-                with tempfile.TemporaryDirectory() as td:
-                    inp=Path(td)/'itiraz.docx';inp.write_bytes(data)
-                    proc=subprocess.run(['libreoffice','--headless','--convert-to','pdf','--outdir',td,str(inp)],capture_output=True,timeout=120)
-                    rendered=Path(td)/'itiraz.pdf'
-                    if proc.returncode or not rendered.exists():raise ValueError('Word görsel render FAIL.')
-                    with fitz.open(rendered) as pdf:
-                        if pdf.page_count<3:raise ValueError('Beklenmeyen Word sayfa sayısı (FAIL).')
-                audit={k:True for k in REQUIRED}
-                check_stage(patent_kind,status,official_gazette,int(claim_count),evidence,
-                            {'source_names':[x.name for x in assets]},audit)
-                st.success('İtiraz kaynak, gerekçe, ikinci okuma ve Word oluşturma kapılarından geçti. Resmî başvuru öncesi hukuki/delil ekleri kontrolü gereklidir.')
-                st.write('İkinci uzman denetimi:',review.get('findings',[]))
-                fname=f'Belge Kararına Karşı İtiraz_{ref.strip()}.docx'
-                compliant_download_button('İtiraz Word dosyasını indir',data=data,output_name=fname,
-                    default_name=fname,artifact_type='belge_itiraz',checks=audit,
-                    audit_sources=[a.data for a in assets+ev_assets],type='primary')
+                if len(set(a.name for a in ev_assets))!=len(ev_assets):
+                    raise ValueError("Aynı dosya adına sahip mükerrer delil bulundu (FAIL).")
+                claims=extract_claims_from_application(official_spec.name,official_spec.getvalue())
+                formal_text={a.name:extract_text_from_asset(a)[:85000] for a in source_assets}
+                ev_text={a.name:extract_text_from_asset(a)[:95000] for a in ev_assets}
+                if any(len(x.strip())<150 for x in formal_text.values()) or any(len(x.strip())<150 for x in ev_text.values()):
+                    raise ValueError("Resmî kaynak/delil metinlerinden biri okunamadı (FAIL).")
+                # Kaynakta yoksa tarih, çevrimiçi erişim ve sayfa/şekil uydurulamaz.
+                evidence_question="""Yüklenmiş önceki teknikleri BAĞIMSIZ olarak doğrula ve yayın kanıtlarını araştır. JSON yalnız {"evidence":[{"name":"tam dosya adı","date":"kaynakta bulunan yayın tarihi veya boş","publication_proof":"29.08.2025 öncesi kamuya erişim için belge bazlı doğrulanabilir URL ve tarihli kanıt veya boş","source_locator":"özgün doküman bölüm/şekil/sayfa veya boş","quoted_text":"belgeden birebir en az 18 karakterlik kısa teknik ifade","figure_page":0}]} biçiminde döndür. Tüm dosyalar ve adları birebir eşleşsin. PDF dosyası içindeki telif yılı tek başına kamuya erişimin kanıtı sayılamaz. İsim, URL, tarih, alıntı ve şekil sayfası UYDURMA. Bilinmiyorsa boş bırak. Yayın kanıtı ancak belirli kaynağı, kamusal erişim tarihini ve bağlantıyı açıkça gösteriyorsa doldur. Figure_page kaynak PDF için 1 tabanlı fiziksel sayfa numarasıdır, emin değilsen 0. Teknik alıntı kaynak metninde aynen bulunmalıdır.\nKURUM VE MÜŞTERİ KAYNAKLARI:\n""" + '\n'.join(f'[{k}]\n{v[:14000]}' for k,v in formal_text.items())[:45000] + "\nÖZGÜN DELİLLER:\n" + '\n'.join(f'[{k}]\n{v[:37000]}' for k,v in ev_text.items())[:165000]
+                proposal=ask_json(evidence_question,web_search=True)
+                evidence=verify_evidence_proposal(proposal.get('evidence'),ev_text)
+                if fitz is not None:
+                    for row in evidence:
+                        n=row['figure_page']
+                        if n:
+                            raw=next((a.data for a in ev_assets if a.name==row['name']),None)
+                            if not row['name'].lower().endswith('.pdf') or raw is None:
+                                raise ValueError(row['name']+' özgün görsel sayfası PDF değil (FAIL).')
+                            with fitz.open(stream=raw,filetype='pdf') as pdf:
+                                if n>pdf.page_count:
+                                    raise ValueError(row['name']+' PDF görsel sayfası kaynakla uyuşmuyor (FAIL).')
+                                validate_pdf_figure_page(row['source_locator'],pdf[n-1].get_text('text'))
+                st.session_state['obj_prepared']={'signature':_obj_signature(),'claims':claims,
+                    'source_assets':source_assets,'ev_assets':ev_assets,'formal_text':formal_text,
+                    'ev_text':ev_text,'evidence':evidence}
+                st.success(f"Resmî başvurudan {len(claims)} istem çıkarıldı. {len(evidence)} delil için kaynak analizi tamamlandı.")
             except Exception as exc:
-                st.exception(exc)
+                st.session_state.pop('obj_prepared',None)
+                st.error(str(exc))
+
+        prep=st.session_state.get('obj_prepared')
+        if prep:
+            if prep['signature']!=_obj_signature():
+                st.warning('Kaynaklar değişti. Yeni dosyalarla kaynak analizini yeniden çalıştırın.')
+            else:
+                st.markdown('**Resmî dosyadan çıkarılan istemler**')
+                st.caption(f"{len(prep['claims'])} istem. Bağımsız İstem 1 kullanıcıdan istenmemektedir.")
+                with st.expander('Kaynak İstem 1 metnini görüntüle'):
+                    st.write(prep['claims'][0])
+                st.markdown('**Delil envanteri ve doğrulama durumu**')
+                st.dataframe([{'Belge':x['name'],'Tarih':x['date'] or 'EKSİK',
+                    'Kamuya erişim kanıtı':x['publication_proof'] or 'EKSİK',
+                    'Kaynak yeri':x['source_locator'] or 'EKSİK','PDF şekil sayfası':x['figure_page'] or '-'}
+                    for x in prep['evidence']],hide_index=True,use_container_width=True)
+                missing=missing_evidence_fields(prep['evidence'])
+                if missing:
+                    st.warning('Aşağıdaki alanlar kaynaklardan doğrulanamadı. Eksik bilgi tamamlanmadan teslim FAIL verir.')
+                    with st.expander('Yalnız eksik delil kanıtlarını tamamla',expanded=True):
+                        for row in prep['evidence']:
+                            if row['name'] in missing:
+                                st.write('**'+row['name']+'**')
+                                for field in missing[row['name']]:
+                                    labels={'date':'Tarih','publication_proof':'Tarihli kamuya erişim kanıtı','source_locator':'Özgün kaynak yeri'}
+                                    new=st.text_input(labels[field],key='obj_missing_'+hashlib.sha256((row['name']+field).encode()).hexdigest()[:12],value='')
+                                    if new.strip():row[field]=new.strip()
+                if not any(e.get('figure_page') for e in prep['evidence']):
+                    pdf_evidence=[a for a in prep['ev_assets'] if a.name.lower().endswith('.pdf')]
+                    if pdf_evidence:
+                        st.warning('Özgün teknik şekil sayfası otomatik belirlenemedi. Yalnız ilgili PDF görselinin sayfasını seçin.')
+                        with st.expander('Özgün PDF şekil sayfasını seç (yalnız eksikse)',expanded=True):
+                            choice=st.selectbox('Teknik şekli içeren delil', [a.name for a in pdf_evidence],key='obj_fig_select')
+                            if fitz is not None:
+                                asset=next(a for a in pdf_evidence if a.name==choice)
+                                with fitz.open(stream=asset.data,filetype='pdf') as pdf:
+                                    page_max=pdf.page_count
+                            else:
+                                page_max=999
+                            page_idx=st.number_input('Kaynak PDF’nin fiziksel sayfası (1’den başlar)', min_value=1,max_value=page_max,value=1,key='obj_fig_page')
+                            if st.button('Özgün görsel sayfasını kaydet',key='obj_save_fig'):
+                                next(e for e in prep['evidence'] if e['name']==choice)['figure_page']=int(page_idx)
+                                st.success('Özgün PDF sayfa numarası kaydedildi.')
+                if st.button('2. Bütün kanıtları doğrula ve itiraz Word dosyasını oluştur',type='primary',key='obj_generate'):
+                    try:
+                        if missing_evidence_fields(prep['evidence']):
+                            raise ValueError('Delillerin tarih, kamuya erişim veya kaynak konumu hâlâ eksik (FAIL).')
+                        ev_assets=prep['ev_assets'];ev_text=prep['ev_text'];source_assets=prep['source_assets']
+                        claimed=prep['claims'][0]
+                        evidence=verify_evidence_proposal(prep['evidence'],ev_text,require_complete=True)
+                        source_text='\n'.join(f'[RESMÎ KAYNAK {k}]\n{v}' for k,v in prep['formal_text'].items())
+                        question=f"""Belge kararına itiraz için BAĞIMSIZ dosya analizi oluştur. Çıktı JSON: claim_1_verbatim (verilen metni aynen koy), chronology (kaynağa dayalı tarih ve işlem listesi), claim_matrix (özgün istemin TÜM özelliklerini sırayla birebir ve KAYIPSIZ: feature, status +/−, d1_basis, other_evidence, legal_consequence; eksi karşılıksızsa FAIL), examiner_rebuttal (dizi), evidence_sections (anahtar = yüklenen delilin TAM dosya adı, değer = o belgeye ilişkin en az 230 kelimelik ayrıntılı teknik analiz), evidence_quotes (anahtar dosya adı, birebir özgün alıntı), objective_technical_problem, motivation_to_combine, dependent_claims (dizi; diğer istemlerin her birini karşılaştır), overall_conclusion. İstem teknik ifadeleri birebir koru. Her özgün delili ayrı işle; kaynakta açık olmayan iddia kurma. D1'in eksik unsurları Ek belgelerle destekleniyorsa somut teknik gerekçeyle açıkla. Genel yenilik dersleri veya müşteri notları kullanma.\nİTİRAZ: {ref}; BAŞVURU: {app_no}; MÜŞTERİ EK TALEBİ: {user_extra}\nRESMÎ İSTEMLER:\n""" + '\n'.join(f'İstem {i+1}: {c}' for i,c in enumerate(prep['claims'])) + f'\nRESMÎ DOSYALAR:\n{source_text[:135000]}\nÖZGÜN DELİLLER:\n' + '\n'.join(f'[{k}]\n{v}' for k,v in ev_text.items())[:175000]
+                        analysis=ask_json(question)
+                        quotes=analysis.get('evidence_quotes',{})
+                        for row in evidence:
+                            quote=str(quotes.get(row['name'],'')).strip()
+                            if len(quote)<18 or quote not in ev_text[row['name']]:
+                                raise ValueError(row['name']+' rapor alıntısı özgün kaynağa uymuyor (FAIL).')
+                            row['quoted_text']=quote
+                        validate_analysis(analysis,evidence,claimed,'Patent')
+                        audit_question=f"""İtirazı bağımsız patent uzmanı olarak ikinci kez denetle. İlk uzman sonucuna güvenme. Özellikle D1 + ek belge kombinasyonu, tam özgün istem, eksi unsurların kanıtı, kaynak gerçekliği, uzman raporuna cevap ve bağımlı tüm istemler. Yalnız JSON: {{"overall_pass":bool,"findings":["..."],"checks":{{"claim_matrix":bool,"minus_resolution":bool,"inventive_step":bool,"evidence_quotes":bool,"chronology":bool,"dependent_claims":bool}}}}\nİSTEMLER:{str(prep['claims'])[:36000]}\nRAPOR:{str(analysis)[:135000]}\nDELİLLER:{str(ev_text)[:140000]}"""
+                        review=ask_json(audit_question)
+                        if review.get('overall_pass') is not True or any(review.get('checks',{}).get(k) is not True for k in ('claim_matrix','minus_resolution','inventive_step','evidence_quotes','chronology','dependent_claims')):
+                            raise ValueError('Bağımsız ikinci inceleme FAIL: '+str(review.get('findings',[])))
+                        if fitz is None:raise ValueError('Özgün PDF görsel kontrolü için PyMuPDF yok (FAIL).')
+                        figure_data={}
+                        for a in ev_assets:
+                            n=next(e['figure_page'] for e in evidence if e['name']==a.name)
+                            if n:
+                                with fitz.open(stream=a.data,filetype='pdf') as pdf:
+                                    if n>pdf.page_count:raise ValueError('Geçersiz özgün PDF şekil sayfası (FAIL).')
+                                    item=next(e for e in evidence if e['name']==a.name)
+                                    validate_pdf_figure_page(item['source_locator'],pdf[n-1].get_text('text'))
+                                    figure_data[a.name]=pdf[n-1].get_pixmap(matrix=fitz.Matrix(1.65,1.65)).tobytes('png')
+                        if not figure_data:
+                            raise ValueError('Özgün delillerde doğrulanmış PDF şekli bulunamadı (FAIL).')
+                        chronology_pics=[(x.name,x.getvalue()) for x in (chronology_uploads or [])]
+                        data=make_docx(ref.strip(),app_no,holder,opponent,date.today().strftime('%d.%m.%Y'),analysis,evidence,claimed,figure_bytes=figure_data,chronology_images=chronology_pics)
+                        doc=Document(io.BytesIO(data))
+                        if not doc.paragraphs or not doc.paragraphs[0].text.strip():
+                            raise ValueError('Word ilk sayfa yapısı bozuk (FAIL).')
+                        with tempfile.TemporaryDirectory() as td:
+                            inp=Path(td)/'itiraz.docx';inp.write_bytes(data)
+                            proc=subprocess.run(['libreoffice','--headless','--convert-to','pdf','--outdir',td,str(inp)],capture_output=True,timeout=120)
+                            rendered=Path(td)/'itiraz.pdf'
+                            if proc.returncode or not rendered.exists():raise ValueError('Word görsel render FAIL.')
+                            with fitz.open(rendered) as pdf:
+                                if pdf.page_count<3:raise ValueError('Beklenmeyen Word sayfa sayısı (FAIL).')
+                        audit={k:True for k in REQUIRED}
+                        check_stage(patent_kind,status,official_gazette,len(prep['claims']),evidence,{'source_names':[a.name for a in source_assets]},audit)
+                        st.success('Resmî kaynak, delil, istem ve bağımsız ikinci inceleme kontrolleri PASS.')
+                        fname=f'Belge Kararına Karşı İtiraz_{ref.strip()}.docx'
+                        compliant_download_button('İtiraz Word dosyasını indir',data=data,output_name=fname,
+                            default_name=fname,artifact_type='belge_itiraz',checks=audit,
+                            audit_sources=[a.data for a in source_assets+ev_assets],type='primary')
+                    except Exception as exc:
+                        st.error(str(exc))
 
     # TARİFNAME
     if work_type == "Tarifname oluşturma":
@@ -11585,8 +11656,8 @@ RAPOR:{str(analysis)[:150000]}
                         except Exception as exc:
                             st.exception(exc)
 
-    # ARAŞTIRMA GÜNCELLEME
-    else:
+    # ARAŞTIRMA GÜNCELLEME — itiraz ekranına sızmayı önleyen açık iş türü koşulu
+    elif work_type == "Araştırma güncelleme - Tip 3":
         st.subheader("Araştırma güncelleme - Tip 3")
         st.caption("İlk araştırma konusu ile revize araştırma konusu karşılaştırılır; ilk rapordaki D1/D2 dikkate alınarak yeni araştırma yapılır ve nihai rapor standart Tip 3 Ön Araştırma Raporu formatında oluşturulur.")
 
