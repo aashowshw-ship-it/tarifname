@@ -70,6 +70,6 @@ def test_all_user_downloads_have_independent_raw_source_context():
     app=(Path(__file__).parent/'app.py').read_text(encoding='utf-8')
     worker=(Path(__file__).parent/'job_worker.py').read_text(encoding='utf-8')
     assert app.count('st.download_button(')==1
-    assert app.count('compliant_download_button(')==11  # 10 call sites + 1 definition
-    assert app.count('audit_sources=')==10
+    assert app.count('compliant_download_button(')==12  # 11 call sites + 1 definition
+    assert app.count('audit_sources=')==11
     assert 'issue_delivery_evidence' in app and 'issue_delivery_evidence' in worker

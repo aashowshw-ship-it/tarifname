@@ -267,7 +267,8 @@ def test_final_compliance_gate_missing_single_receipt_is_fail_closed():
 def test_tip3_canonical_name_keeps_underscore_convention():
     from rules import final_compliance_gate
     from release_evidence import issue_delivery_evidence
-    checks={"delivery":True,"render":True}
+    checks={"delivery":True,"render":True,"research_4_rounds":True,"problem_solution":True,
+            "turkish_language":True,"independent_second_review":True}
     data=_tiny_docx_bytes("ÖN ARAŞTIRMA RAPORU")
     proof=issue_delivery_evidence("tip3",data,[b"initial bbf"],checks,"Ön_Araştırma_Raporu_181612.docx")
     name=final_compliance_gate("tip3", data=data, output_name="Ön Araştırma Raporu_181612.docx", default_name="x.docx", checks=checks, audit_receipt=proof)

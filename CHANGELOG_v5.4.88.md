@@ -1,0 +1,3 @@
+# v5.4.88 / 2026-10-12.v80
+
+ÖNCEKİ TEKNİK nesnel anlatım, genişletilmiş doğrulanabilir arka plan, düşünce bütünlüğüne göre serbest paragraf sayısı, eski 2400 karakter ve 3/4–7 paragraf eşiklerinin kaldırılması. `yönelik` Türkçe tarifnameye ve istemlere kesin yasak, bağımsız istemde tanımsız soyut unsura engel, `sağlamak üzere` yalnız gerçek teknik taşıyıcıyla. Mobil uygulama/haberleşme birimi ana istemden otomatik çıkarılmayacak. v5.4.87 merkezi ikinci teslim denetimi korunmuş ve Türkçe terminoloji kapısı genişletilmiştir. Eski altı CHANGELOG bağımsız dosyası 99 dosyalık dağıtım sınırı için çıkarıldı; README ve RULES_MEMORY eski sürüm kayıtlarını korur.

@@ -78,6 +78,17 @@ def independent_word_audit(kind: str, data: bytes, sources: list[Any]) -> dict:
             if heading not in full:
                 raise ValueError('Teslim kilidi: zorunlu tarifname başlığı eksik: ' + heading)
         claim_text = full.split('İSTEMLER', 1)[-1].split('ÖZET', 1)[0]
+        visible_tables = [cell.text for table in doc.tables for row in table.rows for cell in row.cells]
+        if re.search(r'\byönelik\b', '\n'.join([full] + visible_tables), flags=re.IGNORECASE):
+            raise ValueError('Teslim kilidi: Türkçe tarifnamede `yönelik` kelimesi yasaktır.')
+        prior_section = full.split('ÖNCEKİ TEKNİK', 1)[-1].split('BULUŞUN KISA AÇIKLAMASI', 1)[0]
+        if re.search(r'ayırt\s+edici\s+(?:bir\s+)?çözüm\s+olarak\s+kabul\s+edilemez', prior_section, re.I):
+            raise ValueError('Teslim kilidi: ÖNCEKİ TEKNİK hukuki değerlendirme içeriyor.')
+        prior_lines = [x.strip() for x in prior_section.split('\n') if x.strip()]
+        if any(re.match(r'^(?:Bu nedenle|Bununla birlikte|Bu durumda|Dolayısıyla|Özellikle)\b', x, re.I) for x in prior_lines):
+            raise ValueError('Teslim kilidi: ÖNCEKİ TEKNİK düşünceyi sürdüren bağlaç ayrı paragrafta bırakılmış.')
+        if re.search(r'(?:sağlayan|gerçekleştiren|içeren)\s+(?:sensör yerleşimi|bağlantı düzeni|işlem yapısı)\b', claim_text, re.I):
+            raise ValueError('Teslim kilidi: ana istemde gerçek teknik unsura bağlanmayan soyut düzen/yerleşim var.')
         if re.search(r'\b(?:belirlemesidir|sağlamasıdır|oluşturmasıdır)\s*\.', claim_text, re.I):
             raise ValueError('Teslim kilidi: istemde yasak kapanış kalıbı bulundu.')
         # All official template's red/blue explanatory text must remain.

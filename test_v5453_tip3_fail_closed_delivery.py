@@ -54,8 +54,8 @@ def _base_report():
 
 
 def test_version_and_filename_are_v5453_and_underscore_safe():
-    assert APP_VERSION == "v5.4.87"
-    assert RULESET_VERSION == "2026-10-09.v79"
+    assert APP_VERSION == "v5.4.90"
+    assert RULESET_VERSION == "2026-10-14.v82"
     assert safe_output_name("Ön%20Araştırma%20Raporu_182046_rev.docx", "x.docx", "tip3_update") == "Ön_Araştırma_Raporu_182046_rev.docx"
     assert safe_output_name("Ön Araştırma Raporu_182046_rev.docx", "x.docx", "tip3_update") == "Ön_Araştırma_Raporu_182046_rev.docx"
 
@@ -116,6 +116,8 @@ def test_second_reader_is_fail_closed():
         "warnings_source_specific_minimal": {"pass": True, "note": ""},
         "no_redundant_warning_requests": {"pass": True, "note": ""},
         "result_consistency": {"pass": True, "note": ""},
+        "problem_solution_source_grounding": {"pass": True, "note": ""},
+        "turkish_language_review": {"pass": True, "note": ""},
         "overall_pass": True,
     }
     validate_research_quality_audit(good)

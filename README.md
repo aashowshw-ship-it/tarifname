@@ -1,4 +1,22 @@
-# Patent Atölyesi v5.4.87
+# Patent Atölyesi v5.4.90
+
+## v5.4.90 / 2026-10-14.v82 — Belge kararına karşı itiraz (yeni iş türü)
+
+Yeni bağımsız arayüz; DP, başvuru ve itiraz sahibi, patent/faydalı model ayrımı, karar aşaması, özgün istem, kurum belgeleri, gerçek deliller, delillerin 29.08.2025 gibi ilgili başvuru tarihinden önce yayımlandığının dosyaya özgü kanıtı, özgün PDF görselleri ve ek talebi toplar. Yayım günü başvuru hazırlık aşamasında zorunlu değildir. Patent/Faydalı model hukukî yol seçimi ayrı kapıdır; faydalı model belgesi için patent SMK 99 itirazı otomatik çalışmaz.
+
+`belge_itiraz.py` yeni kodu içerir. `Belge_Kararina_Itiraz_182885_Ornek.docx` örnek Word, yalnız sabit hukuk metinleri, görsel şablon ve metodoloji içindir; dosyaya özgü tarih/istem/teknik iddialar yeni rapora aktarılmaz. Bağlayıcı 13 PASS/FAIL kontrolü ve kaynak+çıktı SHA-256 HMAC teslim makbuzu uygulanır. Her eksi matriste delil kaynaklı açıklama zorunludur; birebir alıntı kaynağın içinde bulunmazsa FAIL. Gerçek görsel kullanıcı PDF'sindeki seçilen sayfadan alınır; yeniden çizim gerçekmiş gibi sunulmaz.
+
+**İşlem sınırı:** LLM'nin tüm teknik/hukuki sonuçlarının doğruluğu salt biçim/uzunluk kontrolleriyle garanti edilemez. Bağımsız uzman ikinci okuması ve son kaynak kontrolü gereklidir. Sahte veya teyitsiz PASS ve hukukî uygunluk iddiası yapılmaz.
+
+
+## v5.4.88 / 2026-10-13.v81 — Önceki teknik anlam bütünlüğü ve gerçek istem unsuru
+
+- **Güncel ve üstün hüküm (5C–5E, 59, 65W):** Önceki teknikte müşteri kaynaklı her mevcut uygulama, özellik, eksiklik ve teknik problem kayıpsız, nesnel anlatılır; ürün özelliği yokluğu sadece tanıtımda yer almamasından çıkarılamaz. Patentlenebilirlik değerlendirmesi bu bölümde yapılamaz. Yetersiz teknik arka plan, yalnız doğrulanabilen önceki teknik bilgisiyle araştırılarak geliştirilebilir.
+- Türkçe genel önceki teknik ilk paragrafı `Günümüzde` ile başlar. `Bu nedenle`, `Bununla birlikte`, `Özellikle`, `Bu durumda` gibi öncülüne bağlı cümleler gereksiz yeni paragraf açmaz. Anlamlı yeni konu açılırsa paragraf açılır; kaynak 50 paragraf gerektirirse korunur. Patent literatürünün **her belgesi ayrı paragraf** olmaya devam eder.
+- **Sayısal paragraf alt/üst sınırı ve otomatik 2400 karakter kotası yürürlükten kaldırılmıştır.** Eskiden 4–7 paragraf, 3 paragraf ve 2400 karakter arayan denetimler yeni kuralda geçersizdir; bunların yerine `technical_facts`, gerçek kaynak kanıtı ve doğru bölümde eksiksiz aktarım kalite kapıları kalır.
+- Türkçe teknik metinde/istemlerde/özette `yönelik` kesin yasaktır: taslak ve bağımsız nihai Word kapısı hata verir. İstemlerde kaynaksız `sensör yerleşimi` gibi ayrı hayali unsurlar yasaktır; somut konum/ölçüm ekseni/bağlantı gerçek referanslı unsura bağlanır. `sağlamak üzere` teknik taşıyıcıyla beraber uygun yerde kullanılabilir, yalnız amaç yetmez.
+- Kullanıcı soruları ve UI, diğer iş akışları, dosya adlandırma sistemi ve üç bağlayıcı Word şablonu değişmemiştir. v5.4.87 ikinci teslim makbuzu korunur. Paket 99 dosyaya indirilirken yalnız 2026-10-09 öncesi altı ayrı geçmiş CHANGELOG dosyası dağıtımdan kaldırılmıştır; tarihsel hükümler bu README ve RULES_MEMORY içinde kalır.
+
 
 ## v5.4.87 / 2026-10-09.v79 — Tüm işlemler için kaynak ve son Word bağlı zorunlu ikinci teslim denetimi
 
@@ -911,3 +929,15 @@ Bu sürüm Türkçe `i/İ` normalizasyon hatasını giderir, UTM/teknik kısaltm
 - İndirme yalnız mevcut final compliance gate kontrolünden geçmiş çıktı dosyası ve işin `completed` durumu ile mümkündür.
 - Yeni mekanizma şu anda yalnız `Tarifname oluşturma` için arka planda çalışır. Diğer akışların mevcut arayüz/kuralları değişmez; otomatik yeniden başlatma onlar için vaat edilmez.
 - Render'ın ücretsiz planındaki geçici dosya sistemi redeploy/uyku/container değişiminde silinebilir. Uzun süreli kalıcılık için `PATENT_JOB_STORE` kalıcı disk dizinine ayarlanmalıdır.
+
+
+## v5.4.89 — Tip-3 zorunlu araştırma ve teslim denetimleri (13.10.2026)
+
+Mevcut kullanıcı soruları ve `On_Arastirma_Raporu_181612_template.docx` **aynen korunmuştur**.
+
+- Dört bağımsız arama çağrısı (GLOBAL_RECALL, GAP_SEARCH, FAMILY_NEIGHBOUR, D1_CHALLENGE) gerçek çıktılardan SHA-256 parmak iziyle kaydedilir; nihai 10 ve geçici D1/D2 kayda bağlanır. Modelin kendi kendine `completed=true` demesi yeterli değildir.
+- Tip-3 ve Araştırma Güncelleme Tip-3 Word indirmeleri dört tur kanıtı olmadığında durdurulur.
+- `3. SONUÇ` şablonun mevcut tek paragrafında objektif teknik problem ve gerekçeli problem–çözüm yaklaşımı zorunludur; eşlik eden yedi alan aynı paragraftaki birebir metin parçalarına bağlanır.
+- Bozuk Türkçe çekimler üzerinde yüksek kesinlikli statik denetim + ayrı semantik/dil odaklı ikinci uzman incelemesi gereklidir. Bu araçlar dilin tüm hatalarını otomatik olarak tespit ettiğini iddia etmez.
+- Son Word, bağımsız biçimde yeniden okunur. `tip3`/`tip3_update` indirme kontrolleri 4 ek PASS makbuzu gerektirir.
+- Olumsuz testlerde eksik tur, liste mutasyonu, eksik problem–çözüm, hatalı ek ve inceleme eksikliği teslimi durdurur.

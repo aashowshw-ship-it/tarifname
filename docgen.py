@@ -195,7 +195,7 @@ def build_docx(draft: dict[str, Any], template_path: str | Path) -> bytes:
 
     _add_heading(doc, "BULUŞUN DETAYLI AÇIKLAMASI")
     doc.add_paragraph()
-    _add_text(doc, f"Bu detaylı açıklamada, buluş konusu olan {draft['title'].lower()} sadece konunun daha iyi anlaşılmasına yönelik hiçbir sınırlayıcı etki oluşturmayacak örneklerle açıklanmaktadır.")
+    _add_text(doc, f"Bu detaylı açıklamada, buluş konusu olan {draft['title'].lower()} konunun daha iyi anlaşılmasını sağlamak amacıyla, koruma kapsamını sınırlamayan örneklerle açıklanmaktadır.")
     for para in draft.get("detailed_paragraphs") or []:
         doc.add_paragraph()
         _add_text(doc, para)

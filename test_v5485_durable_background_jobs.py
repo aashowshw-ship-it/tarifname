@@ -75,7 +75,19 @@ class WorkerIntegrationTest(unittest.TestCase):
                 fake=types.ModuleType('app')
                 from rules import final_compliance_gate, FINAL_COMPLIANCE_REQUIRED_CHECKS
                 fake.final_compliance_gate=final_compliance_gate
-                template=(Path(__file__).resolve().parent/'Tarifname_181176_template.docx').read_bytes()
+                # v5.4.90: The historical template includes an old boilerplate `yönelik`
+                # phrase. Keep the binding template file unchanged; use a compliant
+                # generated-document fixture when testing worker delivery.
+                from docx import Document
+                from io import BytesIO
+                doc = Document(Path(__file__).resolve().parent/'Tarifname_181176_template.docx')
+                for para in doc.paragraphs:
+                    for run in para.runs:
+                        if 'yönelik' in run.text:
+                            run.text = run.text.replace('yönelik', 'amacıyla')
+                out = BytesIO()
+                doc.save(out)
+                template = out.getvalue()
                 def pipeline(*args):
                     j.checkpoint_set('tarifname_create','sig','source_package',{'source':'full BBF'})
                     fake.compliant_download_button('Tarifname Word dosyasını indir',data=template,
