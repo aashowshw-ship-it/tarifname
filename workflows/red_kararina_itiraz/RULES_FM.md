@@ -36,3 +36,12 @@ Sürüm: 2026-11-18 / ilk taslak. Üst kurallar: Patent Atölyesi v5.4.93; çeli
 - D1/D2'yi yenilik bakımından birleştirme, hayali istem özelliği, dayanağı bulunmayan belge hükmü, yanlış kaynak tarihi, kaynaksız alıntı, bozulan özgün şekil, yanlış şablon, muğlak “olabilir/yapılabilir/düşünülmektedir” savunması, müşteri fikri yokken uydurma müşteri görüşü FAIL.
 - Sayfa/satır yalnız **doğrulanmış** fiziksel otoriteyle verilir; v5.4.93 PDF/Word satır kuralına uyulur.
 - Nihai Word, kaynaklarla ikinci kez karşılaştırılır ve render + görünür sayfa QA + geçerli kalite kapıları tamamlanmadan PASS denmez.
+
+
+## 2026-11-18 — Zorunlu 700801 şablon ve kesin savunma ek kuralları
+- **Üstün Word kaynağı**: `Kurum kararına itiraz_700801.docx`; ayrı görünür sayfa/paragraf/antet/başlık/matris/dil kalıpları `700801_EXACT_STYLE.md` içindeki 24 kontrolle doğrulanır. Önceki 696523 örneği artık üstün şablon değildir.
+- Resmî görüşte **“Başvuru istemlerinde herhangi bir değişiklik yapılmamaktadır.”** cümlesi, gereksiz E-sayı ve kullanıcıya yönelik prosedür/işlem metası yasaktır. Yeni istem uydurulmaz, ret kararında bulunmayan itiraza cevapmış gibi yazılmaz.
+- İstemde açıkça bulunmayan tercihli birleşme/uygulama özellikleri yeniliğin tek veya zorunlu kaynağı yapılamaz; kararın bu yöndeki itirazı kabul edilse dahi **istemde mevcut birimler ve bunların işlevsel/yapısal ilişkileri** üzerinden teknik fark savunulur. D1 ve D2'de eşdeğerlik iddiası varsa her bir eşleştirme doğrudan karşılanır.
+- Yalnız delille ispatlanan kesin savunma. “kısmen”, “olabilir”, “yapılabilir”, “düşünülmektedir”, “muhtemelen” gibi tereddüt bildiren savunma kalıpları ve kaynaksız sonuç FAIL. Başlıklar ve birebir dayanak kalın, açıklamalar normal.
+- Sonuç ve Talep en fazla iki kısa paragraf. Son teknik cümle **tam olarak**: “Tüm bu açıklamalarımız uyarınca `{BASVURU_NO}` numaralı başvurunun yenilik kriteri taşıdığı ortaya konmuş olup, ret kararının Kurulunuzca yeniden değerlendirilmesini arz ederiz.” FM kapanışında **buluş basamağı** ibaresi kesinlikle bulunmaz. Ardından yalnız şablon kurumsal imzası gelir.
+- Word düzeltme/dil denetimi `tr-TR` (tüm run'lar, stiller, varsayılan, core properties). Yalnız Türkçe cümle yazmak yeterli değildir.
