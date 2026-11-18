@@ -30,15 +30,6 @@ Sürüm: 2026-11-18 / ilk taslak, henüz mevcut Streamlit menüsüne bağlanmad�
 - V5.4.93 bağlayıcı mevcut README/RULES_MEMORY/rules.py üstündür. Bu dosyalar bu yeni iş türü için **taslak kural tanımıdır**, kaynak kodunda iş türü henüz kayıtlı değilse otomatik yürütüldüğünü iddia etme.
 
 
-## 2026-11-18 — 700801 kaynağı üstün bağlayıcı şablon
-- Eski 696523 YİDK Word örneğinin **yerine** kullanıcı tarafından yüklenen `Kurum kararına itiraz_700801.docx` esas alınır. Kaynak SHA-256: `41ca699cf55e1d79bbeaad81d52f5d9dc29fda14f9d259467711ab37dfad5198`.
-- Gerçek şablon özel Dosya Kitaplığı `/Patent Atolyesi/Sablonlar/Red Kararina Itiraz/Kurum kararına itiraz_700801_BAGLAYICI.docx` konumundadır; tam biçim kuralı `700801_EXACT_STYLE.md` dosyasında **24 bağımsız zorunlu koşul** olarak tanımlanmıştır. Bu stil ve fiziksel `w:p` boşlukları OOXML olarak test edilir.
-- Üç bilgi satırı `Başvuru Nu.`, `Başvuru Sahibi`, `Referansımız` kaynak şablonda 2,5 satır aralığındadır; sırasıyla **2/2/22 pt** sonrası boşluk vardır. Kurum başlıkları 8/22 pt; içerik gövdesi 1,5 satır ve 7 pt; bölüm başlıkları 14 pt ön, 7 pt son; iki başlangıç boş paragrafı korunur.
-- Word dil denetimi `tr-TR` olmalıdır. Savunmanın içine “Başvuru istemlerinde herhangi bir değişiklik yapılmamaktadır.” veya uzun E-evrak numarası ve gerekçesiz prosedür açıklaması yazılmaz.
-- Kısa `Sonuç ve Talep` kapanışı **faydalı modelde sadece yenilik**, patentte karar kapsamına göre yenilik ve buluş basamağı olarak kurulur. `700801_EXACT_STYLE.md` metinleri bağlayıcıdır. Başlıklar, gerçek dayanak alıntıları ve numaralı teknik bulgu önekleri kalın; sıradan savunma metni normaldir.
-- Şablona ait teknik bilgi veya eski dosya bilgileri yeni işe taşınmaz; yalnız form ve bağlayıcı sabit metin esas alınır.
-
-
 ## 2026-11-18 — ÜSTÜN ve güncel Word: 700851 onaylı kullanıcı düzenlemesi
 - Bu dosyadaki geçmiş 696523 ve 700801 örneklerine ilişkin biçim talimatları tarihsel kayıttır. **Yeni bağlayıcı örnek:** `Red Kararına İtiraz_700851.docx`, SHA256 `a90aef7237862e2de03c2585d3a1d687b81b1ce2611c9b2fb26484fb1b6df7bb`. Özel dosya Kitaplığı: `/Patent Atolyesi/Sablonlar/Red Kararina Itiraz/Red Kararına İtiraz_700851_BAGLAYICI_ORNEK.docx`.
 - Kaynak DOCX'te iki başlangıç boş paragrafı, değişken başlık alt çizgileri, bazı bölüm öncesi ek fiziksel boş paragraflar bulunur. Her başlığı altı çizili yapmak hatadır. Tam parça bazlı kural `700851_SOURCE_OF_TRUTH.md` içindedir.
