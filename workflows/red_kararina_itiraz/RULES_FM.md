@@ -1,0 +1,38 @@
+# RED KARARINA İTİRAZ — FAYDALI MODEL (bağımsız işlem türü)
+Sürüm: 2026-11-18 / ilk taslak. Üst kurallar: Patent Atölyesi v5.4.93; çelişki varsa üstün sürüm geçerlidir.
+
+## Kimlik ve hukuki yol
+- İşlem: **Başvuru sahibi adına faydalı model başvurusunun reddine karşı itiraz**. Belge kararına itiraz, üçüncü kişi görüşü veya araştırma raporuna ilk cevap değildir.
+- Usul: SMK 143/12 yollamasıyla SMK 100; YİDD/YİDK incelemesi. İki aylık süre **kararın bildirim/tebliğ tarihinden** izlenir; karar tarihi tek başına son gün hesabına dayanak olamaz. Harç/temsil/usul ayrı kontrol edilir.
+- SMK 142/1: yenilik ve sanayiye uygulanabilirlik; **buluş basamağı aranmaz**, böyle bir başlık veya patent için geliştirilmiş D1+D2 kombinasyon testi üretme.
+- SMK 142/2: Buluş konusuna katkı sağlamayan teknik özellikler yenilikte dikkate alınmaz. Ancak somut özellik için gerekçesiz “rutin/ergonomik/alışılmış” denerek teknik katkı yok sayılamaz; taşıyıcı, işlev ve etkisi istem ve delil üzerinde tek tek incelenir.
+- **Yenilik belge-bazlıdır:** Her X belgesi için bağımsız istemin teknik unsurlarının bütünü, aynı teknik ilişkileriyle **o tek kaynaktan doğrudan ve açıkça** açıklanmış olmalıdır. D1’den A ve D2’den B birleştirilerek yenilik yokluğu kurulamaz. Bir dosyada birden fazla X olabilir; hepsini ayrı test et.
+- Kaynağın gerçek öğretisini abartma; D2 ürünün adı “ana ünite” diye geçiyorsa sırf isim farkı ileri sürme, işlev+fiziksel yerleşim karşılaştır.
+
+## Yüklemeler (tek arayüzde, birlikte)
+1. Ret kararı ve mümkünse tebliğ tarihi (karar zorunlu, tebliğ tarihi süre kontrolü için gereklidir).
+2. Ret kararına konu **son** tarifname ve istemler (zorunlu), şekiller (mevcutsa).
+3. Son faydalı model araştırma raporu (zorunlu), varsa düzeltme raporu.
+4. Önceki itiraz/görüş ve varsa üçüncü kişi görüşü.
+5. D1/D2/... tam kaynak belgeleri, özgün tarihli deliller ve şekiller.
+6. Ana dosya referansı, işlem/görüş referansı ve isteğe bağlı müşteri görüş bilgisi.
+- Yalnız gerçekten eksik zorunlu girdiyi sor. Müşteri görüşü yoksa işleme engel değildir; belgeye dayalı bağımsız değerlendirme yap.
+- İlk/orijinal tarifnameyi rutin olarak isteme; yalnız değişiklik geçmişi, doğrudan dayanak/kapsam veya resmi sicil ihtilafı varsa iste.
+- Patentte birden çok rapor olabileceğinden bu FM listesini patent ekranına aynen uygulama.
+
+## Analiz sırası ve savunma
+1. Kararın her maddi gerekçesini OBJ-1, OBJ-2 ... koduyla ayır ve usul–teknik itiraz ayrımını yap.
+2. Son 1 numaralı istemi **birebir** oku; bütün teknik unsurları, bağlantıları, montaj ilişkilerini, işlevleri ve alt istemleri çıkar. Yalnız tarifnamede olup istemde bulunmayan özellikleri, sanki istem özelliğiymiş gibi savunma.
+3. D1, D2 ve diğer belgeler için **ayrı ayrı** VAR/YOK/ŞARTLI matrisi; her VAR ve YOK için özgün dokümanın sayfa/paragraf/şekil referansı ve doğru teknik anlamı. Kaynak belirsizse kesinlikle “YOK” hükmü kurma.
+4. Tek belge tüm unsurları karşılamıyorsa, teknik ayrımı ve yeniliğin devamını kesin delil diliyle açıkla. Birleştirmeye dayalı değerlendirme kullanılmışsa bu hatayı bağımsız hukuki savunma olarak göster.
+5. Bağımlı istem 2, 3 ... unsurunu ayrı analiz et; fiziksel montaj, kol desteği, taşıma ve mekanik ilişki gibi öğelerin **teknik katkısını** gerekçelendir. Sırf konfor deyip teknik özelliği yok sayma.
+6. Önceki görüşün karşılanmadığı noktayı, ret kararının cevabını ve neden bu cevabın hatalı olduğunu alt başlıklarıyla yanıtla. Yargıya taşınacak kadar kesin ancak kaynak dışı iddia kurma.
+7. Şekiller: kendi orijinal Şekil N ve D dokümanının gerçek Şekil/sayfa N görselleri birebir korunarak gerekirse **kırmızı daire/ok** ile fiziksel parçalar işaretlenir. İki kaynağın gerçek teknik çizimleri yan yana karşılaştırılır; sahte/redraw görsel yok. Metin, şekil ve istem arasında referans kontrolü zorunlu.
+8. Başvuru **mevcut son istemlerle** savunulur. Ret kararına itirazda otomatik Markup/Clean/istem daraltması ÜRETME. Değişiklik yolu ancak ayrı mevzuat ve dosya aşaması analizi ve açık kullanıcı tercihiyle değerlendirilebilir.
+9. Sonuçta ret kararının kaldırılması ve ilgili başvurunun işlemlerine devam edilmesi açık ve kesin dille talep edilir.
+
+## Kalite engelleri
+- Mevcut X kaynağının tüm ilgili istem unsurlarını tek kaynakla açıklama testi yoksa FAIL.
+- D1/D2'yi yenilik bakımından birleştirme, hayali istem özelliği, dayanağı bulunmayan belge hükmü, yanlış kaynak tarihi, kaynaksız alıntı, bozulan özgün şekil, yanlış şablon, muğlak “olabilir/yapılabilir/düşünülmektedir” savunması, müşteri fikri yokken uydurma müşteri görüşü FAIL.
+- Sayfa/satır yalnız **doğrulanmış** fiziksel otoriteyle verilir; v5.4.93 PDF/Word satır kuralına uyulur.
+- Nihai Word, kaynaklarla ikinci kez karşılaştırılır ve render + görünür sayfa QA + geçerli kalite kapıları tamamlanmadan PASS denmez.
