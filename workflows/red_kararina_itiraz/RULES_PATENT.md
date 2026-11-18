@@ -36,3 +36,11 @@ Sürüm: 2026-11-18 / ilk taslak. Üst kurallar: Patent Atölyesi v5.4.93.
 - Her ret gerekçesine ayrı, lafzi ve işlevsel karşı delil verilir. Tarifnamede olup istemde bulunmayan teknik özellikler istem özelliğiymiş gibi kullanılamaz; başvuru tarihlerine ve mevcut isteme sadık kalınır.
 - Sonuç ve Talep en fazla iki kısa paragraf. Karar yenilik ve buluş basamağı yönünden reddedilmişse son talep: “Tüm bu açıklamalarımız uyarınca `{BASVURU_NO}` numaralı başvurunun yenilik ve buluş basamağı kriteri taşıdığı ortaya konmuş olup, ret kararının Kurulunuzca yeniden değerlendirilmesini arz ederiz.” Başka ret sebeplerinde talep, **yalnız gerçekten savunulan kriterlere** uyarlanır.
 - Word dil denetimi, bütün run/stil/varsayılan ve core properties içinde `tr-TR`. İki başlangıç fiziksel boş paragrafı, meta 2,5 satır, referanstan sonra 22pt, kalın başlıklar, görseller ve imza stili birebir denetlenir.
+
+
+## ÜSTÜN SÜRÜM — 700851 onaylı YİDD Word şablonu, patent yolu, 2026-11-18
+- Yeni bağlayıcı kullanıcı Word'ü `Red Kararına İtiraz_700851.docx`, teknik içerik taşınmadan sadece onaylı antet, gerçek boşluk, başlık, alt çizgi ve biçim taşıyıcısı olarak kullanılır. Önceki 700801/696523 kaynaklı biçim komutları tarihsel ve bu örneğe göre ikincildir.
+- Patent **yenilik**: her kaynağı tek başına, zorunlu tüm teknik unsurlarıyla incele. Patent **buluş basamağı**: farklı gerekçeyle, en yakın önceki teknik, teknik problem, teknik etki ve D1+D2 birleşimi için motivasyon savunmasını ayrıca yap. Kararda açıklık/destek/kapsam aşımı gibi itirazlar varsa bunların her biri ayrı OBJ alır.
+- Her iddia son mevcut istemlerde bulunan teknik özellikler ve doğrulanmış özgün patent/tarifname sayfa/şekillerine dayanır. İstemde olmayan özellik, istemde varmış gibi ileri sürülmez. Gereksiz istem değişikliği ve E-sayı hakkında meta açıklama oluşturulmaz.
+- Word dili `tr-TR`, yeni savunmada noktalı virgül yok. Başlıklardaki alt çizgi ve boşluk düzeni birebir örnekten aktarılır. Sonuç en çok iki kısa paragraf. Ret yenilik ve buluş basamağındaysa son cümle “Tüm bu açıklamalarımız uyarınca {BASVURU_NO} numaralı başvurunun yenilik ve buluş basamağı kriteri taşıdığı ortaya konmuş olup, ret kararının Kurulunuzca yeniden değerlendirilmesini arz ederiz.”
+- UI, analiz ve PASS/FAIL tanımları `INPUT_SCHEMA.json`, `WORKFLOW.md`, `700851_SOURCE_OF_TRUTH.md` dosyalarında bütünleşiktir.
