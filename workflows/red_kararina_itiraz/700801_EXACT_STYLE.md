@@ -1,3 +1,7 @@
+
+
+> **UYARI / GEÇERSİZ ÜSTÜNLÜK (18.11.2026):** Bu dosya geçmiş **700801** biçim örneğini belgeler. Kullanıcının en son yüklediği **700851** Word'ü artık bağlayıcıdır. Bu dosyadaki boş paragraf veya alt çizgi dağılımının 700851 ile çelişen hükümleri uygulanmaz. Güncel tek biçim otoritesi `700851_SOURCE_OF_TRUTH.md` ve Kitaplıktaki orijinal Word dosyasıdır. Yeni UI `INPUT_SCHEMA.json`; yeni analiz `WORKFLOW.md`.
+
 # BAĞLAYICI YİDD / YİDK RED KARARINA İTİRAZ WORD ŞABLONU — 700801
 Sürüm: 2026-11-18 / kaynak: kullanıcı yüklemesi `Kurum kararına itiraz_700801.docx`.
 Kaynak SHA-256: `41ca699cf55e1d79bbeaad81d52f5d9dc29fda14f9d259467711ab37dfad5198`.
