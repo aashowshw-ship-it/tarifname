@@ -1,0 +1,178 @@
+{
+  "schema": "patent-atolyesi-red-kararina-itiraz-input-v1",
+  "version": "2026-11-18",
+  "view": "single-page-vertical",
+  "workflow_id": "red_kararina_itiraz",
+  "display_name": "Red Kararına İtiraz (YİDD / YİDK)",
+  "language": "tr-TR",
+  "fields": [
+    {
+      "id": "rejection_decision",
+      "label": "1. Ret kararı",
+      "kind": "file",
+      "accept": [
+        "pdf",
+        "docx",
+        "doc"
+      ],
+      "required": true,
+      "notes": "İlk zorunlu belge. Otomatik başvuru türü, başvuru no, sahibini, ret gerekçesi ve karar tarihini çıkar."
+    },
+    {
+      "id": "final_specification_claims",
+      "label": "2. Ret kararına esas son tarifname ve istemler",
+      "kind": "files",
+      "accept": [
+        "docx",
+        "doc",
+        "pdf"
+      ],
+      "required": true,
+      "notes": "Yalnız güncel son takım. İstemler otomatik çıkarılır. Ana başvuru varsayılan istenmez."
+    },
+    {
+      "id": "drawings",
+      "label": "3. Şekiller",
+      "kind": "files",
+      "accept": [
+        "docx",
+        "pdf",
+        "png",
+        "jpg",
+        "jpeg"
+      ],
+      "required": false,
+      "notes": "Mevcutsa özgün şekiller. Görsel karşılaştırma otomatik önerilir, işaretleme varsayılan kapalı."
+    },
+    {
+      "id": "latest_report",
+      "label": "4. Son araştırma veya inceleme raporu",
+      "kind": "files",
+      "accept": [
+        "pdf",
+        "docx",
+        "doc"
+      ],
+      "required": true,
+      "required_when": {
+        "patent": "son inceleme raporu",
+        "faydali_model": "son araştırma raporu"
+      },
+      "notes": "Patentte 2, 3, 4. inceleme raporu varsa sonuncusu şart. Öncekiler yalnız ret gerekçesini/istem geçmişini anlamak için."
+    },
+    {
+      "id": "previous_opinions",
+      "label": "5. Önceki görüşler, itirazlar ve istem değişiklikleri",
+      "kind": "files",
+      "accept": [
+        "pdf",
+        "docx",
+        "doc"
+      ],
+      "required": false,
+      "notes": "Varsa yüklenir. Değişiklik geçmişi ve karşılanan/karşılanmayan uzman gerekçeleri."
+    },
+    {
+      "id": "prior_art",
+      "label": "6. Ret gerekçesindeki D1, D2 ve diğer dokümanlar",
+      "kind": "files",
+      "accept": [
+        "pdf",
+        "docx",
+        "doc"
+      ],
+      "required": true,
+      "notes": "D belgeleri ayrı dosyalar. Kamuya açık kaynaktan doğrulanmış metin sistemce bulunabiliyorsa zorunlu manuel yükleme kaldırılır. Gerçek kaynak bulunamazsa o belge istenir."
+    },
+    {
+      "id": "third_party_opinion",
+      "label": "7. Önceki üçüncü kişi görüşü ve savunması",
+      "kind": "files",
+      "accept": [
+        "pdf",
+        "docx",
+        "doc"
+      ],
+      "required": false
+    },
+    {
+      "id": "customer_comments",
+      "label": "8. Müşterinin görüş ve teknik açıklamaları",
+      "kind": "files",
+      "accept": [
+        "pdf",
+        "docx",
+        "doc",
+        "txt"
+      ],
+      "required": false,
+      "notes": "Yoksa işlem aynen devam eder. Müşteri görüşü uydurulmaz."
+    },
+    {
+      "id": "main_reference",
+      "label": "9. Ana dosya referansı",
+      "kind": "text",
+      "required": true,
+      "notes": "Önceki dokümandan bulunursa otomatik doldur, tekrar soru sorma."
+    },
+    {
+      "id": "opinion_reference",
+      "label": "10. İtiraz/görüş işlem referansı",
+      "kind": "text",
+      "required": true,
+      "notes": "Dosya adı ve işlem kimliği için; Word içinde Referansımız = ana dosya referansı."
+    },
+    {
+      "id": "notification_date",
+      "label": "11. Ret kararının tebliğ tarihi",
+      "kind": "date",
+      "required": false,
+      "notes": "Bilinmiyorsa son gün hesaplanmaz ve kullanıcıya süre teyidi uyarısı verilir. Karar tarihi tebliğ tarihi varsayılmaz."
+    },
+    {
+      "id": "additional_instructions",
+      "label": "12. Ek talimat (varsa)",
+      "kind": "textarea",
+      "required": false
+    }
+  ],
+  "derived_fields": [
+    "application_number",
+    "applicant",
+    "protection_type",
+    "rejection_date",
+    "appeal_route",
+    "examiner_objection_ids",
+    "citation_document_ids",
+    "latest_claim_count"
+  ],
+  "derived_rules": [
+    "Koruma türünü ret kararından belirle, doğrulanamıyorsa yalnız bu bilgi için seçenek sor.",
+    "Ret kararı olmadığında analiz başlamaz.",
+    "Patentte rapor kronolojisini topla ama ilk başvuruyu rutin olarak isteme.",
+    "Müşteri görüşü isteğe bağlıdır ve yoksa faaliyet durmaz.",
+    "D belgeleri varsa tek tek doğrudan kaynak incelemesi yapılır.",
+    "Tek ekran, tek yükleme, iç süreç adımlarının kullanıcıya ardışık soru olarak sunulması yok.",
+    "Patent/FM hukuki savunma ve rapor türü koşullu olarak ayrılır."
+  ],
+  "actions": [
+    {
+      "id": "analyze_sources",
+      "label": "1. Kaynakları analiz et"
+    },
+    {
+      "id": "review_draft",
+      "label": "2. İtiraz taslağını gözden geçir"
+    },
+    {
+      "id": "generate_word",
+      "label": "3. Şablona uygun Word üret ve kontrol et"
+    }
+  ],
+  "ui_guards": [
+    "Başvuru no ve başvuru türü ret kararından doğrulanınca tekrar sorulmaz.",
+    "Yalnız zorunlu eksik kaynağı sor.",
+    "Yeni dosya eklenirse önceki analiz geçersiz sayılır.",
+    "Görüş sahibi başvuru sahibidir, başka bir başvuru sahibinin belge kararına karşı itiraz ekranı kullanılmaz."
+  ]
+}
