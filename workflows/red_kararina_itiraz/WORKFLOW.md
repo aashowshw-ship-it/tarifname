@@ -42,7 +42,7 @@ Tüm dosyalar tek sayfada alt alta yüklenir. Ret kararı, son tarifname ve iste
 - İki başlangıç boş paragrafı, bilgi satırlarının 2,5 satır aralığı, ‘Referansımız’ sonrası 22 pt, gerçek bölüm öncesi boşluk paragrafları, bölüm başlıklarının her birinin **orijinal** alt çizgi durumu ve 14/7 pt aralıkları korunur.
 - Sadece başlıklar, özgün birebir alıntılar ve VAR/YOK unsur öncelikleri kalın. Ana savunma metni normal.
 - Word yazım denetimi `tr-TR`. Özellikle hedef dil başka dile düşmüşse FAIL.
-- **Noktalı virgül yazma**: Yeni savunma metninde nokta/virgül tercih edilir. Noktalı virgül ancak *birebir kaynak alıntısının parçası* ise korunur. Kaynağa sadakat için mevcut onaylı örnek DOCX'e edit uygulama.
+- **Noktalı virgülden kaçın**: Yeni savunma metninde nokta/virgül tercih edilir. Noktalı virgül ancak *birebir kaynak alıntısının parçası* ise veya teknik anlam bakımından zorunlu olduğu bağımsız denetimle gerekçelendirildiğinde korunur. Kaynağa sadakat için mevcut onaylı örnek DOCX'e edit uygulama.
 - Uzun E-sayı ve ‘İstemlerde değişiklik yapılmamaktadır’ gibi iç süreç/prosedür meta sözleri Word içinde YASAK.
 - Kapanış iki kısa paragraftan uzun olamaz, kesin talep cümlesi `700851_SOURCE_OF_TRUTH.md` içindedir.
 - Çıktı adı `Red Kararına İtiraz_{görüş_ref}.docx`, Word içindeki referans `{ana_dosya_ref}`.
